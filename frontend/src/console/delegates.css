@@ -1,0 +1,119 @@
+/* Other models in the log (console/DelegateCall.jsx, RetryMenu.jsx) and the
+   providers list in Settings (widgets/Providers.jsx). Tokens only; nothing
+   here names a colour. A provider is told apart by its name, not a hue: the
+   one accent on this surface already means "live". */
+
+/* ---- "model changed" (#101): a rule across the log ---- */
+.model-mark {
+  display: flex; align-items: center; gap: 8px; margin: 4px 0 10px;
+  font-family: var(--mono); font-size: var(--text-xs); color: var(--ink-mid);
+}
+.model-mark::before, .model-mark::after {
+  content: ""; flex: 1; height: 1px; background: var(--ink-line-2);
+}
+.model-mark .mm-was { color: var(--ink-faint); }
+.model-mark .mm-arrow { color: var(--ink-faint); }
+.model-mark .mm-now { color: var(--ink-text); }
+
+/* ---- "retry with…" (#104): under a turn's last reply, quiet until hover ---- */
+.retry-wrap { display: flex; justify-content: flex-end; margin: -4px 0 4px; }
+.retry-btn { opacity: 0; transition: opacity var(--t), color var(--t); }
+.turn:hover .retry-btn, .retry-btn:focus-visible, .retry-btn.on { opacity: 1; }
+.retry-btn:disabled { cursor: default; }
+.turn:hover .retry-btn:disabled { opacity: 0.4; }
+.retry-menu .rt-same { color: var(--ink-faint); margin-left: auto; padding-left: 12px; }
+@media (hover: none) { .retry-btn { opacity: 1; } }
+
+/* ---- a delegate or fan-out call: one row, opens to the brief ---- */
+.delegate-row { margin: 0 0 8px; font-size: var(--text-sm); color: var(--ink-mid); }
+.turn > .delegate-row:last-child, .turn > .shortlist:last-child { margin-bottom: 0; }
+.dg-head {
+  display: flex; align-items: baseline; gap: 8px; width: 100%; min-width: 0;
+  padding: 0; border: none; background: transparent; cursor: pointer; text-align: left;
+  font: inherit; font-family: var(--mono); color: inherit;
+}
+.dg-head:hover .dg-task { color: var(--ink-text); }
+.dg-arrow { color: var(--ink-faint); flex: none; }
+.dg-who {
+  flex: none; color: var(--ink-text);
+  padding: 0 6px; border: 1px solid var(--ink-line-2); border-radius: var(--r1);
+}
+.dg-who .tally-n { margin-left: 3px; }
+.dg-fan { flex: none; color: var(--ink-text); }
+.dg-task { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.8; }
+.dg-redacted { flex: none; color: var(--ink-faint); }
+.dg-state { flex: none; margin-left: auto; color: var(--accent-ink); }
+.dg-state.bad { color: var(--bad); }
+.dg-body { margin-top: 6px; }
+.dg-label {
+  margin: 8px 0 4px; font-family: var(--mono); font-size: var(--text-xs); color: var(--ink-faint);
+}
+.dg-body .tool-cmd { max-height: 260px; overflow: auto; white-space: pre-wrap; }
+
+/* ---- the shortlist: Claude's picks, side by side ---- */
+.shortlist { margin: 4px 0 10px; }
+.sl-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 10px; }
+.sl-title { font-weight: 600; color: var(--ink-text); }
+.sl-sub { font-family: var(--mono); font-size: var(--text-xs); color: var(--ink-faint); }
+.sl-note { flex-basis: 100%; margin: 0; font-size: var(--text-sm); line-height: 1.5; color: var(--ink-mid); }
+.sl-note.bad { color: var(--bad); }
+.sl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.sl-grid.one { grid-template-columns: 1fr; }
+.sl-pick {
+  margin: 0; min-width: 0; display: flex; flex-direction: column;
+  border: 1px solid var(--ink-line-2); border-radius: var(--r2); overflow: hidden;
+  background: var(--ink-raise);
+}
+.sl-pick.chosen { border-color: var(--accent-ink); }
+/* The frame is a page someone will look at in daylight: it keeps its own
+   white ground whatever theme the console is in. */
+.sl-frame { aspect-ratio: 16 / 10; background: #fff; border-bottom: 1px solid var(--ink-line-2); }
+.sl-grid.one .sl-frame { aspect-ratio: 16 / 9; }
+.sl-frame { overflow: hidden; }
+.sl-frame img { display: block; width: 100%; height: 100%; object-fit: contain; }
+/* A page is laid out at desktop width and shown small: three times the
+   frame, scaled back to a third (one and a half when it's the only one). */
+.sl-frame iframe {
+  display: block; border: 0; width: 300%; height: 300%;
+  transform: scale(calc(1 / 3)); transform-origin: 0 0;
+}
+.sl-grid.one .sl-frame iframe { width: 150%; height: 150%; transform: scale(calc(2 / 3)); }
+.sl-pick figcaption { padding: 10px 12px 8px; display: flex; flex-direction: column; gap: 6px; }
+.sl-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-family: var(--mono); font-size: var(--text-xs); }
+.sl-rank { color: var(--ink-text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.sl-model { color: var(--ink-faint); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sl-n { margin-left: auto; flex: none; color: var(--ink-faint); }
+.sl-why { margin: 0; font-size: var(--text-sm); line-height: 1.5; color: var(--ink-mid); }
+.sl-acts { display: flex; gap: 2px; margin: 2px -6px 0; }
+.sl-acts a.bar-btn { text-decoration: none; }
+.sl-go { color: var(--accent-ink); }
+.sl-pick.chosen .sl-go { color: var(--ink-text); }
+.sl-go:disabled { cursor: default; opacity: 0.5; }
+.sl-pick.chosen .sl-go:disabled { opacity: 1; }
+
+/* ---- Settings → Providers (paper surface) ---- */
+.prov { padding: 10px 0; }
+.prov + .prov { border-top: 1px solid var(--paper-line); }
+.prov-top { display: flex; align-items: center; gap: 10px; min-height: 28px; }
+.prov-name { font-size: var(--text-base); color: var(--paper-ink); }
+.prov-vendor { font-size: var(--text-sm); color: var(--paper-mid); }
+.prov-state {
+  margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px;
+  font-size: var(--text-sm); color: var(--paper-mid);
+}
+.prov-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--paper-line-2); }
+.prov-state.ready { color: var(--paper-ink); }
+.prov-state.ready .prov-dot { background: var(--good); }
+.prov-facts { margin: 2px 0 0; font-size: var(--text-sm); line-height: 1.5; color: var(--paper-mid); }
+.prov-need {
+  margin: 8px 0 0; padding: 8px 10px; border-radius: var(--r1); background: var(--paper-line);
+  font-size: var(--text-sm); line-height: 1.5; color: var(--paper-ink);
+}
+.prov-need code {
+  font-family: var(--mono); font-size: var(--text-xs); user-select: all;
+  padding: 1px 5px; border-radius: var(--r1); background: var(--paper-raise);
+}
+.prov-steps { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.prov-steps li { display: flex; gap: 8px; align-items: baseline; }
+.prov-steps .done { color: var(--paper-mid); text-decoration: line-through; }
+.prov-step-n { flex: none; font-family: var(--mono); font-size: var(--text-xs); color: var(--paper-mid); }

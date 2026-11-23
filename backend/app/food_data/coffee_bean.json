@@ -1,0 +1,8874 @@
+{
+ "source": "coffeebean.com/nutrition (CBTL_Nutrition.pdf)",
+ "items": [
+  {
+   "name": "Single Espresso",
+   "section": "Coffee",
+   "serving_desc": "1 serving",
+   "nutrients": {
+    "kcal": 5.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 0.0,
+    "carbs": 0.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 0.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "Double Espresso",
+   "section": "Coffee",
+   "serving_desc": "1 serving",
+   "nutrients": {
+    "kcal": 5.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 10.0,
+    "carbs": 1.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 94.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "12 oz Cappuccino Single",
+   "section": "Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 140.0,
+    "fat": 8.0,
+    "sat_fat": 4.5,
+    "sodium": 115.0,
+    "carbs": 12.0,
+    "fiber": 0.0,
+    "sugar": 10.0,
+    "protein": 7.0,
+    "vit_d": 2.0,
+    "calcium": 260.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "milk"
+   ]
+  },
+  {
+   "name": "12 oz Cappuccino Double",
+   "section": "Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 120.0,
+    "fat": 7.0,
+    "sat_fat": 3.5,
+    "sodium": 105.0,
+    "carbs": 10.0,
+    "fiber": 0.0,
+    "sugar": 9.0,
+    "protein": 6.0,
+    "vit_d": 1.2,
+    "calcium": 260.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "milk"
+   ]
+  },
+  {
+   "name": "12 oz Caramel Cappuccino Single",
+   "section": "Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 200.0,
+    "fat": 8.0,
+    "sat_fat": 5.0,
+    "sodium": 140.0,
+    "carbs": 24.0,
+    "fiber": 0.0,
+    "sugar": 21.0,
+    "protein": 7.0,
+    "vit_d": 2.0,
+    "calcium": 260.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Caramel Cappuccino Double",
+   "section": "Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 220.0,
+    "fat": 8.0,
+    "sat_fat": 4.5,
+    "sodium": 150.0,
+    "carbs": 32.0,
+    "fiber": 0.0,
+    "sugar": 27.0,
+    "protein": 6.0,
+    "vit_d": 1.2,
+    "calcium": 260.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Caramel Macchiato",
+   "section": "Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 260.0,
+    "fat": 1.5,
+    "sat_fat": 1.0,
+    "sodium": 260.0,
+    "carbs": 48.0,
+    "fiber": 0.0,
+    "sugar": 42.0,
+    "protein": 13.0,
+    "vit_d": 3.0,
+    "calcium": 455.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk and soy"
+   ]
+  },
+  {
+   "name": "16 oz Caramel Macchiato",
+   "section": "Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 360.0,
+    "fat": 2.5,
+    "sat_fat": 1.5,
+    "sodium": 340.0,
+    "carbs": 66.0,
+    "fiber": 0.0,
+    "sugar": 57.0,
+    "protein": 16.0,
+    "vit_d": 4.0,
+    "calcium": 585.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk and soy"
+   ]
+  },
+  {
+   "name": "20 oz Caramel Macchiato",
+   "section": "Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 460.0,
+    "fat": 3.5,
+    "sat_fat": 2.0,
+    "sodium": 420.0,
+    "carbs": 85.0,
+    "fiber": 0.0,
+    "sugar": 73.0,
+    "protein": 20.0,
+    "vit_d": 4.0,
+    "calcium": 780.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "milk and soy"
+   ]
+  },
+  {
+   "name": "12 oz Americano",
+   "section": "Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 5.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 20.0,
+    "carbs": 1.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 94.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "16 oz Americano",
+   "section": "Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 10.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 25.0,
+    "carbs": 1.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 94.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "20 oz Americano",
+   "section": "Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 10.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 35.0,
+    "carbs": 2.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 26.0,
+    "iron": 0.0,
+    "potassium": 94.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "12 oz Mocha Americano",
+   "section": "Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 170.0,
+    "fat": 3.5,
+    "sat_fat": 3.5,
+    "sodium": 150.0,
+    "carbs": 32.0,
+    "fiber": 1.0,
+    "sugar": 26.0,
+    "protein": 4.0,
+    "vit_d": 0.0,
+    "calcium": 104.0,
+    "iron": 1.08,
+    "potassium": 282.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Mocha Americano",
+   "section": "Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 250.0,
+    "fat": 6.0,
+    "sat_fat": 5.0,
+    "sodium": 230.0,
+    "carbs": 48.0,
+    "fiber": 1.0,
+    "sugar": 39.0,
+    "protein": 5.0,
+    "vit_d": 0.0,
+    "calcium": 130.0,
+    "iron": 1.08,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "20 oz Mocha Americano",
+   "section": "Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 340.0,
+    "fat": 7.0,
+    "sat_fat": 7.0,
+    "sodium": 310.0,
+    "carbs": 63.0,
+    "fiber": 1.0,
+    "sugar": 51.0,
+    "protein": 7.0,
+    "vit_d": 0.0,
+    "calcium": 195.0,
+    "iron": 1.8,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Vanilla Americano",
+   "section": "Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 180.0,
+    "fat": 4.5,
+    "sat_fat": 4.5,
+    "sodium": 120.0,
+    "carbs": 31.0,
+    "fiber": 0.0,
+    "sugar": 26.0,
+    "protein": 4.0,
+    "vit_d": 0.0,
+    "calcium": 130.0,
+    "iron": 0.0,
+    "potassium": 282.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Vanilla Americano",
+   "section": "Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 270.0,
+    "fat": 7.0,
+    "sat_fat": 7.0,
+    "sodium": 180.0,
+    "carbs": 46.0,
+    "fiber": 0.0,
+    "sugar": 40.0,
+    "protein": 5.0,
+    "vit_d": 0.0,
+    "calcium": 195.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "20 oz Vanilla Americano",
+   "section": "Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 350.0,
+    "fat": 9.0,
+    "sat_fat": 9.0,
+    "sodium": 230.0,
+    "carbs": 62.0,
+    "fiber": 0.0,
+    "sugar": 53.0,
+    "protein": 7.0,
+    "vit_d": 0.0,
+    "calcium": 260.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Caramel Americano",
+   "section": "Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 150.0,
+    "fat": 3.0,
+    "sat_fat": 2.5,
+    "sodium": 95.0,
+    "carbs": 29.0,
+    "fiber": 0.0,
+    "sugar": 24.0,
+    "protein": 2.0,
+    "vit_d": 0.0,
+    "calcium": 78.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Caramel Americano",
+   "section": "Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 260.0,
+    "fat": 5.0,
+    "sat_fat": 4.5,
+    "sodium": 160.0,
+    "carbs": 50.0,
+    "fiber": 0.0,
+    "sugar": 42.0,
+    "protein": 3.0,
+    "vit_d": 0.0,
+    "calcium": 104.0,
+    "iron": 0.0,
+    "potassium": 282.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "20 oz Caramel Americano",
+   "section": "Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 360.0,
+    "fat": 7.0,
+    "sat_fat": 6.0,
+    "sodium": 220.0,
+    "carbs": 71.0,
+    "fiber": 0.0,
+    "sugar": 59.0,
+    "protein": 4.0,
+    "vit_d": 0.0,
+    "calcium": 130.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz White Chocolate Americano",
+   "section": "Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 200.0,
+    "fat": 8.0,
+    "sat_fat": 7.0,
+    "sodium": 200.0,
+    "carbs": 31.0,
+    "fiber": 0.0,
+    "sugar": 21.0,
+    "protein": 1.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz White Chocolate Americano",
+   "section": "Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 300.0,
+    "fat": 12.0,
+    "sat_fat": 11.0,
+    "sodium": 310.0,
+    "carbs": 46.0,
+    "fiber": 0.0,
+    "sugar": 32.0,
+    "protein": 1.0,
+    "vit_d": 0.0,
+    "calcium": 26.0,
+    "iron": 0.0,
+    "potassium": 282.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "20 oz White Chocolate Americano",
+   "section": "Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 400.0,
+    "fat": 16.0,
+    "sat_fat": 14.0,
+    "sodium": 410.0,
+    "carbs": 62.0,
+    "fiber": 0.0,
+    "sugar": 43.0,
+    "protein": 2.0,
+    "vit_d": 0.0,
+    "calcium": 26.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Dark Chocolate Americano",
+   "section": "Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 170.0,
+    "fat": 4.0,
+    "sat_fat": 3.5,
+    "sodium": 115.0,
+    "carbs": 32.0,
+    "fiber": 2.0,
+    "sugar": 25.0,
+    "protein": 3.0,
+    "vit_d": 0.0,
+    "calcium": 52.0,
+    "iron": 2.7,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Dark Chocolate Americano",
+   "section": "Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 250.0,
+    "fat": 6.0,
+    "sat_fat": 5.0,
+    "sodium": 170.0,
+    "carbs": 48.0,
+    "fiber": 3.0,
+    "sugar": 38.0,
+    "protein": 5.0,
+    "vit_d": 0.0,
+    "calcium": 78.0,
+    "iron": 5.4,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "20 oz Dark Chocolate Americano",
+   "section": "Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 330.0,
+    "fat": 8.0,
+    "sat_fat": 7.0,
+    "sodium": 220.0,
+    "carbs": 64.0,
+    "fiber": 4.0,
+    "sugar": 50.0,
+    "protein": 6.0,
+    "vit_d": 0.0,
+    "calcium": 104.0,
+    "iron": 6.3,
+    "potassium": 1175.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Cookie Butter Americano",
+   "section": "Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 190.0,
+    "fat": 8.0,
+    "sat_fat": 8.0,
+    "sodium": 150.0,
+    "carbs": 30.0,
+    "fiber": 0.0,
+    "sugar": 24.0,
+    "protein": 1.0,
+    "vit_d": 0.0,
+    "calcium": 26.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "16 oz Cookie Butter Americano",
+   "section": "Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 290.0,
+    "fat": 12.0,
+    "sat_fat": 12.0,
+    "sodium": 220.0,
+    "carbs": 45.0,
+    "fiber": 0.0,
+    "sugar": 35.0,
+    "protein": 2.0,
+    "vit_d": 0.0,
+    "calcium": 52.0,
+    "iron": 0.0,
+    "potassium": 282.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "20 oz Cookie Butter Americano",
+   "section": "Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 380.0,
+    "fat": 16.0,
+    "sat_fat": 16.0,
+    "sodium": 290.0,
+    "carbs": 61.0,
+    "fiber": 0.0,
+    "sugar": 47.0,
+    "protein": 3.0,
+    "vit_d": 0.0,
+    "calcium": 52.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "12 oz Caf\u00e9 Latte",
+   "section": "Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 230.0,
+    "fat": 13.0,
+    "sat_fat": 7.0,
+    "sodium": 190.0,
+    "carbs": 19.0,
+    "fiber": 0.0,
+    "sugar": 17.0,
+    "protein": 11.0,
+    "vit_d": 3.0,
+    "calcium": 455.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk"
+   ]
+  },
+  {
+   "name": "16 oz Caf\u00e9 Latte",
+   "section": "Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 290.0,
+    "fat": 16.0,
+    "sat_fat": 9.0,
+    "sodium": 240.0,
+    "carbs": 24.0,
+    "fiber": 0.0,
+    "sugar": 21.0,
+    "protein": 14.0,
+    "vit_d": 4.0,
+    "calcium": 585.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk"
+   ]
+  },
+  {
+   "name": "20 oz Caf\u00e9 Latte",
+   "section": "Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 350.0,
+    "fat": 20.0,
+    "sat_fat": 11.0,
+    "sodium": 290.0,
+    "carbs": 30.0,
+    "fiber": 0.0,
+    "sugar": 26.0,
+    "protein": 17.0,
+    "vit_d": 4.0,
+    "calcium": 650.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "milk"
+   ]
+  },
+  {
+   "name": "12 oz Caf\u00e9 Cookie Butter",
+   "section": "Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 220.0,
+    "fat": 8.0,
+    "sat_fat": 8.0,
+    "sodium": 180.0,
+    "carbs": 34.0,
+    "fiber": 0.0,
+    "sugar": 28.0,
+    "protein": 5.0,
+    "vit_d": 1.2,
+    "calcium": 130.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "16 oz Caf\u00e9 Cookie Butter",
+   "section": "Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 310.0,
+    "fat": 12.0,
+    "sat_fat": 12.0,
+    "sodium": 240.0,
+    "carbs": 48.0,
+    "fiber": 0.0,
+    "sugar": 39.0,
+    "protein": 5.0,
+    "vit_d": 1.2,
+    "calcium": 130.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "20 oz Caf\u00e9 Cookie Butter",
+   "section": "Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 390.0,
+    "fat": 16.0,
+    "sat_fat": 16.0,
+    "sodium": 290.0,
+    "carbs": 61.0,
+    "fiber": 0.0,
+    "sugar": 49.0,
+    "protein": 5.0,
+    "vit_d": 0.0,
+    "calcium": 78.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "12 oz Mocha Latte",
+   "section": "Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 280.0,
+    "fat": 3.5,
+    "sat_fat": 3.0,
+    "sodium": 300.0,
+    "carbs": 47.0,
+    "fiber": 1.0,
+    "sugar": 40.0,
+    "protein": 15.0,
+    "vit_d": 2.0,
+    "calcium": 520.0,
+    "iron": 1.08,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Mocha Latte",
+   "section": "Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 390.0,
+    "fat": 5.0,
+    "sat_fat": 5.0,
+    "sodium": 420.0,
+    "carbs": 67.0,
+    "fiber": 1.0,
+    "sugar": 57.0,
+    "protein": 19.0,
+    "vit_d": 3.0,
+    "calcium": 650.0,
+    "iron": 1.08,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "20 oz Mocha Latte",
+   "section": "Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 500.0,
+    "fat": 7.0,
+    "sat_fat": 7.0,
+    "sodium": 530.0,
+    "carbs": 86.0,
+    "fiber": 1.0,
+    "sugar": 73.0,
+    "protein": 23.0,
+    "vit_d": 4.0,
+    "calcium": 780.0,
+    "iron": 1.8,
+    "potassium": 1175.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Vanilla Latte",
+   "section": "Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 280.0,
+    "fat": 4.5,
+    "sat_fat": 4.5,
+    "sodium": 270.0,
+    "carbs": 46.0,
+    "fiber": 0.0,
+    "sugar": 41.0,
+    "protein": 15.0,
+    "vit_d": 2.0,
+    "calcium": 520.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Vanilla Latte",
+   "section": "Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 400.0,
+    "fat": 7.0,
+    "sat_fat": 6.0,
+    "sodium": 370.0,
+    "carbs": 66.0,
+    "fiber": 0.0,
+    "sugar": 58.0,
+    "protein": 19.0,
+    "vit_d": 3.0,
+    "calcium": 650.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "20 oz Vanilla Latte",
+   "section": "Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 510.0,
+    "fat": 9.0,
+    "sat_fat": 9.0,
+    "sodium": 450.0,
+    "carbs": 85.0,
+    "fiber": 0.0,
+    "sugar": 74.0,
+    "protein": 23.0,
+    "vit_d": 4.0,
+    "calcium": 780.0,
+    "iron": 0.0,
+    "potassium": 1175.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Caramel Latte",
+   "section": "Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 270.0,
+    "fat": 3.0,
+    "sat_fat": 2.5,
+    "sodium": 250.0,
+    "carbs": 47.0,
+    "fiber": 0.0,
+    "sugar": 41.0,
+    "protein": 13.0,
+    "vit_d": 2.0,
+    "calcium": 455.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Caramel Latte",
+   "section": "Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 400.0,
+    "fat": 5.0,
+    "sat_fat": 4.5,
+    "sodium": 350.0,
+    "carbs": 71.0,
+    "fiber": 0.0,
+    "sugar": 62.0,
+    "protein": 17.0,
+    "vit_d": 3.0,
+    "calcium": 585.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "20 oz Caramel Latte",
+   "section": "Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 530.0,
+    "fat": 7.0,
+    "sat_fat": 6.0,
+    "sodium": 440.0,
+    "carbs": 96.0,
+    "fiber": 0.0,
+    "sugar": 83.0,
+    "protein": 20.0,
+    "vit_d": 4.0,
+    "calcium": 780.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz White Chocolate Latte",
+   "section": "Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 340.0,
+    "fat": 9.0,
+    "sat_fat": 8.0,
+    "sodium": 380.0,
+    "carbs": 53.0,
+    "fiber": 0.0,
+    "sugar": 41.0,
+    "protein": 12.0,
+    "vit_d": 2.0,
+    "calcium": 390.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz White Chocolate Latte",
+   "section": "Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 480.0,
+    "fat": 13.0,
+    "sat_fat": 12.0,
+    "sodium": 530.0,
+    "carbs": 74.0,
+    "fiber": 0.0,
+    "sugar": 56.0,
+    "protein": 15.0,
+    "vit_d": 3.0,
+    "calcium": 520.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "20 oz White Chocolate Latte",
+   "section": "Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 610.0,
+    "fat": 18.0,
+    "sat_fat": 16.0,
+    "sodium": 670.0,
+    "carbs": 94.0,
+    "fiber": 0.0,
+    "sugar": 71.0,
+    "protein": 18.0,
+    "vit_d": 4.0,
+    "calcium": 585.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Dark Chocolate Latte",
+   "section": "Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 270.0,
+    "fat": 4.0,
+    "sat_fat": 3.5,
+    "sodium": 260.0,
+    "carbs": 47.0,
+    "fiber": 2.0,
+    "sugar": 40.0,
+    "protein": 14.0,
+    "vit_d": 2.0,
+    "calcium": 455.0,
+    "iron": 2.7,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Dark Chocolate Latte",
+   "section": "Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 380.0,
+    "fat": 6.0,
+    "sat_fat": 5.0,
+    "sodium": 360.0,
+    "carbs": 67.0,
+    "fiber": 3.0,
+    "sugar": 56.0,
+    "protein": 18.0,
+    "vit_d": 3.0,
+    "calcium": 585.0,
+    "iron": 5.4,
+    "potassium": 1410.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "20 oz Dark Chocolate Latte",
+   "section": "Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 490.0,
+    "fat": 8.0,
+    "sat_fat": 7.0,
+    "sodium": 440.0,
+    "carbs": 87.0,
+    "fiber": 4.0,
+    "sugar": 72.0,
+    "protein": 22.0,
+    "vit_d": 4.0,
+    "calcium": 650.0,
+    "iron": 6.3,
+    "potassium": 1645.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Cookie Butter Latte",
+   "section": "Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 300.0,
+    "fat": 8.0,
+    "sat_fat": 8.0,
+    "sodium": 300.0,
+    "carbs": 46.0,
+    "fiber": 0.0,
+    "sugar": 39.0,
+    "protein": 13.0,
+    "vit_d": 2.0,
+    "calcium": 455.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "16 oz Cookie Butter Latte",
+   "section": "Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 430.0,
+    "fat": 12.0,
+    "sat_fat": 12.0,
+    "sodium": 410.0,
+    "carbs": 65.0,
+    "fiber": 0.0,
+    "sugar": 54.0,
+    "protein": 16.0,
+    "vit_d": 3.0,
+    "calcium": 520.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "20 oz Cookie Butter Latte",
+   "section": "Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 540.0,
+    "fat": 16.0,
+    "sat_fat": 16.0,
+    "sodium": 510.0,
+    "carbs": 84.0,
+    "fiber": 0.0,
+    "sugar": 69.0,
+    "protein": 19.0,
+    "vit_d": 4.0,
+    "calcium": 650.0,
+    "iron": 0.0,
+    "potassium": 1175.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "12 oz Flat White",
+   "section": "Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 250.0,
+    "fat": 14.0,
+    "sat_fat": 8.0,
+    "sodium": 210.0,
+    "carbs": 21.0,
+    "fiber": 0.0,
+    "sugar": 18.0,
+    "protein": 12.0,
+    "vit_d": 3.0,
+    "calcium": 520.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk"
+   ]
+  },
+  {
+   "name": "16 oz Flat White",
+   "section": "Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 310.0,
+    "fat": 17.0,
+    "sat_fat": 10.0,
+    "sodium": 260.0,
+    "carbs": 26.0,
+    "fiber": 0.0,
+    "sugar": 23.0,
+    "protein": 15.0,
+    "vit_d": 4.0,
+    "calcium": 650.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk"
+   ]
+  },
+  {
+   "name": "20 oz Flat White",
+   "section": "Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 360.0,
+    "fat": 20.0,
+    "sat_fat": 11.0,
+    "sodium": 300.0,
+    "carbs": 30.0,
+    "fiber": 0.0,
+    "sugar": 26.0,
+    "protein": 17.0,
+    "vit_d": 4.0,
+    "calcium": 650.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "milk"
+   ]
+  },
+  {
+   "name": "12 oz Mocha Flat White",
+   "section": "Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 280.0,
+    "fat": 3.5,
+    "sat_fat": 3.5,
+    "sodium": 320.0,
+    "carbs": 48.0,
+    "fiber": 1.0,
+    "sugar": 41.0,
+    "protein": 15.0,
+    "vit_d": 3.0,
+    "calcium": 520.0,
+    "iron": 1.08,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Mocha Flat White",
+   "section": "Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 420.0,
+    "fat": 6.0,
+    "sat_fat": 5.0,
+    "sodium": 460.0,
+    "carbs": 71.0,
+    "fiber": 1.0,
+    "sugar": 60.0,
+    "protein": 22.0,
+    "vit_d": 4.0,
+    "calcium": 780.0,
+    "iron": 1.08,
+    "potassium": 1175.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "20 oz Mocha Flat White",
+   "section": "Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 520.0,
+    "fat": 7.0,
+    "sat_fat": 7.0,
+    "sodium": 560.0,
+    "carbs": 90.0,
+    "fiber": 1.0,
+    "sugar": 76.0,
+    "protein": 26.0,
+    "vit_d": 4.0,
+    "calcium": 910.0,
+    "iron": 1.8,
+    "potassium": 1410.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Vanilla Flat White",
+   "section": "Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 290.0,
+    "fat": 4.5,
+    "sat_fat": 4.5,
+    "sodium": 280.0,
+    "carbs": 48.0,
+    "fiber": 0.0,
+    "sugar": 42.0,
+    "protein": 15.0,
+    "vit_d": 3.0,
+    "calcium": 520.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Vanilla Flat White",
+   "section": "Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 430.0,
+    "fat": 7.0,
+    "sat_fat": 7.0,
+    "sodium": 400.0,
+    "carbs": 70.0,
+    "fiber": 0.0,
+    "sugar": 61.0,
+    "protein": 22.0,
+    "vit_d": 4.0,
+    "calcium": 780.0,
+    "iron": 0.0,
+    "potassium": 1175.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "20 oz Vanilla Flat White",
+   "section": "Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 540.0,
+    "fat": 9.0,
+    "sat_fat": 9.0,
+    "sodium": 490.0,
+    "carbs": 89.0,
+    "fiber": 0.0,
+    "sugar": 77.0,
+    "protein": 26.0,
+    "vit_d": 4.0,
+    "calcium": 910.0,
+    "iron": 0.0,
+    "potassium": 1410.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Caramel Flat White",
+   "section": "Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 290.0,
+    "fat": 3.5,
+    "sat_fat": 3.0,
+    "sodium": 270.0,
+    "carbs": 50.0,
+    "fiber": 0.0,
+    "sugar": 43.0,
+    "protein": 13.0,
+    "vit_d": 3.0,
+    "calcium": 455.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Caramel Flat White",
+   "section": "Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 440.0,
+    "fat": 5.0,
+    "sat_fat": 4.5,
+    "sodium": 390.0,
+    "carbs": 78.0,
+    "fiber": 0.0,
+    "sugar": 67.0,
+    "protein": 19.0,
+    "vit_d": 4.0,
+    "calcium": 650.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "20 oz Caramel Flat White",
+   "section": "Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 570.0,
+    "fat": 7.0,
+    "sat_fat": 6.0,
+    "sodium": 490.0,
+    "carbs": 102.0,
+    "fiber": 0.0,
+    "sugar": 88.0,
+    "protein": 22.0,
+    "vit_d": 4.0,
+    "calcium": 780.0,
+    "iron": 0.0,
+    "potassium": 1175.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz White Chocolate Flat White",
+   "section": "Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 330.0,
+    "fat": 8.0,
+    "sat_fat": 7.0,
+    "sodium": 370.0,
+    "carbs": 51.0,
+    "fiber": 0.0,
+    "sugar": 40.0,
+    "protein": 12.0,
+    "vit_d": 3.0,
+    "calcium": 390.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz White Chocolate Flat White",
+   "section": "Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 470.0,
+    "fat": 12.0,
+    "sat_fat": 11.0,
+    "sodium": 540.0,
+    "carbs": 73.0,
+    "fiber": 0.0,
+    "sugar": 57.0,
+    "protein": 17.0,
+    "vit_d": 4.0,
+    "calcium": 585.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "20 oz White Chocolate Flat White",
+   "section": "Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 590.0,
+    "fat": 16.0,
+    "sat_fat": 15.0,
+    "sodium": 670.0,
+    "carbs": 92.0,
+    "fiber": 0.0,
+    "sugar": 70.0,
+    "protein": 20.0,
+    "vit_d": 4.0,
+    "calcium": 650.0,
+    "iron": 0.0,
+    "potassium": 1175.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Dark Chocolate Flat White",
+   "section": "Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 280.0,
+    "fat": 4.0,
+    "sat_fat": 3.5,
+    "sodium": 280.0,
+    "carbs": 49.0,
+    "fiber": 2.0,
+    "sugar": 40.0,
+    "protein": 15.0,
+    "vit_d": 3.0,
+    "calcium": 455.0,
+    "iron": 4.5,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Dark Chocolate Flat White",
+   "section": "Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 410.0,
+    "fat": 6.0,
+    "sat_fat": 5.0,
+    "sodium": 400.0,
+    "carbs": 71.0,
+    "fiber": 3.0,
+    "sugar": 59.0,
+    "protein": 21.0,
+    "vit_d": 4.0,
+    "calcium": 650.0,
+    "iron": 5.4,
+    "potassium": 1410.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "20 oz Dark Chocolate Flat White",
+   "section": "Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 520.0,
+    "fat": 8.0,
+    "sat_fat": 7.0,
+    "sodium": 480.0,
+    "carbs": 91.0,
+    "fiber": 4.0,
+    "sugar": 75.0,
+    "protein": 25.0,
+    "vit_d": 4.0,
+    "calcium": 780.0,
+    "iron": 6.3,
+    "potassium": 1880.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Cookie Butter Flat White",
+   "section": "Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 310.0,
+    "fat": 8.0,
+    "sat_fat": 8.0,
+    "sodium": 310.0,
+    "carbs": 47.0,
+    "fiber": 0.0,
+    "sugar": 39.0,
+    "protein": 13.0,
+    "vit_d": 3.0,
+    "calcium": 455.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "16 oz Cookie Butter Flat White",
+   "section": "Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 450.0,
+    "fat": 12.0,
+    "sat_fat": 12.0,
+    "sodium": 450.0,
+    "carbs": 69.0,
+    "fiber": 0.0,
+    "sugar": 57.0,
+    "protein": 18.0,
+    "vit_d": 4.0,
+    "calcium": 585.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "20 oz Cookie Butter Flat White",
+   "section": "Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 570.0,
+    "fat": 16.0,
+    "sat_fat": 16.0,
+    "sodium": 550.0,
+    "carbs": 88.0,
+    "fiber": 0.0,
+    "sugar": 72.0,
+    "protein": 21.0,
+    "vit_d": 4.0,
+    "calcium": 650.0,
+    "iron": 0.0,
+    "potassium": 1175.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "12 oz Brewed Coffee",
+   "section": "Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 5.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 5.0,
+    "carbs": 0.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "16 oz Brewed Coffee",
+   "section": "Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 5.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 10.0,
+    "carbs": 0.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 1.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "20 oz Brewed Coffee",
+   "section": "Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 5.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 10.0,
+    "carbs": 0.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 1.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 282.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "12 oz Brewed Black Tea",
+   "section": "Signature Teas",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 5.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 10.0,
+    "carbs": 1.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 94.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "16 oz Brewed Black Tea",
+   "section": "Signature Teas",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 5.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 15.0,
+    "carbs": 1.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "20 oz Brewed Black Tea",
+   "section": "Signature Teas",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 5.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 20.0,
+    "carbs": 2.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "12 oz Brewed Green Tea",
+   "section": "Signature Teas",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 5.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 0.0,
+    "carbs": 0.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 1.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 0.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "16 oz Brewed Green Tea",
+   "section": "Signature Teas",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 5.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 0.0,
+    "carbs": 0.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 1.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 0.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "20 oz Brewed Green Tea",
+   "section": "Signature Teas",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 5.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 5.0,
+    "carbs": 0.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 1.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 94.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "12 oz Chai Latte",
+   "section": "Signature Teas",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 210.0,
+    "fat": 4.5,
+    "sat_fat": 4.5,
+    "sodium": 160.0,
+    "carbs": 37.0,
+    "fiber": 1.0,
+    "sugar": 32.0,
+    "protein": 8.0,
+    "vit_d": 1.2,
+    "calcium": 260.0,
+    "iron": 1.08,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Chai Latte",
+   "section": "Signature Teas",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 290.0,
+    "fat": 7.0,
+    "sat_fat": 6.0,
+    "sodium": 200.0,
+    "carbs": 51.0,
+    "fiber": 1.0,
+    "sugar": 44.0,
+    "protein": 8.0,
+    "vit_d": 1.2,
+    "calcium": 260.0,
+    "iron": 1.08,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "20 oz Chai Latte",
+   "section": "Signature Teas",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 370.0,
+    "fat": 9.0,
+    "sat_fat": 9.0,
+    "sodium": 240.0,
+    "carbs": 65.0,
+    "fiber": 1.0,
+    "sugar": 57.0,
+    "protein": 9.0,
+    "vit_d": 1.2,
+    "calcium": 325.0,
+    "iron": 1.08,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Dirty Chai Tea Latte",
+   "section": "Signature Teas",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 220.0,
+    "fat": 4.5,
+    "sat_fat": 4.5,
+    "sodium": 170.0,
+    "carbs": 37.0,
+    "fiber": 1.0,
+    "sugar": 32.0,
+    "protein": 8.0,
+    "vit_d": 1.2,
+    "calcium": 260.0,
+    "iron": 1.08,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Dirty Chai Tea Latte",
+   "section": "Signature Teas",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 290.0,
+    "fat": 7.0,
+    "sat_fat": 6.0,
+    "sodium": 200.0,
+    "carbs": 51.0,
+    "fiber": 1.0,
+    "sugar": 44.0,
+    "protein": 8.0,
+    "vit_d": 1.2,
+    "calcium": 260.0,
+    "iron": 1.08,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "20 oz Dirty Chai Tea Latte",
+   "section": "Signature Teas",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 370.0,
+    "fat": 9.0,
+    "sat_fat": 9.0,
+    "sodium": 240.0,
+    "carbs": 66.0,
+    "fiber": 1.0,
+    "sugar": 57.0,
+    "protein": 9.0,
+    "vit_d": 1.2,
+    "calcium": 325.0,
+    "iron": 1.08,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Matcha Latte",
+   "section": "Signature Teas",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 280.0,
+    "fat": 4.5,
+    "sat_fat": 4.0,
+    "sodium": 270.0,
+    "carbs": 46.0,
+    "fiber": 0.0,
+    "sugar": 40.0,
+    "protein": 15.0,
+    "vit_d": 2.0,
+    "calcium": 520.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Matcha Latte",
+   "section": "Signature Teas",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 400.0,
+    "fat": 7.0,
+    "sat_fat": 6.0,
+    "sodium": 360.0,
+    "carbs": 65.0,
+    "fiber": 0.0,
+    "sugar": 56.0,
+    "protein": 19.0,
+    "vit_d": 3.0,
+    "calcium": 650.0,
+    "iron": 1.08,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "20 oz Matcha Latte",
+   "section": "Signature Teas",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 510.0,
+    "fat": 9.0,
+    "sat_fat": 8.0,
+    "sodium": 450.0,
+    "carbs": 83.0,
+    "fiber": 0.0,
+    "sugar": 72.0,
+    "protein": 23.0,
+    "vit_d": 4.0,
+    "calcium": 780.0,
+    "iron": 1.08,
+    "potassium": 1175.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Tea Latte w/ Vanilla Powder",
+   "section": "Signature Teas",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 200.0,
+    "fat": 4.5,
+    "sat_fat": 4.5,
+    "sodium": 140.0,
+    "carbs": 34.0,
+    "fiber": 0.0,
+    "sugar": 30.0,
+    "protein": 6.0,
+    "vit_d": 1.2,
+    "calcium": 195.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Tea Latte w/ Vanilla Powder",
+   "section": "Signature Teas",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 280.0,
+    "fat": 6.0,
+    "sat_fat": 6.0,
+    "sodium": 180.0,
+    "carbs": 48.0,
+    "fiber": 0.0,
+    "sugar": 43.0,
+    "protein": 8.0,
+    "vit_d": 1.2,
+    "calcium": 260.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "20 oz Tea Latte w/ Vanilla Powder",
+   "section": "Signature Teas",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 350.0,
+    "fat": 9.0,
+    "sat_fat": 9.0,
+    "sodium": 220.0,
+    "carbs": 62.0,
+    "fiber": 0.0,
+    "sugar": 54.0,
+    "protein": 8.0,
+    "vit_d": 0.0,
+    "calcium": 260.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Moroccan Mint Tea Latte w/ Chocolate Powder",
+   "section": "Signature Teas",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 210.0,
+    "fat": 3.5,
+    "sat_fat": 3.0,
+    "sodium": 200.0,
+    "carbs": 37.0,
+    "fiber": 1.0,
+    "sugar": 31.0,
+    "protein": 8.0,
+    "vit_d": 1.2,
+    "calcium": 260.0,
+    "iron": 1.08,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Moroccan Mint Tea Latte w/ Chocolate Powder",
+   "section": "Signature Teas",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 280.0,
+    "fat": 6.0,
+    "sat_fat": 5.0,
+    "sodium": 260.0,
+    "carbs": 52.0,
+    "fiber": 1.0,
+    "sugar": 43.0,
+    "protein": 8.0,
+    "vit_d": 1.2,
+    "calcium": 260.0,
+    "iron": 1.8,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "20 oz Moroccan Mint Tea Latte w/ Chocolate Powder",
+   "section": "Signature Teas",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 360.0,
+    "fat": 8.0,
+    "sat_fat": 6.0,
+    "sodium": 320.0,
+    "carbs": 67.0,
+    "fiber": 1.0,
+    "sugar": 56.0,
+    "protein": 9.0,
+    "vit_d": 1.2,
+    "calcium": 260.0,
+    "iron": 1.8,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "KID FRIENDLY! non coffee & non tea 12 oz Hot Chocolate",
+   "section": "Signature Teas",
+   "serving_desc": "1 serving",
+   "nutrients": {
+    "kcal": 290.0,
+    "fat": 3.5,
+    "sat_fat": 3.0,
+    "sodium": 320.0,
+    "carbs": 48.0,
+    "fiber": 1.0,
+    "sugar": 42.0,
+    "protein": 16.0,
+    "vit_d": 3.0,
+    "calcium": 520.0,
+    "iron": 1.08,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Hot Chocolate",
+   "section": "Signature Teas",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 410.0,
+    "fat": 5.0,
+    "sat_fat": 5.0,
+    "sodium": 450.0,
+    "carbs": 69.0,
+    "fiber": 1.0,
+    "sugar": 60.0,
+    "protein": 22.0,
+    "vit_d": 4.0,
+    "calcium": 780.0,
+    "iron": 1.08,
+    "potassium": 1175.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "20 oz Hot Chocolate",
+   "section": "Signature Teas",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 520.0,
+    "fat": 7.0,
+    "sat_fat": 6.0,
+    "sodium": 570.0,
+    "carbs": 90.0,
+    "fiber": 1.0,
+    "sugar": 78.0,
+    "protein": 27.0,
+    "vit_d": 4.0,
+    "calcium": 910.0,
+    "iron": 1.08,
+    "potassium": 1410.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Hot Vanilla",
+   "section": "Signature Teas",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 290.0,
+    "fat": 4.5,
+    "sat_fat": 4.5,
+    "sodium": 280.0,
+    "carbs": 47.0,
+    "fiber": 0.0,
+    "sugar": 43.0,
+    "protein": 16.0,
+    "vit_d": 3.0,
+    "calcium": 520.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Hot Vanilla",
+   "section": "Signature Teas",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 420.0,
+    "fat": 6.0,
+    "sat_fat": 6.0,
+    "sodium": 390.0,
+    "carbs": 68.0,
+    "fiber": 0.0,
+    "sugar": 61.0,
+    "protein": 22.0,
+    "vit_d": 4.0,
+    "calcium": 780.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "20 oz Hot Vanilla",
+   "section": "Signature Teas",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 540.0,
+    "fat": 9.0,
+    "sat_fat": 9.0,
+    "sodium": 490.0,
+    "carbs": 88.0,
+    "fiber": 0.0,
+    "sugar": 79.0,
+    "protein": 27.0,
+    "vit_d": 4.0,
+    "calcium": 910.0,
+    "iron": 0.0,
+    "potassium": 1175.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "Shot of espresso - 1 fl oz",
+   "section": "Signature Teas",
+   "serving_desc": "1 serving",
+   "nutrients": {
+    "kcal": 5.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 0.0,
+    "carbs": 0.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 0.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "Oat Milk - 8 fl oz Oatly",
+   "section": "Signature Teas",
+   "serving_desc": "1 serving",
+   "nutrients": {
+    "kcal": 140.0,
+    "fat": 7.0,
+    "sat_fat": 0.5,
+    "sodium": 100.0,
+    "carbs": 16.0,
+    "fiber": 2.0,
+    "sugar": 7.0,
+    "protein": 3.0,
+    "vit_d": 4.0,
+    "calcium": 325.0,
+    "iron": 0.36,
+    "potassium": 376.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "Almond Milk - 8 fl oz",
+   "section": "Signature Teas",
+   "serving_desc": "1 serving",
+   "nutrients": {
+    "kcal": 70.0,
+    "fat": 4.5,
+    "sat_fat": 0.0,
+    "sodium": 180.0,
+    "carbs": 7.0,
+    "fiber": 1.0,
+    "sugar": 5.0,
+    "protein": 2.0,
+    "vit_d": 0.0,
+    "calcium": 455.0,
+    "iron": 1.08,
+    "potassium": 94.0
+   },
+   "allergens": [
+    "almond"
+   ]
+  },
+  {
+   "name": "Half & Half - 1 fl oz",
+   "section": "Signature Teas",
+   "serving_desc": "1 serving",
+   "nutrients": {
+    "kcal": 40.0,
+    "fat": 3.0,
+    "sat_fat": 2.0,
+    "sodium": 15.0,
+    "carbs": 1.0,
+    "fiber": 0.0,
+    "sugar": 1.0,
+    "protein": 1.0,
+    "vit_d": 0.0,
+    "calcium": 26.0,
+    "iron": 0.0,
+    "potassium": 0.0
+   },
+   "allergens": [
+    "milk"
+   ]
+  },
+  {
+   "name": "Caramel Swirl - 0.5 fl oz",
+   "section": "Signature Teas",
+   "serving_desc": "1 serving",
+   "nutrients": {
+    "kcal": 45.0,
+    "fat": 0.5,
+    "sat_fat": 0.0,
+    "sodium": 20.0,
+    "carbs": 9.0,
+    "fiber": 0.0,
+    "sugar": 8.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 0.0
+   },
+   "allergens": [
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "Chocolate Swirl - 0.5 fl oz",
+   "section": "Signature Teas",
+   "serving_desc": "1 serving",
+   "nutrients": {
+    "kcal": 35.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 10.0,
+    "carbs": 8.0,
+    "fiber": 0.0,
+    "sugar": 8.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 0.0
+   },
+   "allergens": [
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "Cookie Pieces - 1 scoop",
+   "section": "Signature Teas",
+   "serving_desc": "1 serving",
+   "nutrients": {
+    "kcal": 140.0,
+    "fat": 6.0,
+    "sat_fat": 1.5,
+    "sodium": 35.0,
+    "carbs": 21.0,
+    "fiber": 1.0,
+    "sugar": 12.0,
+    "protein": 1.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 1.08,
+    "potassium": 0.0
+   },
+   "allergens": [
+    "wheat",
+    "soy"
+   ]
+  },
+  {
+   "name": "Vanilla Powder - 1/4 cup",
+   "section": "Signature Teas",
+   "serving_desc": "1 serving",
+   "nutrients": {
+    "kcal": 170.0,
+    "fat": 4.5,
+    "sat_fat": 4.5,
+    "sodium": 100.0,
+    "carbs": 30.0,
+    "fiber": 0.0,
+    "sugar": 26.0,
+    "protein": 4.0,
+    "vit_d": 0.0,
+    "calcium": 104.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "No Sugar Added Vanilla Powder - 1.5 tbsp",
+   "section": "Signature Teas",
+   "serving_desc": "1 serving",
+   "nutrients": {
+    "kcal": 60.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 50.0,
+    "carbs": 9.0,
+    "fiber": 0.0,
+    "sugar": 4.0,
+    "protein": 3.0,
+    "vit_d": 0.0,
+    "calcium": 78.0,
+    "iron": 0.0,
+    "potassium": 94.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "Chocolate Powder - 1/4 cup",
+   "section": "Signature Teas",
+   "serving_desc": "1 serving",
+   "nutrients": {
+    "kcal": 160.0,
+    "fat": 3.5,
+    "sat_fat": 3.0,
+    "sodium": 135.0,
+    "carbs": 31.0,
+    "fiber": 1.0,
+    "sugar": 26.0,
+    "protein": 4.0,
+    "vit_d": 0.0,
+    "calcium": 104.0,
+    "iron": 1.08,
+    "potassium": 282.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "No Sugar Added Chocolate Powder - 1.5 tbsp",
+   "section": "Signature Teas",
+   "serving_desc": "1 serving",
+   "nutrients": {
+    "kcal": 50.0,
+    "fat": 0.5,
+    "sat_fat": 0.0,
+    "sodium": 80.0,
+    "carbs": 9.0,
+    "fiber": 1.0,
+    "sugar": 4.0,
+    "protein": 3.0,
+    "vit_d": 0.0,
+    "calcium": 78.0,
+    "iron": 1.08,
+    "potassium": 188.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "Hazelnut Powder - 1/4 cup White Chocolate Powder - 1/4 cup",
+   "section": "Signature Teas",
+   "serving_desc": "1 serving",
+   "nutrients": {
+    "kcal": 190.0,
+    "fat": 8.0,
+    "sat_fat": 7.0,
+    "sodium": 190.0,
+    "carbs": 30.0,
+    "fiber": 0.0,
+    "sugar": 21.0,
+    "protein": 1.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 94.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "Dark Chocolate Powder - 1/4 cup",
+   "section": "Signature Teas",
+   "serving_desc": "1 serving",
+   "nutrients": {
+    "kcal": 160.0,
+    "fat": 4.0,
+    "sat_fat": 3.5,
+    "sodium": 95.0,
+    "carbs": 31.0,
+    "fiber": 2.0,
+    "sugar": 25.0,
+    "protein": 3.0,
+    "vit_d": 0.0,
+    "calcium": 52.0,
+    "iron": 2.7,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "Cream Cap (5 oz - Regular Cup Size)",
+   "section": "Signature Teas",
+   "serving_desc": "1 serving",
+   "nutrients": {
+    "kcal": 170.0,
+    "fat": 10.0,
+    "sat_fat": 8.0,
+    "sodium": 75.0,
+    "carbs": 16.0,
+    "fiber": 0.0,
+    "sugar": 12.0,
+    "protein": 4.0,
+    "vit_d": 1.2,
+    "calcium": 130.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": [
+    "milk"
+   ]
+  },
+  {
+   "name": "24 oz Mocha Ice Blended\u00ae",
+   "section": "Coffee Ice Blended Drinks",
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 570.0,
+    "fat": 11.0,
+    "sat_fat": 10.0,
+    "sodium": 510.0,
+    "carbs": 103.0,
+    "fiber": 2.0,
+    "sugar": 87.0,
+    "protein": 18.0,
+    "vit_d": 1.2,
+    "calcium": 520.0,
+    "iron": 1.8,
+    "potassium": 1175.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz Hazelnut Ice Blended\u00ae",
+   "section": "Coffee Ice Blended Drinks",
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 630.0,
+    "fat": 21.0,
+    "sat_fat": 19.0,
+    "sodium": 500.0,
+    "carbs": 100.0,
+    "fiber": 0.0,
+    "sugar": 80.0,
+    "protein": 12.0,
+    "vit_d": 1.2,
+    "calcium": 390.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk"
+   ]
+  },
+  {
+   "name": "24 oz Cookies and Cream Ice Blended\u00ae",
+   "section": "Coffee Ice Blended Drinks",
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 800.0,
+    "fat": 22.0,
+    "sat_fat": 15.0,
+    "sodium": 460.0,
+    "carbs": 134.0,
+    "fiber": 1.0,
+    "sugar": 107.0,
+    "protein": 20.0,
+    "vit_d": 1.2,
+    "calcium": 650.0,
+    "iron": 1.8,
+    "potassium": 1175.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "32 oz Cold Brew Coffee Ice Blended\u00ae",
+   "section": "Coffee Ice Blended Drinks",
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 760.0,
+    "fat": 17.0,
+    "sat_fat": 17.0,
+    "sodium": 510.0,
+    "carbs": 132.0,
+    "fiber": 0.0,
+    "sugar": 116.0,
+    "protein": 21.0,
+    "vit_d": 2.0,
+    "calcium": 650.0,
+    "iron": 0.0,
+    "potassium": 1175.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz Pure Chocolate Ice Blended\u00ae",
+   "section": "Coffee-Free Ice Blended Drinks",
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 590.0,
+    "fat": 11.0,
+    "sat_fat": 10.0,
+    "sodium": 550.0,
+    "carbs": 105.0,
+    "fiber": 2.0,
+    "sugar": 89.0,
+    "protein": 20.0,
+    "vit_d": 2.0,
+    "calcium": 650.0,
+    "iron": 1.8,
+    "potassium": 1175.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz Pure Vanilla Ice Blended\u00ae",
+   "section": "Coffee-Free Ice Blended Drinks",
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 610.0,
+    "fat": 13.0,
+    "sat_fat": 13.0,
+    "sodium": 440.0,
+    "carbs": 103.0,
+    "fiber": 0.0,
+    "sugar": 92.0,
+    "protein": 20.0,
+    "vit_d": 2.0,
+    "calcium": 650.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz Pure Dark Chocolate Ice Blended\u00ae",
+   "section": "Coffee-Free Ice Blended Drinks",
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 570.0,
+    "fat": 12.0,
+    "sat_fat": 11.0,
+    "sodium": 420.0,
+    "carbs": 106.0,
+    "fiber": 6.0,
+    "sugar": 87.0,
+    "protein": 18.0,
+    "vit_d": 2.0,
+    "calcium": 455.0,
+    "iron": 9.0,
+    "potassium": 1880.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Pure White Chocolate Ice Blended\u00ae",
+   "section": "Coffee-Free Ice Blended Drinks",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 350.0,
+    "fat": 12.0,
+    "sat_fat": 11.0,
+    "sodium": 370.0,
+    "carbs": 53.0,
+    "fiber": 0.0,
+    "sugar": 40.0,
+    "protein": 7.0,
+    "vit_d": 1.2,
+    "calcium": 195.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Pure White Chocolate Ice Blended\u00ae",
+   "section": "Coffee-Free Ice Blended Drinks",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 450.0,
+    "fat": 16.0,
+    "sat_fat": 14.0,
+    "sodium": 480.0,
+    "carbs": 70.0,
+    "fiber": 0.0,
+    "sugar": 52.0,
+    "protein": 8.0,
+    "vit_d": 2.0,
+    "calcium": 260.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz Pure White Chocolate Ice Blended\u00ae",
+   "section": "Coffee-Free Ice Blended Drinks",
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 670.0,
+    "fat": 24.0,
+    "sat_fat": 21.0,
+    "sodium": 700.0,
+    "carbs": 103.0,
+    "fiber": 0.0,
+    "sugar": 77.0,
+    "protein": 11.0,
+    "vit_d": 2.0,
+    "calcium": 325.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz Pure Cookies and Cream Ice Blended\u00ae",
+   "section": "Coffee-Free Ice Blended Drinks",
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 820.0,
+    "fat": 21.0,
+    "sat_fat": 15.0,
+    "sodium": 490.0,
+    "carbs": 136.0,
+    "fiber": 1.0,
+    "sugar": 110.0,
+    "protein": 22.0,
+    "vit_d": 2.0,
+    "calcium": 650.0,
+    "iron": 1.8,
+    "potassium": 1175.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "24 oz Matcha Tea Ice Blended\u00ae",
+   "section": "Coffee-Free Ice Blended Drinks",
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 610.0,
+    "fat": 13.0,
+    "sat_fat": 12.0,
+    "sodium": 450.0,
+    "carbs": 103.0,
+    "fiber": 0.0,
+    "sugar": 88.0,
+    "protein": 20.0,
+    "vit_d": 2.0,
+    "calcium": 650.0,
+    "iron": 1.08,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Cookie Butter Ice Blended Pure",
+   "section": "Coffee-Free Ice Blended Drinks",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 340.0,
+    "fat": 12.0,
+    "sat_fat": 12.0,
+    "sodium": 280.0,
+    "carbs": 53.0,
+    "fiber": 0.0,
+    "sugar": 43.0,
+    "protein": 8.0,
+    "vit_d": 1.2,
+    "calcium": 260.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "16 oz Cookie Butter Ice Blended Pure",
+   "section": "Coffee-Free Ice Blended Drinks",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 440.0,
+    "fat": 16.0,
+    "sat_fat": 16.0,
+    "sodium": 360.0,
+    "carbs": 69.0,
+    "fiber": 0.0,
+    "sugar": 57.0,
+    "protein": 10.0,
+    "vit_d": 2.0,
+    "calcium": 260.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "24 oz Cookie Butter Ice Blended Pure",
+   "section": "Coffee-Free Ice Blended Drinks",
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 650.0,
+    "fat": 24.0,
+    "sat_fat": 24.0,
+    "sodium": 530.0,
+    "carbs": 102.0,
+    "fiber": 0.0,
+    "sugar": 83.0,
+    "protein": 14.0,
+    "vit_d": 2.0,
+    "calcium": 390.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "16 oz Mango Ice Blended",
+   "section": "Coffee-Free Ice Blended Drinks",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 550.0,
+    "fat": 9.0,
+    "sat_fat": 9.0,
+    "sodium": 320.0,
+    "carbs": 104.0,
+    "fiber": 0.0,
+    "sugar": 95.0,
+    "protein": 14.0,
+    "vit_d": 2.0,
+    "calcium": 455.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz Mango Ice Blended",
+   "section": "Coffee-Free Ice Blended Drinks",
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 800.0,
+    "fat": 13.0,
+    "sat_fat": 13.0,
+    "sodium": 460.0,
+    "carbs": 151.0,
+    "fiber": 0.0,
+    "sugar": 138.0,
+    "protein": 20.0,
+    "vit_d": 2.0,
+    "calcium": 650.0,
+    "iron": 0.0,
+    "potassium": 1175.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Dark Chocolate Iced Coffee",
+   "section": "Iced Coffee & Espresso Drinks",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 120.0,
+    "fat": 3.0,
+    "sat_fat": 2.5,
+    "sodium": 80.0,
+    "carbs": 24.0,
+    "fiber": 2.0,
+    "sugar": 19.0,
+    "protein": 2.0,
+    "vit_d": 0.0,
+    "calcium": 52.0,
+    "iron": 1.8,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Dark Chocolate Iced Coffee",
+   "section": "Iced Coffee & Espresso Drinks",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 170.0,
+    "fat": 4.0,
+    "sat_fat": 3.5,
+    "sodium": 110.0,
+    "carbs": 32.0,
+    "fiber": 2.0,
+    "sugar": 25.0,
+    "protein": 3.0,
+    "vit_d": 0.0,
+    "calcium": 52.0,
+    "iron": 2.7,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Iced Dark Chocolate Americano",
+   "section": "Iced Coffee & Espresso Drinks",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 130.0,
+    "fat": 3.0,
+    "sat_fat": 2.5,
+    "sodium": 85.0,
+    "carbs": 24.0,
+    "fiber": 2.0,
+    "sugar": 19.0,
+    "protein": 2.0,
+    "vit_d": 0.0,
+    "calcium": 52.0,
+    "iron": 1.8,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Iced Dark Chocolate Americano",
+   "section": "Iced Coffee & Espresso Drinks",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 170.0,
+    "fat": 4.0,
+    "sat_fat": 3.5,
+    "sodium": 115.0,
+    "carbs": 32.0,
+    "fiber": 2.0,
+    "sugar": 25.0,
+    "protein": 3.0,
+    "vit_d": 0.0,
+    "calcium": 52.0,
+    "iron": 2.7,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Iced Latte",
+   "section": "Iced Coffee & Espresso Drinks",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 140.0,
+    "fat": 8.0,
+    "sat_fat": 4.5,
+    "sodium": 120.0,
+    "carbs": 12.0,
+    "fiber": 0.0,
+    "sugar": 11.0,
+    "protein": 7.0,
+    "vit_d": 2.0,
+    "calcium": 260.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "milk"
+   ]
+  },
+  {
+   "name": "16 oz Iced Mocha Latte",
+   "section": "Iced Coffee & Espresso Drinks",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 250.0,
+    "fat": 3.5,
+    "sat_fat": 3.5,
+    "sodium": 270.0,
+    "carbs": 43.0,
+    "fiber": 1.0,
+    "sugar": 36.0,
+    "protein": 12.0,
+    "vit_d": 2.0,
+    "calcium": 390.0,
+    "iron": 1.08,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Iced Vanilla Latte",
+   "section": "Iced Coffee & Espresso Drinks",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 260.0,
+    "fat": 4.5,
+    "sat_fat": 4.5,
+    "sodium": 230.0,
+    "carbs": 43.0,
+    "fiber": 0.0,
+    "sugar": 37.0,
+    "protein": 12.0,
+    "vit_d": 2.0,
+    "calcium": 390.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Iced Caramel Latte",
+   "section": "Iced Coffee & Espresso Drinks",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 200.0,
+    "fat": 2.5,
+    "sat_fat": 2.0,
+    "sodium": 170.0,
+    "carbs": 35.0,
+    "fiber": 0.0,
+    "sugar": 30.0,
+    "protein": 8.0,
+    "vit_d": 2.0,
+    "calcium": 325.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Iced Caramel Latte",
+   "section": "Iced Coffee & Espresso Drinks",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 290.0,
+    "fat": 3.5,
+    "sat_fat": 3.0,
+    "sodium": 230.0,
+    "carbs": 54.0,
+    "fiber": 0.0,
+    "sugar": 46.0,
+    "protein": 10.0,
+    "vit_d": 2.0,
+    "calcium": 390.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "32 oz Iced Caramel Latte",
+   "section": "Iced Coffee & Espresso Drinks",
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 570.0,
+    "fat": 7.0,
+    "sat_fat": 6.0,
+    "sodium": 450.0,
+    "carbs": 106.0,
+    "fiber": 0.0,
+    "sugar": 90.0,
+    "protein": 19.0,
+    "vit_d": 3.0,
+    "calcium": 650.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz Iced Cookie Butter Latte",
+   "section": "Iced Coffee & Espresso Drinks",
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 390.0,
+    "fat": 12.0,
+    "sat_fat": 12.0,
+    "sodium": 360.0,
+    "carbs": 60.0,
+    "fiber": 0.0,
+    "sugar": 49.0,
+    "protein": 13.0,
+    "vit_d": 2.0,
+    "calcium": 390.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "32 oz Iced Cookie Butter Latte",
+   "section": "Iced Coffee & Espresso Drinks",
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 530.0,
+    "fat": 16.0,
+    "sat_fat": 16.0,
+    "sodium": 500.0,
+    "carbs": 82.0,
+    "fiber": 0.0,
+    "sugar": 67.0,
+    "protein": 18.0,
+    "vit_d": 3.0,
+    "calcium": 585.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "12 oz Iced Caramel Macchiato",
+   "section": "Iced Coffee & Espresso Drinks",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 210.0,
+    "fat": 1.5,
+    "sat_fat": 1.0,
+    "sodium": 170.0,
+    "carbs": 40.0,
+    "fiber": 0.0,
+    "sugar": 34.0,
+    "protein": 7.0,
+    "vit_d": 2.0,
+    "calcium": 260.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "milk and soy"
+   ]
+  },
+  {
+   "name": "16 oz Iced Caramel Macchiato",
+   "section": "Iced Coffee & Espresso Drinks",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 280.0,
+    "fat": 2.5,
+    "sat_fat": 1.5,
+    "sodium": 220.0,
+    "carbs": 55.0,
+    "fiber": 0.0,
+    "sugar": 46.0,
+    "protein": 8.0,
+    "vit_d": 2.0,
+    "calcium": 325.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk and soy"
+   ]
+  },
+  {
+   "name": "24 oz Iced Caramel Macchiato",
+   "section": "Iced Coffee & Espresso Drinks",
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 370.0,
+    "fat": 3.5,
+    "sat_fat": 2.0,
+    "sodium": 280.0,
+    "carbs": 72.0,
+    "fiber": 0.0,
+    "sugar": 60.0,
+    "protein": 10.0,
+    "vit_d": 2.0,
+    "calcium": 390.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk and soy"
+   ]
+  },
+  {
+   "name": "32 oz Iced Caramel Macchiato",
+   "section": "Iced Coffee & Espresso Drinks",
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 470.0,
+    "fat": 4.0,
+    "sat_fat": 2.5,
+    "sodium": 390.0,
+    "carbs": 92.0,
+    "fiber": 0.0,
+    "sugar": 78.0,
+    "protein": 15.0,
+    "vit_d": 3.0,
+    "calcium": 585.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk and soy"
+   ]
+  },
+  {
+   "name": "12 oz Caramel Iced Cappuccino",
+   "section": "Iced Coffee & Espresso Drinks",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 160.0,
+    "fat": 6.0,
+    "sat_fat": 3.5,
+    "sodium": 115.0,
+    "carbs": 21.0,
+    "fiber": 0.0,
+    "sugar": 18.0,
+    "protein": 5.0,
+    "vit_d": 1.2,
+    "calcium": 195.0,
+    "iron": 0.0,
+    "potassium": 282.0
+   },
+   "allergens": [
+    "milk and soy"
+   ]
+  },
+  {
+   "name": "24 oz Vanilla Bean Cold Brew Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 310.0,
+    "fat": 7.0,
+    "sat_fat": 4.0,
+    "sodium": 100.0,
+    "carbs": 54.0,
+    "fiber": 1.0,
+    "sugar": 47.0,
+    "protein": 7.0,
+    "vit_d": 2.0,
+    "calcium": 260.0,
+    "iron": 0.0,
+    "potassium": 282.0
+   },
+   "allergens": [
+    "milk"
+   ]
+  },
+  {
+   "name": "24 oz Vietnamese Cold Brew Coffee",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 430.0,
+    "fat": 10.0,
+    "sat_fat": 5.0,
+    "sodium": 105.0,
+    "carbs": 73.0,
+    "fiber": 1.0,
+    "sugar": 64.0,
+    "protein": 11.0,
+    "vit_d": 0.0,
+    "calcium": 325.0,
+    "iron": 0.0,
+    "potassium": 13301.0
+   },
+   "allergens": [
+    "milk"
+   ]
+  },
+  {
+   "name": "32 oz Vietnamese Cold Brew Coffee",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 570.0,
+    "fat": 13.0,
+    "sat_fat": 7.0,
+    "sodium": 140.0,
+    "carbs": 96.0,
+    "fiber": 1.0,
+    "sugar": 86.0,
+    "protein": 14.0,
+    "vit_d": 0.0,
+    "calcium": 390.0,
+    "iron": 0.0,
+    "potassium": 17719.0
+   },
+   "allergens": [
+    "milk"
+   ]
+  },
+  {
+   "name": "24 oz Midnight Mocha Cold Brew Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 310.0,
+    "fat": 8.0,
+    "sat_fat": 4.5,
+    "sodium": 130.0,
+    "carbs": 52.0,
+    "fiber": 2.0,
+    "sugar": 45.0,
+    "protein": 8.0,
+    "vit_d": 2.0,
+    "calcium": 260.0,
+    "iron": 1.08,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Midnight Mocha Cold Brew Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 230.0,
+    "fat": 6.0,
+    "sat_fat": 3.5,
+    "sodium": 100.0,
+    "carbs": 37.0,
+    "fiber": 1.0,
+    "sugar": 32.0,
+    "protein": 6.0,
+    "vit_d": 1.2,
+    "calcium": 195.0,
+    "iron": 1.08,
+    "potassium": 282.0
+   },
+   "allergens": [
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz Midnight Mocha Cold Brew Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 310.0,
+    "fat": 8.0,
+    "sat_fat": 4.5,
+    "sodium": 130.0,
+    "carbs": 52.0,
+    "fiber": 2.0,
+    "sugar": 46.0,
+    "protein": 8.0,
+    "vit_d": 2.0,
+    "calcium": 260.0,
+    "iron": 1.08,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Lightened Mocha Ice Blended",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 170.0,
+    "fat": 3.0,
+    "sat_fat": 3.0,
+    "sodium": 170.0,
+    "carbs": 30.0,
+    "fiber": 1.0,
+    "sugar": 25.0,
+    "protein": 7.0,
+    "vit_d": 1.2,
+    "calcium": 260.0,
+    "iron": 1.08,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "16 oz Lightened Mocha Ice Blended",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 220.0,
+    "fat": 4.0,
+    "sat_fat": 3.0,
+    "sodium": 210.0,
+    "carbs": 39.0,
+    "fiber": 1.0,
+    "sugar": 33.0,
+    "protein": 9.0,
+    "vit_d": 1.2,
+    "calcium": 260.0,
+    "iron": 1.08,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "24 oz Lightened Mocha Ice Blended",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 320.0,
+    "fat": 6.0,
+    "sat_fat": 5.0,
+    "sodium": 310.0,
+    "carbs": 57.0,
+    "fiber": 1.0,
+    "sugar": 48.0,
+    "protein": 13.0,
+    "vit_d": 1.2,
+    "calcium": 390.0,
+    "iron": 1.08,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "32 oz Lightened Mocha Ice Blended",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 440.0,
+    "fat": 8.0,
+    "sat_fat": 6.0,
+    "sodium": 430.0,
+    "carbs": 78.0,
+    "fiber": 1.0,
+    "sugar": 66.0,
+    "protein": 18.0,
+    "vit_d": 2.0,
+    "calcium": 585.0,
+    "iron": 1.8,
+    "potassium": 1175.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "12 oz Lightened Vanilla Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 200.0,
+    "fat": 2.0,
+    "sat_fat": 2.0,
+    "sodium": 220.0,
+    "carbs": 31.0,
+    "fiber": 0.0,
+    "sugar": 28.0,
+    "protein": 13.0,
+    "vit_d": 2.0,
+    "calcium": 455.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "16 oz Lightened Vanilla Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 270.0,
+    "fat": 3.5,
+    "sat_fat": 3.5,
+    "sodium": 290.0,
+    "carbs": 43.0,
+    "fiber": 0.0,
+    "sugar": 38.0,
+    "protein": 17.0,
+    "vit_d": 3.0,
+    "calcium": 585.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "20 oz Lightened Vanilla Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 340.0,
+    "fat": 4.5,
+    "sat_fat": 4.5,
+    "sodium": 350.0,
+    "carbs": 55.0,
+    "fiber": 0.0,
+    "sugar": 48.0,
+    "protein": 20.0,
+    "vit_d": 4.0,
+    "calcium": 650.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "12 oz Lightened Iced Vanilla Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 140.0,
+    "fat": 1.5,
+    "sat_fat": 1.5,
+    "sodium": 150.0,
+    "carbs": 22.0,
+    "fiber": 0.0,
+    "sugar": 19.0,
+    "protein": 8.0,
+    "vit_d": 2.0,
+    "calcium": 325.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "16 oz Lightened Iced Vanilla Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 170.0,
+    "fat": 2.0,
+    "sat_fat": 2.0,
+    "sodium": 180.0,
+    "carbs": 28.0,
+    "fiber": 0.0,
+    "sugar": 24.0,
+    "protein": 10.0,
+    "vit_d": 2.0,
+    "calcium": 325.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "24 oz Lightened Iced Vanilla Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 240.0,
+    "fat": 3.5,
+    "sat_fat": 3.5,
+    "sodium": 240.0,
+    "carbs": 39.0,
+    "fiber": 0.0,
+    "sugar": 34.0,
+    "protein": 13.0,
+    "vit_d": 2.0,
+    "calcium": 455.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "32 oz Lightened Iced Vanilla Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 330.0,
+    "fat": 4.5,
+    "sat_fat": 4.5,
+    "sodium": 340.0,
+    "carbs": 54.0,
+    "fiber": 0.0,
+    "sugar": 46.0,
+    "protein": 19.0,
+    "vit_d": 3.0,
+    "calcium": 650.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "12 oz Lightened Matcha Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 210.0,
+    "fat": 2.0,
+    "sat_fat": 2.0,
+    "sodium": 230.0,
+    "carbs": 32.0,
+    "fiber": 0.0,
+    "sugar": 29.0,
+    "protein": 14.0,
+    "vit_d": 3.0,
+    "calcium": 520.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "16 oz Lightened Matcha Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 290.0,
+    "fat": 3.5,
+    "sat_fat": 3.0,
+    "sodium": 320.0,
+    "carbs": 46.0,
+    "fiber": 0.0,
+    "sugar": 40.0,
+    "protein": 19.0,
+    "vit_d": 4.0,
+    "calcium": 650.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "20 oz Lightened Matcha Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 370.0,
+    "fat": 4.5,
+    "sat_fat": 4.0,
+    "sodium": 400.0,
+    "carbs": 58.0,
+    "fiber": 0.0,
+    "sugar": 51.0,
+    "protein": 23.0,
+    "vit_d": 4.0,
+    "calcium": 780.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "12 oz Lightened Iced Matcha Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 110.0,
+    "fat": 1.5,
+    "sat_fat": 1.5,
+    "sodium": 110.0,
+    "carbs": 18.0,
+    "fiber": 0.0,
+    "sugar": 16.0,
+    "protein": 6.0,
+    "vit_d": 1.2,
+    "calcium": 195.0,
+    "iron": 0.0,
+    "potassium": 282.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "16 oz Lightened Iced Matcha Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 160.0,
+    "fat": 2.0,
+    "sat_fat": 2.0,
+    "sodium": 160.0,
+    "carbs": 25.0,
+    "fiber": 0.0,
+    "sugar": 22.0,
+    "protein": 9.0,
+    "vit_d": 2.0,
+    "calcium": 325.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "24 oz Lightened Iced Matcha Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 220.0,
+    "fat": 3.5,
+    "sat_fat": 3.0,
+    "sodium": 220.0,
+    "carbs": 36.0,
+    "fiber": 0.0,
+    "sugar": 31.0,
+    "protein": 12.0,
+    "vit_d": 2.0,
+    "calcium": 390.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "32 oz Lightened Iced Matcha Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 290.0,
+    "fat": 4.5,
+    "sat_fat": 4.0,
+    "sodium": 280.0,
+    "carbs": 47.0,
+    "fiber": 0.0,
+    "sugar": 41.0,
+    "protein": 15.0,
+    "vit_d": 3.0,
+    "calcium": 520.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "12 oz Lightened Mocha Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 200.0,
+    "fat": 2.0,
+    "sat_fat": 1.5,
+    "sodium": 240.0,
+    "carbs": 32.0,
+    "fiber": 0.0,
+    "sugar": 28.0,
+    "protein": 13.0,
+    "vit_d": 2.0,
+    "calcium": 455.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "16 oz Lightened Mocha Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 270.0,
+    "fat": 3.0,
+    "sat_fat": 2.5,
+    "sodium": 320.0,
+    "carbs": 44.0,
+    "fiber": 1.0,
+    "sugar": 38.0,
+    "protein": 17.0,
+    "vit_d": 3.0,
+    "calcium": 585.0,
+    "iron": 1.08,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "20 oz Lightened Mocha Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 330.0,
+    "fat": 3.5,
+    "sat_fat": 3.5,
+    "sodium": 390.0,
+    "carbs": 56.0,
+    "fiber": 1.0,
+    "sugar": 47.0,
+    "protein": 20.0,
+    "vit_d": 4.0,
+    "calcium": 650.0,
+    "iron": 1.08,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "12 oz Lightened Iced Mocha Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 130.0,
+    "fat": 1.5,
+    "sat_fat": 1.0,
+    "sodium": 160.0,
+    "carbs": 22.0,
+    "fiber": 0.0,
+    "sugar": 19.0,
+    "protein": 8.0,
+    "vit_d": 2.0,
+    "calcium": 260.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "16 oz Lightened Iced Mocha Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 170.0,
+    "fat": 2.0,
+    "sat_fat": 1.5,
+    "sodium": 200.0,
+    "carbs": 28.0,
+    "fiber": 0.0,
+    "sugar": 24.0,
+    "protein": 10.0,
+    "vit_d": 2.0,
+    "calcium": 325.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "24 oz Lightened Iced Mocha Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 240.0,
+    "fat": 3.0,
+    "sat_fat": 2.5,
+    "sodium": 270.0,
+    "carbs": 40.0,
+    "fiber": 1.0,
+    "sugar": 33.0,
+    "protein": 13.0,
+    "vit_d": 2.0,
+    "calcium": 455.0,
+    "iron": 1.08,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "32 oz Lightened Iced Mocha Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 320.0,
+    "fat": 4.0,
+    "sat_fat": 3.5,
+    "sodium": 380.0,
+    "carbs": 54.0,
+    "fiber": 1.0,
+    "sugar": 46.0,
+    "protein": 19.0,
+    "vit_d": 3.0,
+    "calcium": 650.0,
+    "iron": 1.08,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "12 oz Lightened Hazelnut Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 210.0,
+    "fat": 3.5,
+    "sat_fat": 3.0,
+    "sodium": 230.0,
+    "carbs": 32.0,
+    "fiber": 0.0,
+    "sugar": 26.0,
+    "protein": 12.0,
+    "vit_d": 2.0,
+    "calcium": 390.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Lightened Hazelnut Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 280.0,
+    "fat": 5.0,
+    "sat_fat": 5.0,
+    "sodium": 300.0,
+    "carbs": 44.0,
+    "fiber": 0.0,
+    "sugar": 36.0,
+    "protein": 14.0,
+    "vit_d": 3.0,
+    "calcium": 520.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "20 oz Lightened Hazelnut Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 360.0,
+    "fat": 7.0,
+    "sat_fat": 7.0,
+    "sodium": 370.0,
+    "carbs": 56.0,
+    "fiber": 0.0,
+    "sugar": 44.0,
+    "protein": 17.0,
+    "vit_d": 4.0,
+    "calcium": 585.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Lightened Iced Hazelnut Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 140.0,
+    "fat": 2.5,
+    "sat_fat": 2.5,
+    "sodium": 150.0,
+    "carbs": 22.0,
+    "fiber": 0.0,
+    "sugar": 18.0,
+    "protein": 7.0,
+    "vit_d": 2.0,
+    "calcium": 260.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Lightened Iced Hazelnut Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 180.0,
+    "fat": 3.5,
+    "sat_fat": 3.5,
+    "sodium": 190.0,
+    "carbs": 28.0,
+    "fiber": 0.0,
+    "sugar": 22.0,
+    "protein": 9.0,
+    "vit_d": 2.0,
+    "calcium": 325.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz Lightened Iced Hazelnut Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 250.0,
+    "fat": 6.0,
+    "sat_fat": 5.0,
+    "sodium": 250.0,
+    "carbs": 40.0,
+    "fiber": 0.0,
+    "sugar": 31.0,
+    "protein": 11.0,
+    "vit_d": 2.0,
+    "calcium": 390.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "32 oz Lightened Iced Hazelnut Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 350.0,
+    "fat": 7.0,
+    "sat_fat": 7.0,
+    "sodium": 360.0,
+    "carbs": 54.0,
+    "fiber": 0.0,
+    "sugar": 43.0,
+    "protein": 16.0,
+    "vit_d": 3.0,
+    "calcium": 585.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Lightened White Chocolate Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 210.0,
+    "fat": 4.0,
+    "sat_fat": 3.5,
+    "sodium": 270.0,
+    "carbs": 32.0,
+    "fiber": 0.0,
+    "sugar": 26.0,
+    "protein": 12.0,
+    "vit_d": 2.0,
+    "calcium": 390.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "16 oz Lightened White Chocolate Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 290.0,
+    "fat": 6.0,
+    "sat_fat": 5.0,
+    "sodium": 360.0,
+    "carbs": 43.0,
+    "fiber": 0.0,
+    "sugar": 35.0,
+    "protein": 14.0,
+    "vit_d": 3.0,
+    "calcium": 520.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "20 oz Lightened White Chocolate Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 360.0,
+    "fat": 8.0,
+    "sat_fat": 7.0,
+    "sodium": 440.0,
+    "carbs": 55.0,
+    "fiber": 0.0,
+    "sugar": 43.0,
+    "protein": 17.0,
+    "vit_d": 4.0,
+    "calcium": 585.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "12 oz Lightened Iced White Chocolate Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 140.0,
+    "fat": 3.0,
+    "sat_fat": 2.5,
+    "sodium": 180.0,
+    "carbs": 22.0,
+    "fiber": 0.0,
+    "sugar": 17.0,
+    "protein": 7.0,
+    "vit_d": 2.0,
+    "calcium": 260.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "16 oz Lightened Iced White Chocolate Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 180.0,
+    "fat": 4.0,
+    "sat_fat": 3.5,
+    "sodium": 220.0,
+    "carbs": 28.0,
+    "fiber": 0.0,
+    "sugar": 21.0,
+    "protein": 9.0,
+    "vit_d": 2.0,
+    "calcium": 325.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "24 oz Lightened Iced White Chocolate Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 260.0,
+    "fat": 6.0,
+    "sat_fat": 5.0,
+    "sodium": 310.0,
+    "carbs": 39.0,
+    "fiber": 0.0,
+    "sugar": 30.0,
+    "protein": 11.0,
+    "vit_d": 2.0,
+    "calcium": 390.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "32 oz Lightened Iced White Chocolate Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 350.0,
+    "fat": 8.0,
+    "sat_fat": 7.0,
+    "sodium": 430.0,
+    "carbs": 54.0,
+    "fiber": 0.0,
+    "sugar": 41.0,
+    "protein": 16.0,
+    "vit_d": 3.0,
+    "calcium": 520.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "12 oz Lightened Dark Chocolate Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 200.0,
+    "fat": 2.0,
+    "sat_fat": 2.0,
+    "sodium": 220.0,
+    "carbs": 32.0,
+    "fiber": 1.0,
+    "sugar": 27.0,
+    "protein": 13.0,
+    "vit_d": 2.0,
+    "calcium": 455.0,
+    "iron": 1.8,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "16 oz Lightened Dark Chocolate Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 260.0,
+    "fat": 3.0,
+    "sat_fat": 2.5,
+    "sodium": 290.0,
+    "carbs": 44.0,
+    "fiber": 2.0,
+    "sugar": 37.0,
+    "protein": 16.0,
+    "vit_d": 3.0,
+    "calcium": 520.0,
+    "iron": 1.8,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "20 oz Lightened Dark Chocolate Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 330.0,
+    "fat": 4.0,
+    "sat_fat": 3.5,
+    "sodium": 350.0,
+    "carbs": 56.0,
+    "fiber": 2.0,
+    "sugar": 47.0,
+    "protein": 19.0,
+    "vit_d": 4.0,
+    "calcium": 650.0,
+    "iron": 2.7,
+    "potassium": 1175.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "12 oz Lightened Iced Dark Chocolate Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 130.0,
+    "fat": 1.5,
+    "sat_fat": 1.5,
+    "sodium": 140.0,
+    "carbs": 22.0,
+    "fiber": 1.0,
+    "sugar": 19.0,
+    "protein": 8.0,
+    "vit_d": 2.0,
+    "calcium": 260.0,
+    "iron": 1.08,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "16 oz Lightened Iced Dark Chocolate Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 170.0,
+    "fat": 2.0,
+    "sat_fat": 2.0,
+    "sodium": 180.0,
+    "carbs": 28.0,
+    "fiber": 1.0,
+    "sugar": 23.0,
+    "protein": 10.0,
+    "vit_d": 2.0,
+    "calcium": 325.0,
+    "iron": 1.8,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "24 oz Lightened Iced Dark Chocolate Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 230.0,
+    "fat": 3.0,
+    "sat_fat": 2.5,
+    "sodium": 240.0,
+    "carbs": 40.0,
+    "fiber": 2.0,
+    "sugar": 33.0,
+    "protein": 13.0,
+    "vit_d": 2.0,
+    "calcium": 390.0,
+    "iron": 1.8,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "32 oz Lightened Iced Dark Chocolate Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 320.0,
+    "fat": 4.0,
+    "sat_fat": 3.5,
+    "sodium": 340.0,
+    "carbs": 55.0,
+    "fiber": 2.0,
+    "sugar": 45.0,
+    "protein": 18.0,
+    "vit_d": 3.0,
+    "calcium": 585.0,
+    "iron": 2.7,
+    "potassium": 1175.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "coconut"
+   ]
+  },
+  {
+   "name": "12 oz Lightend Cookie Butter Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 210.0,
+    "fat": 3.5,
+    "sat_fat": 3.5,
+    "sodium": 230.0,
+    "carbs": 33.0,
+    "fiber": 0.0,
+    "sugar": 28.0,
+    "protein": 12.0,
+    "vit_d": 2.0,
+    "calcium": 390.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "16 oz Lightend Cookie Butter Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 290.0,
+    "fat": 5.0,
+    "sat_fat": 5.0,
+    "sodium": 300.0,
+    "carbs": 45.0,
+    "fiber": 0.0,
+    "sugar": 37.0,
+    "protein": 15.0,
+    "vit_d": 3.0,
+    "calcium": 520.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "20 oz Lightend Cookie Butter Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "20 oz",
+   "nutrients": {
+    "kcal": 360.0,
+    "fat": 7.0,
+    "sat_fat": 7.0,
+    "sodium": 370.0,
+    "carbs": 56.0,
+    "fiber": 0.0,
+    "sugar": 47.0,
+    "protein": 17.0,
+    "vit_d": 4.0,
+    "calcium": 585.0,
+    "iron": 1.08,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "12 oz Lightened Iced Cookie Butter Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 140.0,
+    "fat": 2.5,
+    "sat_fat": 2.5,
+    "sodium": 150.0,
+    "carbs": 22.0,
+    "fiber": 0.0,
+    "sugar": 19.0,
+    "protein": 7.0,
+    "vit_d": 2.0,
+    "calcium": 260.0,
+    "iron": 0.0,
+    "potassium": 282.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "16 oz Lightened Iced Cookie Butter Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 180.0,
+    "fat": 3.5,
+    "sat_fat": 3.5,
+    "sodium": 180.0,
+    "carbs": 28.0,
+    "fiber": 0.0,
+    "sugar": 23.0,
+    "protein": 9.0,
+    "vit_d": 2.0,
+    "calcium": 325.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "24 oz Lightened Iced Cookie Butter Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 250.0,
+    "fat": 5.0,
+    "sat_fat": 5.0,
+    "sodium": 250.0,
+    "carbs": 40.0,
+    "fiber": 0.0,
+    "sugar": 33.0,
+    "protein": 11.0,
+    "vit_d": 2.0,
+    "calcium": 390.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "32 oz Lightened Iced Cookie Butter Latte",
+   "section": "Cold Brew Coffee",
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 350.0,
+    "fat": 7.0,
+    "sat_fat": 7.0,
+    "sodium": 350.0,
+    "carbs": 55.0,
+    "fiber": 0.0,
+    "sugar": 45.0,
+    "protein": 16.0,
+    "vit_d": 3.0,
+    "calcium": 585.0,
+    "iron": 1.08,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "12 oz Hot Chocolate",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 290.0,
+    "fat": 3.5,
+    "sat_fat": 3.0,
+    "sodium": 320.0,
+    "carbs": 48.0,
+    "fiber": 1.0,
+    "sugar": 42.0,
+    "protein": 16.0,
+    "vit_d": 3.0,
+    "calcium": 520.0,
+    "iron": 1.08,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "White Chocolate Powder - 1/4 cup",
+   "section": null,
+   "serving_desc": "1 serving",
+   "nutrients": {
+    "kcal": 190.0,
+    "fat": 8.0,
+    "sat_fat": 7.0,
+    "sodium": 190.0,
+    "carbs": 30.0,
+    "fiber": 0.0,
+    "sugar": 21.0,
+    "protein": 1.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 94.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Mocha Ice Blended\u00ae",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 290.0,
+    "fat": 6.0,
+    "sat_fat": 5.0,
+    "sodium": 270.0,
+    "carbs": 53.0,
+    "fiber": 1.0,
+    "sugar": 44.0,
+    "protein": 10.0,
+    "vit_d": 1.2,
+    "calcium": 325.0,
+    "iron": 1.08,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Mocha Ice Blended\u00ae",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 390.0,
+    "fat": 7.0,
+    "sat_fat": 6.0,
+    "sodium": 350.0,
+    "carbs": 70.0,
+    "fiber": 1.0,
+    "sugar": 59.0,
+    "protein": 13.0,
+    "vit_d": 1.2,
+    "calcium": 390.0,
+    "iron": 1.8,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Vanilla Ice Blended\u00ae",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 300.0,
+    "fat": 7.0,
+    "sat_fat": 6.0,
+    "sodium": 220.0,
+    "carbs": 52.0,
+    "fiber": 0.0,
+    "sugar": 46.0,
+    "protein": 10.0,
+    "vit_d": 1.2,
+    "calcium": 325.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Vanilla Ice Blended\u00ae",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 400.0,
+    "fat": 9.0,
+    "sat_fat": 9.0,
+    "sodium": 280.0,
+    "carbs": 68.0,
+    "fiber": 0.0,
+    "sugar": 60.0,
+    "protein": 13.0,
+    "vit_d": 1.2,
+    "calcium": 390.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz Vanilla Ice Blended\u00ae",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 590.0,
+    "fat": 13.0,
+    "sat_fat": 13.0,
+    "sodium": 400.0,
+    "carbs": 101.0,
+    "fiber": 0.0,
+    "sugar": 89.0,
+    "protein": 18.0,
+    "vit_d": 1.2,
+    "calcium": 585.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Caramel Ice Blended\u00ae",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 390.0,
+    "fat": 8.0,
+    "sat_fat": 7.0,
+    "sodium": 260.0,
+    "carbs": 71.0,
+    "fiber": 0.0,
+    "sugar": 62.0,
+    "protein": 10.0,
+    "vit_d": 1.2,
+    "calcium": 325.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Caramel Ice Blended\u00ae",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 550.0,
+    "fat": 11.0,
+    "sat_fat": 10.0,
+    "sodium": 350.0,
+    "carbs": 101.0,
+    "fiber": 0.0,
+    "sugar": 87.0,
+    "protein": 13.0,
+    "vit_d": 1.2,
+    "calcium": 455.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz Caramel Ice Blended\u00ae",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 800.0,
+    "fat": 16.0,
+    "sat_fat": 15.0,
+    "sodium": 500.0,
+    "carbs": 146.0,
+    "fiber": 0.0,
+    "sugar": 127.0,
+    "protein": 18.0,
+    "vit_d": 1.2,
+    "calcium": 650.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Hazelnut Ice Blended\u00ae",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 320.0,
+    "fat": 11.0,
+    "sat_fat": 10.0,
+    "sodium": 260.0,
+    "carbs": 51.0,
+    "fiber": 0.0,
+    "sugar": 41.0,
+    "protein": 7.0,
+    "vit_d": 1.2,
+    "calcium": 195.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "coconut",
+    "milk"
+   ]
+  },
+  {
+   "name": "16 oz Hazelnut Ice Blended\u00ae",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 430.0,
+    "fat": 14.0,
+    "sat_fat": 13.0,
+    "sodium": 340.0,
+    "carbs": 68.0,
+    "fiber": 0.0,
+    "sugar": 54.0,
+    "protein": 8.0,
+    "vit_d": 1.2,
+    "calcium": 260.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk"
+   ]
+  },
+  {
+   "name": "12 oz White Chocolate Ice Blended\u00ae",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 390.0,
+    "fat": 14.0,
+    "sat_fat": 12.0,
+    "sodium": 380.0,
+    "carbs": 63.0,
+    "fiber": 0.0,
+    "sugar": 47.0,
+    "protein": 6.0,
+    "vit_d": 1.2,
+    "calcium": 195.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz White Chocolate Ice Blended\u00ae",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 510.0,
+    "fat": 18.0,
+    "sat_fat": 16.0,
+    "sodium": 490.0,
+    "carbs": 81.0,
+    "fiber": 0.0,
+    "sugar": 60.0,
+    "protein": 7.0,
+    "vit_d": 1.2,
+    "calcium": 195.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz White Chocolate Ice Blended\u00ae",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 740.0,
+    "fat": 27.0,
+    "sat_fat": 24.0,
+    "sodium": 72.0,
+    "carbs": 116.0,
+    "fiber": 0.0,
+    "sugar": 85.0,
+    "protein": 10.0,
+    "vit_d": 1.2,
+    "calcium": 260.0,
+    "iron": 1.08,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Dark Chocolate Ice Blended\u00ae",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 290.0,
+    "fat": 6.0,
+    "sat_fat": 5.0,
+    "sodium": 210.0,
+    "carbs": 53.0,
+    "fiber": 3.0,
+    "sugar": 43.0,
+    "protein": 9.0,
+    "vit_d": 1.2,
+    "calcium": 260.0,
+    "iron": 5.4,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Dark Chocolate Ice Blended\u00ae",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 380.0,
+    "fat": 8.0,
+    "sat_fat": 7.0,
+    "sodium": 270.0,
+    "carbs": 70.0,
+    "fiber": 4.0,
+    "sugar": 57.0,
+    "protein": 11.0,
+    "vit_d": 1.2,
+    "calcium": 260.0,
+    "iron": 6.3,
+    "potassium": 1175.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz Dark Chocolate Ice Blended\u00ae",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 560.0,
+    "fat": 12.0,
+    "sat_fat": 11.0,
+    "sodium": 390.0,
+    "carbs": 104.0,
+    "fiber": 6.0,
+    "sugar": 84.0,
+    "protein": 16.0,
+    "vit_d": 1.2,
+    "calcium": 390.0,
+    "iron": 9.0,
+    "potassium": 1880.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Cookies and Cream Ice Blended\u00ae",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 410.0,
+    "fat": 11.0,
+    "sat_fat": 8.0,
+    "sodium": 240.0,
+    "carbs": 69.0,
+    "fiber": 0.0,
+    "sugar": 55.0,
+    "protein": 11.0,
+    "vit_d": 1.2,
+    "calcium": 325.0,
+    "iron": 1.08,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "wheat"
+   ]
+  },
+  {
+   "name": "12 oz Cold Brew Coffee Ice Blended\u00ae",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 290.0,
+    "fat": 6.0,
+    "sat_fat": 6.0,
+    "sodium": 200.0,
+    "carbs": 50.0,
+    "fiber": 0.0,
+    "sugar": 44.0,
+    "protein": 8.0,
+    "vit_d": 1.2,
+    "calcium": 260.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Cold Brew Coffee Ice Blended\u00ae",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 380.0,
+    "fat": 9.0,
+    "sat_fat": 9.0,
+    "sodium": 260.0,
+    "carbs": 66.0,
+    "fiber": 0.0,
+    "sugar": 58.0,
+    "protein": 11.0,
+    "vit_d": 1.2,
+    "calcium": 325.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz Cold Brew Coffee Ice Blended\u00ae",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 570.0,
+    "fat": 13.0,
+    "sat_fat": 13.0,
+    "sodium": 370.0,
+    "carbs": 98.0,
+    "fiber": 0.0,
+    "sugar": 86.0,
+    "protein": 15.0,
+    "vit_d": 1.2,
+    "calcium": 520.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Cookie Butter Ice Blended",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 330.0,
+    "fat": 12.0,
+    "sat_fat": 12.0,
+    "sodium": 260.0,
+    "carbs": 51.0,
+    "fiber": 0.0,
+    "sugar": 41.0,
+    "protein": 7.0,
+    "vit_d": 1.2,
+    "calcium": 195.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "16 oz Cookie Butter Ice Blended",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 430.0,
+    "fat": 16.0,
+    "sat_fat": 16.0,
+    "sodium": 340.0,
+    "carbs": 67.0,
+    "fiber": 0.0,
+    "sugar": 54.0,
+    "protein": 8.0,
+    "vit_d": 1.2,
+    "calcium": 260.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "24 oz Cookie Butter Ice Blended",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 640.0,
+    "fat": 24.0,
+    "sat_fat": 24.0,
+    "sodium": 490.0,
+    "carbs": 99.0,
+    "fiber": 0.0,
+    "sugar": 80.0,
+    "protein": 12.0,
+    "vit_d": 1.2,
+    "calcium": 325.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "12 oz Pure Chocolate Ice Blended\u00ae",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 300.0,
+    "fat": 5.0,
+    "sat_fat": 5.0,
+    "sodium": 290.0,
+    "carbs": 54.0,
+    "fiber": 1.0,
+    "sugar": 46.0,
+    "protein": 11.0,
+    "vit_d": 1.2,
+    "calcium": 325.0,
+    "iron": 1.08,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Pure Chocolate Ice Blended\u00ae",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 400.0,
+    "fat": 7.0,
+    "sat_fat": 6.0,
+    "sodium": 380.0,
+    "carbs": 71.0,
+    "fiber": 1.0,
+    "sugar": 61.0,
+    "protein": 14.0,
+    "vit_d": 2.0,
+    "calcium": 455.0,
+    "iron": 1.08,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Pure Vanilla Ice Blended\u00ae",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 310.0,
+    "fat": 6.0,
+    "sat_fat": 6.0,
+    "sodium": 240.0,
+    "carbs": 53.0,
+    "fiber": 0.0,
+    "sugar": 47.0,
+    "protein": 11.0,
+    "vit_d": 1.2,
+    "calcium": 390.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Pure Vanilla Ice Blended\u00ae",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 410.0,
+    "fat": 9.0,
+    "sat_fat": 9.0,
+    "sodium": 300.0,
+    "carbs": 70.0,
+    "fiber": 0.0,
+    "sugar": 62.0,
+    "protein": 14.0,
+    "vit_d": 2.0,
+    "calcium": 455.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Pure Dark Chocolate Ice Blended\u00ae",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 300.0,
+    "fat": 6.0,
+    "sat_fat": 5.0,
+    "sodium": 230.0,
+    "carbs": 55.0,
+    "fiber": 3.0,
+    "sugar": 45.0,
+    "protein": 10.0,
+    "vit_d": 1.2,
+    "calcium": 260.0,
+    "iron": 5.4,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Pure Dark Chocolate Ice Blended\u00ae",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 390.0,
+    "fat": 8.0,
+    "sat_fat": 7.0,
+    "sodium": 290.0,
+    "carbs": 72.0,
+    "fiber": 4.0,
+    "sugar": 59.0,
+    "protein": 13.0,
+    "vit_d": 2.0,
+    "calcium": 325.0,
+    "iron": 6.3,
+    "potassium": 1175.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Pure Cookies and Cream Ice Blended\u00ae",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 420.0,
+    "fat": 11.0,
+    "sat_fat": 8.0,
+    "sodium": 260.0,
+    "carbs": 70.0,
+    "fiber": 0.0,
+    "sugar": 57.0,
+    "protein": 12.0,
+    "vit_d": 1.2,
+    "calcium": 390.0,
+    "iron": 1.08,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "16 oz Pure Cookies and Cream Ice Blended\u00ae",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 550.0,
+    "fat": 14.0,
+    "sat_fat": 10.0,
+    "sodium": 340.0,
+    "carbs": 92.0,
+    "fiber": 1.0,
+    "sugar": 74.0,
+    "protein": 15.0,
+    "vit_d": 2.0,
+    "calcium": 520.0,
+    "iron": 1.08,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "12 oz Matcha Tea Ice Blended\u00ae",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 320.0,
+    "fat": 7.0,
+    "sat_fat": 6.0,
+    "sodium": 240.0,
+    "carbs": 53.0,
+    "fiber": 0.0,
+    "sugar": 45.0,
+    "protein": 11.0,
+    "vit_d": 1.2,
+    "calcium": 390.0,
+    "iron": 1.08,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Matcha Tea Ice Blended\u00ae",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 410.0,
+    "fat": 9.0,
+    "sat_fat": 8.0,
+    "sodium": 310.0,
+    "carbs": 70.0,
+    "fiber": 0.0,
+    "sugar": 60.0,
+    "protein": 14.0,
+    "vit_d": 2.0,
+    "calcium": 455.0,
+    "iron": 1.08,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Mango Ice Blended",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 400.0,
+    "fat": 6.0,
+    "sat_fat": 6.0,
+    "sodium": 240.0,
+    "carbs": 73.0,
+    "fiber": 0.0,
+    "sugar": 66.0,
+    "protein": 11.0,
+    "vit_d": 1.2,
+    "calcium": 390.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Iced Black Tea",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 5.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 10.0,
+    "carbs": 1.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 94.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "16 oz Iced Black Tea",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 5.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 15.0,
+    "carbs": 1.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "24 oz Iced Black Tea",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 5.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 20.0,
+    "carbs": 2.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 282.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "32 oz Iced Black Tea",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 10.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 30.0,
+    "carbs": 3.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "12 oz Iced Green Tea",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 0.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 0.0,
+    "carbs": 0.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 0.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "16 oz Iced Green Tea",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 5.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 0.0,
+    "carbs": 0.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 1.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 0.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "24 oz Iced Green Tea",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 5.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 0.0,
+    "carbs": 0.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 1.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 0.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "32 oz Iced Green Tea",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 5.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 0.0,
+    "carbs": 0.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 1.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 0.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "12 oz Iced Swedish Berries Infusion",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 0.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 0.0,
+    "carbs": 0.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 1.08,
+    "potassium": 0.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "16 oz Iced Swedish Berries Infusion",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 0.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 0.0,
+    "carbs": 0.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 1.08,
+    "potassium": 0.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "24 oz Iced Swedish Berries Infusion",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 0.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 0.0,
+    "carbs": 0.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 1.08,
+    "potassium": 0.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "32 oz Iced Swedish Berries Infusion",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 0.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 0.0,
+    "carbs": 0.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 1.8,
+    "potassium": 0.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "12 oz Iced Tea Latte with Vanilla Powder",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 130.0,
+    "fat": 3.0,
+    "sat_fat": 3.0,
+    "sodium": 75.0,
+    "carbs": 23.0,
+    "fiber": 0.0,
+    "sugar": 20.0,
+    "protein": 3.0,
+    "vit_d": 0.0,
+    "calcium": 78.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Iced Tea Latte with Vanilla Powder",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 170.0,
+    "fat": 4.5,
+    "sat_fat": 4.5,
+    "sodium": 100.0,
+    "carbs": 30.0,
+    "fiber": 0.0,
+    "sugar": 26.0,
+    "protein": 4.0,
+    "vit_d": 0.0,
+    "calcium": 104.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz Iced Tea Latte with Vanilla Powder",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 260.0,
+    "fat": 6.0,
+    "sat_fat": 6.0,
+    "sodium": 150.0,
+    "carbs": 45.0,
+    "fiber": 0.0,
+    "sugar": 40.0,
+    "protein": 5.0,
+    "vit_d": 0.0,
+    "calcium": 195.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "32 oz Iced Tea Latte with Vanilla Powder",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 340.0,
+    "fat": 9.0,
+    "sat_fat": 9.0,
+    "sodium": 200.0,
+    "carbs": 60.0,
+    "fiber": 0.0,
+    "sugar": 53.0,
+    "protein": 7.0,
+    "vit_d": 0.0,
+    "calcium": 195.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Iced Moroccan Mint Tea Latte with Chocolate Powder",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 120.0,
+    "fat": 3.0,
+    "sat_fat": 2.5,
+    "sodium": 105.0,
+    "carbs": 24.0,
+    "fiber": 1.0,
+    "sugar": 20.0,
+    "protein": 3.0,
+    "vit_d": 0.0,
+    "calcium": 78.0,
+    "iron": 1.08,
+    "potassium": 188.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Iced Moroccan Mint Tea Latte with Chocolate Powder",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 170.0,
+    "fat": 4.0,
+    "sat_fat": 3.0,
+    "sodium": 140.0,
+    "carbs": 31.0,
+    "fiber": 1.0,
+    "sugar": 26.0,
+    "protein": 4.0,
+    "vit_d": 0.0,
+    "calcium": 104.0,
+    "iron": 1.08,
+    "potassium": 282.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "32 oz Iced Moroccan Mint Tea Latte with Chocolate Powder",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 330.0,
+    "fat": 7.0,
+    "sat_fat": 6.0,
+    "sodium": 280.0,
+    "carbs": 63.0,
+    "fiber": 1.0,
+    "sugar": 52.0,
+    "protein": 7.0,
+    "vit_d": 0.0,
+    "calcium": 195.0,
+    "iron": 1.8,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz Iced Dirty Chai Tea Latte",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 260.0,
+    "fat": 7.0,
+    "sat_fat": 6.0,
+    "sodium": 160.0,
+    "carbs": 46.0,
+    "fiber": 1.0,
+    "sugar": 40.0,
+    "protein": 5.0,
+    "vit_d": 0.0,
+    "calcium": 195.0,
+    "iron": 1.08,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "32 oz Iced Dirty Chai Tea Latte",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 350.0,
+    "fat": 9.0,
+    "sat_fat": 9.0,
+    "sodium": 210.0,
+    "carbs": 62.0,
+    "fiber": 1.0,
+    "sugar": 53.0,
+    "protein": 7.0,
+    "vit_d": 0.0,
+    "calcium": 260.0,
+    "iron": 1.08,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Iced Tea Lemonade",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 100.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 15.0,
+    "carbs": 27.0,
+    "fiber": 0.0,
+    "sugar": 25.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 94.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "16 oz Iced Tea Lemonade",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 150.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 25.0,
+    "carbs": 40.0,
+    "fiber": 0.0,
+    "sugar": 38.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 94.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "24 oz Iced Tea Lemonade",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 200.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 30.0,
+    "carbs": 53.0,
+    "fiber": 0.0,
+    "sugar": 50.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 94.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "32 oz Iced Tea Lemonade",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 260.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 40.0,
+    "carbs": 67.0,
+    "fiber": 0.0,
+    "sugar": 63.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "12 oz Mango Cold Brew Tea",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 110.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 15.0,
+    "carbs": 28.0,
+    "fiber": 0.0,
+    "sugar": 26.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 94.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "16 oz Mango Cold Brew Tea",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 170.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 25.0,
+    "carbs": 42.0,
+    "fiber": 0.0,
+    "sugar": 40.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "24 oz Mango Cold Brew Tea",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 230.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 30.0,
+    "carbs": 56.0,
+    "fiber": 0.0,
+    "sugar": 53.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "32 oz Mango Cold Brew Tea",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 280.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 40.0,
+    "carbs": 70.0,
+    "fiber": 0.0,
+    "sugar": 66.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 282.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "12 oz Peach Jasmine Cold Brew Tea",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 100.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 120.0,
+    "carbs": 24.0,
+    "fiber": 0.0,
+    "sugar": 22.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 94.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "16 oz Peach Jasmine Cold Brew Tea",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 150.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 180.0,
+    "carbs": 36.0,
+    "fiber": 1.0,
+    "sugar": 34.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "24 oz Peach Jasmine Cold Brew Tea",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 200.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 230.0,
+    "carbs": 48.0,
+    "fiber": 1.0,
+    "sugar": 45.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 282.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "32 oz Peach Jasmine Cold Brew Tea",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 250.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 300.0,
+    "carbs": 61.0,
+    "fiber": 1.0,
+    "sugar": 56.0,
+    "protein": 1.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 282.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "12 oz Lemonade Cold Brew Tea",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 100.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 15.0,
+    "carbs": 27.0,
+    "fiber": 0.0,
+    "sugar": 25.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 94.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "16 oz Lemonade Cold Brew Tea",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 150.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 25.0,
+    "carbs": 40.0,
+    "fiber": 0.0,
+    "sugar": 38.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 94.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "24 oz Lemonade Cold Brew Tea",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 200.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 30.0,
+    "carbs": 53.0,
+    "fiber": 0.0,
+    "sugar": 50.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 94.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "32 oz Lemonade Cold Brew Tea",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 260.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 40.0,
+    "carbs": 67.0,
+    "fiber": 0.0,
+    "sugar": 63.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "12 oz Iced Coffee",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 5.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 30.0,
+    "carbs": 1.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 94.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "16 oz Iced Coffee",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 10.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 50.0,
+    "carbs": 1.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 94.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "12 oz Mocha Iced Coffee",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 130.0,
+    "fat": 2.5,
+    "sat_fat": 2.5,
+    "sodium": 110.0,
+    "carbs": 24.0,
+    "fiber": 1.0,
+    "sugar": 19.0,
+    "protein": 3.0,
+    "vit_d": 0.0,
+    "calcium": 78.0,
+    "iron": 1.08,
+    "potassium": 188.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Mocha Iced Coffee",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 170.0,
+    "fat": 3.5,
+    "sat_fat": 3.5,
+    "sodium": 150.0,
+    "carbs": 32.0,
+    "fiber": 1.0,
+    "sugar": 26.0,
+    "protein": 4.0,
+    "vit_d": 0.0,
+    "calcium": 104.0,
+    "iron": 1.08,
+    "potassium": 282.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "32 oz Mocha Iced Coffee",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 340.0,
+    "fat": 7.0,
+    "sat_fat": 7.0,
+    "sodium": 300.0,
+    "carbs": 63.0,
+    "fiber": 1.0,
+    "sugar": 51.0,
+    "protein": 7.0,
+    "vit_d": 0.0,
+    "calcium": 195.0,
+    "iron": 1.8,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Vanilla Iced Coffee",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 130.0,
+    "fat": 3.5,
+    "sat_fat": 3.0,
+    "sodium": 85.0,
+    "carbs": 23.0,
+    "fiber": 0.0,
+    "sugar": 20.0,
+    "protein": 3.0,
+    "vit_d": 0.0,
+    "calcium": 78.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Vanilla Iced Coffee",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 180.0,
+    "fat": 4.5,
+    "sat_fat": 4.5,
+    "sodium": 115.0,
+    "carbs": 31.0,
+    "fiber": 0.0,
+    "sugar": 26.0,
+    "protein": 4.0,
+    "vit_d": 0.0,
+    "calcium": 130.0,
+    "iron": 0.0,
+    "potassium": 282.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz Vanilla Iced Coffee",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 270.0,
+    "fat": 7.0,
+    "sat_fat": 7.0,
+    "sodium": 170.0,
+    "carbs": 46.0,
+    "fiber": 0.0,
+    "sugar": 40.0,
+    "protein": 5.0,
+    "vit_d": 0.0,
+    "calcium": 195.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "32 oz Vanilla Iced Coffee",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 350.0,
+    "fat": 9.0,
+    "sat_fat": 9.0,
+    "sodium": 230.0,
+    "carbs": 62.0,
+    "fiber": 0.0,
+    "sugar": 53.0,
+    "protein": 7.0,
+    "vit_d": 0.0,
+    "calcium": 260.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Caramel Iced Coffee",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 130.0,
+    "fat": 2.5,
+    "sat_fat": 2.0,
+    "sodium": 75.0,
+    "carbs": 25.0,
+    "fiber": 0.0,
+    "sugar": 21.0,
+    "protein": 1.0,
+    "vit_d": 0.0,
+    "calcium": 52.0,
+    "iron": 0.0,
+    "potassium": 94.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Caramel Iced Coffee",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 210.0,
+    "fat": 3.5,
+    "sat_fat": 3.0,
+    "sodium": 120.0,
+    "carbs": 42.0,
+    "fiber": 0.0,
+    "sugar": 35.0,
+    "protein": 2.0,
+    "vit_d": 0.0,
+    "calcium": 78.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz Caramel Iced Coffee",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 320.0,
+    "fat": 6.0,
+    "sat_fat": 5.0,
+    "sodium": 180.0,
+    "carbs": 63.0,
+    "fiber": 0.0,
+    "sugar": 53.0,
+    "protein": 3.0,
+    "vit_d": 0.0,
+    "calcium": 130.0,
+    "iron": 0.0,
+    "potassium": 282.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "32 oz Caramel Iced Coffee",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 420.0,
+    "fat": 7.0,
+    "sat_fat": 6.0,
+    "sodium": 240.0,
+    "carbs": 84.0,
+    "fiber": 0.0,
+    "sugar": 70.0,
+    "protein": 4.0,
+    "vit_d": 0.0,
+    "calcium": 130.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Hazelnut Iced Coffee",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 140.0,
+    "fat": 5.0,
+    "sat_fat": 5.0,
+    "sodium": 110.0,
+    "carbs": 23.0,
+    "fiber": 0.0,
+    "sugar": 18.0,
+    "protein": 1.0,
+    "vit_d": 0.0,
+    "calcium": 26.0,
+    "iron": 0.0,
+    "potassium": 94.0
+   },
+   "allergens": [
+    "coconut",
+    "milk"
+   ]
+  },
+  {
+   "name": "16 oz Hazelnut Iced Coffee",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 190.0,
+    "fat": 7.0,
+    "sat_fat": 7.0,
+    "sodium": 150.0,
+    "carbs": 31.0,
+    "fiber": 0.0,
+    "sugar": 23.0,
+    "protein": 2.0,
+    "vit_d": 0.0,
+    "calcium": 52.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": [
+    "coconut",
+    "milk"
+   ]
+  },
+  {
+   "name": "24 oz Hazelnut Iced Coffee",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 290.0,
+    "fat": 11.0,
+    "sat_fat": 10.0,
+    "sodium": 220.0,
+    "carbs": 46.0,
+    "fiber": 0.0,
+    "sugar": 35.0,
+    "protein": 2.0,
+    "vit_d": 0.0,
+    "calcium": 78.0,
+    "iron": 0.0,
+    "potassium": 282.0
+   },
+   "allergens": [
+    "coconut",
+    "milk"
+   ]
+  },
+  {
+   "name": "32 oz Hazelnut Iced Coffee",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 380.0,
+    "fat": 14.0,
+    "sat_fat": 13.0,
+    "sodium": 290.0,
+    "carbs": 61.0,
+    "fiber": 0.0,
+    "sugar": 47.0,
+    "protein": 3.0,
+    "vit_d": 0.0,
+    "calcium": 78.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "coconut",
+    "milk"
+   ]
+  },
+  {
+   "name": "12 oz White Chocolate Iced Coffee",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 160.0,
+    "fat": 7.0,
+    "sat_fat": 6.0,
+    "sodium": 160.0,
+    "carbs": 25.0,
+    "fiber": 0.0,
+    "sugar": 18.0,
+    "protein": 1.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 94.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz White Chocolate Iced Coffee",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 220.0,
+    "fat": 9.0,
+    "sat_fat": 8.0,
+    "sodium": 220.0,
+    "carbs": 34.0,
+    "fiber": 0.0,
+    "sugar": 24.0,
+    "protein": 1.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz White Chocolate Iced Coffee",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 330.0,
+    "fat": 13.0,
+    "sat_fat": 12.0,
+    "sodium": 330.0,
+    "carbs": 51.0,
+    "fiber": 0.0,
+    "sugar": 35.0,
+    "protein": 1.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 282.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "32 oz White Chocolate Iced Coffee",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 430.0,
+    "fat": 17.0,
+    "sat_fat": 16.0,
+    "sodium": 440.0,
+    "carbs": 68.0,
+    "fiber": 0.0,
+    "sugar": 47.0,
+    "protein": 2.0,
+    "vit_d": 0.0,
+    "calcium": 26.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz Dark Chocolate Iced Coffee",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 250.0,
+    "fat": 6.0,
+    "sat_fat": 5.0,
+    "sodium": 160.0,
+    "carbs": 48.0,
+    "fiber": 3.0,
+    "sugar": 38.0,
+    "protein": 5.0,
+    "vit_d": 0.0,
+    "calcium": 78.0,
+    "iron": 5.4,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "32 oz Dark Chocolate Iced Coffee",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 330.0,
+    "fat": 8.0,
+    "sat_fat": 7.0,
+    "sodium": 220.0,
+    "carbs": 64.0,
+    "fiber": 4.0,
+    "sugar": 50.0,
+    "protein": 6.0,
+    "vit_d": 0.0,
+    "calcium": 104.0,
+    "iron": 6.3,
+    "potassium": 1175.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Cookie Butter Iced Coffee",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 140.0,
+    "fat": 6.0,
+    "sat_fat": 6.0,
+    "sodium": 105.0,
+    "carbs": 22.0,
+    "fiber": 0.0,
+    "sugar": 18.0,
+    "protein": 1.0,
+    "vit_d": 0.0,
+    "calcium": 26.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "16 oz Cookie Butter Iced Coffee",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 190.0,
+    "fat": 8.0,
+    "sat_fat": 8.0,
+    "sodium": 140.0,
+    "carbs": 30.0,
+    "fiber": 0.0,
+    "sugar": 24.0,
+    "protein": 1.0,
+    "vit_d": 0.0,
+    "calcium": 26.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "24 oz Cookie Butter Iced Coffee",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 290.0,
+    "fat": 12.0,
+    "sat_fat": 12.0,
+    "sodium": 210.0,
+    "carbs": 45.0,
+    "fiber": 0.0,
+    "sugar": 35.0,
+    "protein": 2.0,
+    "vit_d": 0.0,
+    "calcium": 26.0,
+    "iron": 0.0,
+    "potassium": 282.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "32 oz Cookie Butter Iced Coffee",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 380.0,
+    "fat": 16.0,
+    "sat_fat": 16.0,
+    "sodium": 290.0,
+    "carbs": 61.0,
+    "fiber": 0.0,
+    "sugar": 47.0,
+    "protein": 3.0,
+    "vit_d": 0.0,
+    "calcium": 52.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "12 oz Iced Americano",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 5.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 15.0,
+    "carbs": 1.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 94.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "16 oz Iced Americano",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 10.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 20.0,
+    "carbs": 1.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 94.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "24 oz Iced Americano",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 10.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 25.0,
+    "carbs": 2.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 94.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "32 oz Iced Americano",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 15.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 35.0,
+    "carbs": 2.0,
+    "fiber": 0.0,
+    "sugar": 0.0,
+    "protein": 0.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "12 oz Iced Mocha Americano",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 130.0,
+    "fat": 3.0,
+    "sat_fat": 2.5,
+    "sodium": 115.0,
+    "carbs": 24.0,
+    "fiber": 1.0,
+    "sugar": 19.0,
+    "protein": 3.0,
+    "vit_d": 0.0,
+    "calcium": 78.0,
+    "iron": 1.08,
+    "potassium": 282.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Iced Mocha Americano",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 170.0,
+    "fat": 3.5,
+    "sat_fat": 3.5,
+    "sodium": 160.0,
+    "carbs": 32.0,
+    "fiber": 1.0,
+    "sugar": 26.0,
+    "protein": 4.0,
+    "vit_d": 0.0,
+    "calcium": 104.0,
+    "iron": 1.08,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz Iced Mocha Americano",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 260.0,
+    "fat": 6.0,
+    "sat_fat": 5.0,
+    "sodium": 230.0,
+    "carbs": 48.0,
+    "fiber": 1.0,
+    "sugar": 39.0,
+    "protein": 5.0,
+    "vit_d": 0.0,
+    "calcium": 130.0,
+    "iron": 1.08,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "32 oz Iced Mocha Americano",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 340.0,
+    "fat": 7.0,
+    "sat_fat": 7.0,
+    "sodium": 300.0,
+    "carbs": 64.0,
+    "fiber": 1.0,
+    "sugar": 51.0,
+    "protein": 7.0,
+    "vit_d": 0.0,
+    "calcium": 195.0,
+    "iron": 1.8,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Iced Vanilla Americano",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 180.0,
+    "fat": 4.5,
+    "sat_fat": 4.5,
+    "sodium": 120.0,
+    "carbs": 31.0,
+    "fiber": 0.0,
+    "sugar": 26.0,
+    "protein": 4.0,
+    "vit_d": 0.0,
+    "calcium": 130.0,
+    "iron": 0.0,
+    "potassium": 282.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz Iced Vanilla Americano",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 270.0,
+    "fat": 7.0,
+    "sat_fat": 7.0,
+    "sodium": 180.0,
+    "carbs": 47.0,
+    "fiber": 0.0,
+    "sugar": 40.0,
+    "protein": 5.0,
+    "vit_d": 0.0,
+    "calcium": 195.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "32 oz Iced Vanilla Americano",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 360.0,
+    "fat": 9.0,
+    "sat_fat": 9.0,
+    "sodium": 230.0,
+    "carbs": 62.0,
+    "fiber": 0.0,
+    "sugar": 53.0,
+    "protein": 7.0,
+    "vit_d": 0.0,
+    "calcium": 260.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Iced Caramel Americano",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 130.0,
+    "fat": 2.5,
+    "sat_fat": 2.0,
+    "sodium": 80.0,
+    "carbs": 25.0,
+    "fiber": 0.0,
+    "sugar": 21.0,
+    "protein": 1.0,
+    "vit_d": 0.0,
+    "calcium": 52.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Iced Caramel Americano",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 210.0,
+    "fat": 4.0,
+    "sat_fat": 3.0,
+    "sodium": 125.0,
+    "carbs": 42.0,
+    "fiber": 0.0,
+    "sugar": 35.0,
+    "protein": 2.0,
+    "vit_d": 0.0,
+    "calcium": 78.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz Iced Caramel Americano",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 320.0,
+    "fat": 6.0,
+    "sat_fat": 5.0,
+    "sodium": 180.0,
+    "carbs": 63.0,
+    "fiber": 0.0,
+    "sugar": 53.0,
+    "protein": 3.0,
+    "vit_d": 0.0,
+    "calcium": 130.0,
+    "iron": 0.0,
+    "potassium": 282.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "32 oz Iced Caramel Americano",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 420.0,
+    "fat": 8.0,
+    "sat_fat": 6.0,
+    "sodium": 240.0,
+    "carbs": 84.0,
+    "fiber": 0.0,
+    "sugar": 70.0,
+    "protein": 4.0,
+    "vit_d": 0.0,
+    "calcium": 130.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Iced Hazelnut Americano",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 140.0,
+    "fat": 5.0,
+    "sat_fat": 5.0,
+    "sodium": 110.0,
+    "carbs": 23.0,
+    "fiber": 0.0,
+    "sugar": 18.0,
+    "protein": 1.0,
+    "vit_d": 0.0,
+    "calcium": 26.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": [
+    "coconut",
+    "milk"
+   ]
+  },
+  {
+   "name": "24 oz Iced Hazelnut Americano",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 290.0,
+    "fat": 11.0,
+    "sat_fat": 10.0,
+    "sodium": 220.0,
+    "carbs": 47.0,
+    "fiber": 0.0,
+    "sugar": 35.0,
+    "protein": 2.0,
+    "vit_d": 0.0,
+    "calcium": 78.0,
+    "iron": 0.0,
+    "potassium": 282.0
+   },
+   "allergens": [
+    "coconut",
+    "milk"
+   ]
+  },
+  {
+   "name": "32 oz Iced Hazelnut Americano",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 380.0,
+    "fat": 14.0,
+    "sat_fat": 13.0,
+    "sodium": 300.0,
+    "carbs": 62.0,
+    "fiber": 0.0,
+    "sugar": 47.0,
+    "protein": 3.0,
+    "vit_d": 0.0,
+    "calcium": 78.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "coconut",
+    "milk"
+   ]
+  },
+  {
+   "name": "12 oz Iced White Chocolate Americano",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 150.0,
+    "fat": 6.0,
+    "sat_fat": 5.0,
+    "sodium": 150.0,
+    "carbs": 23.0,
+    "fiber": 0.0,
+    "sugar": 16.0,
+    "protein": 1.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Iced White Chocolate Americano",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 200.0,
+    "fat": 8.0,
+    "sat_fat": 7.0,
+    "sodium": 210.0,
+    "carbs": 31.0,
+    "fiber": 0.0,
+    "sugar": 21.0,
+    "protein": 1.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz Iced White Chocolate Americano",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 300.0,
+    "fat": 12.0,
+    "sat_fat": 11.0,
+    "sodium": 300.0,
+    "carbs": 47.0,
+    "fiber": 0.0,
+    "sugar": 32.0,
+    "protein": 1.0,
+    "vit_d": 0.0,
+    "calcium": 0.0,
+    "iron": 0.0,
+    "potassium": 282.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "32 oz Iced White Chocolate Americano",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 400.0,
+    "fat": 16.0,
+    "sat_fat": 14.0,
+    "sodium": 400.0,
+    "carbs": 62.0,
+    "fiber": 0.0,
+    "sugar": 43.0,
+    "protein": 2.0,
+    "vit_d": 0.0,
+    "calcium": 26.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz Iced Dark Chocolate Americano",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 250.0,
+    "fat": 6.0,
+    "sat_fat": 5.0,
+    "sodium": 170.0,
+    "carbs": 48.0,
+    "fiber": 3.0,
+    "sugar": 38.0,
+    "protein": 5.0,
+    "vit_d": 0.0,
+    "calcium": 78.0,
+    "iron": 5.4,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "32 oz Iced Dark Chocolate Americano",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 330.0,
+    "fat": 8.0,
+    "sat_fat": 7.0,
+    "sodium": 220.0,
+    "carbs": 64.0,
+    "fiber": 4.0,
+    "sugar": 50.0,
+    "protein": 6.0,
+    "vit_d": 0.0,
+    "calcium": 104.0,
+    "iron": 6.3,
+    "potassium": 1175.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Iced Cookie Butter Americano",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 140.0,
+    "fat": 6.0,
+    "sat_fat": 6.0,
+    "sodium": 110.0,
+    "carbs": 23.0,
+    "fiber": 0.0,
+    "sugar": 18.0,
+    "protein": 1.0,
+    "vit_d": 0.0,
+    "calcium": 26.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "16 oz Iced Cookie Butter Americano",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 190.0,
+    "fat": 8.0,
+    "sat_fat": 8.0,
+    "sodium": 150.0,
+    "carbs": 31.0,
+    "fiber": 0.0,
+    "sugar": 24.0,
+    "protein": 2.0,
+    "vit_d": 0.0,
+    "calcium": 26.0,
+    "iron": 0.0,
+    "potassium": 282.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "24 oz Iced Cookie Butter Americano",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 290.0,
+    "fat": 12.0,
+    "sat_fat": 12.0,
+    "sodium": 220.0,
+    "carbs": 46.0,
+    "fiber": 0.0,
+    "sugar": 35.0,
+    "protein": 2.0,
+    "vit_d": 0.0,
+    "calcium": 26.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "32 oz Iced Cookie Butter Americano",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 380.0,
+    "fat": 16.0,
+    "sat_fat": 16.0,
+    "sodium": 290.0,
+    "carbs": 61.0,
+    "fiber": 0.0,
+    "sugar": 47.0,
+    "protein": 3.0,
+    "vit_d": 0.0,
+    "calcium": 52.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "16 oz Iced Latte",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 190.0,
+    "fat": 10.0,
+    "sat_fat": 6.0,
+    "sodium": 160.0,
+    "carbs": 16.0,
+    "fiber": 0.0,
+    "sugar": 14.0,
+    "protein": 9.0,
+    "vit_d": 2.0,
+    "calcium": 390.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk"
+   ]
+  },
+  {
+   "name": "24 oz Iced Latte",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 230.0,
+    "fat": 13.0,
+    "sat_fat": 7.0,
+    "sodium": 190.0,
+    "carbs": 20.0,
+    "fiber": 0.0,
+    "sugar": 17.0,
+    "protein": 11.0,
+    "vit_d": 3.0,
+    "calcium": 455.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk"
+   ]
+  },
+  {
+   "name": "32 oz Iced Latte",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 310.0,
+    "fat": 17.0,
+    "sat_fat": 10.0,
+    "sodium": 260.0,
+    "carbs": 27.0,
+    "fiber": 0.0,
+    "sugar": 23.0,
+    "protein": 15.0,
+    "vit_d": 4.0,
+    "calcium": 650.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "milk"
+   ]
+  },
+  {
+   "name": "12 oz Iced Mocha Latte",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 200.0,
+    "fat": 2.5,
+    "sat_fat": 2.5,
+    "sodium": 210.0,
+    "carbs": 34.0,
+    "fiber": 1.0,
+    "sugar": 29.0,
+    "protein": 10.0,
+    "vit_d": 2.0,
+    "calcium": 325.0,
+    "iron": 1.08,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz Iced Mocha Latte",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 360.0,
+    "fat": 6.0,
+    "sat_fat": 5.0,
+    "sodium": 370.0,
+    "carbs": 63.0,
+    "fiber": 1.0,
+    "sugar": 52.0,
+    "protein": 16.0,
+    "vit_d": 2.0,
+    "calcium": 520.0,
+    "iron": 1.08,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "32 oz Iced Mocha Latte",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 490.0,
+    "fat": 7.0,
+    "sat_fat": 7.0,
+    "sodium": 510.0,
+    "carbs": 85.0,
+    "fiber": 1.0,
+    "sugar": 71.0,
+    "protein": 22.0,
+    "vit_d": 3.0,
+    "calcium": 780.0,
+    "iron": 1.8,
+    "potassium": 1175.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz Iced Vanilla Latte",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 370.0,
+    "fat": 7.0,
+    "sat_fat": 7.0,
+    "sodium": 320.0,
+    "carbs": 61.0,
+    "fiber": 0.0,
+    "sugar": 53.0,
+    "protein": 16.0,
+    "vit_d": 2.0,
+    "calcium": 520.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz Iced Caramel Latte",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 420.0,
+    "fat": 6.0,
+    "sat_fat": 5.0,
+    "sodium": 330.0,
+    "carbs": 78.0,
+    "fiber": 0.0,
+    "sugar": 67.0,
+    "protein": 13.0,
+    "vit_d": 2.0,
+    "calcium": 455.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Iced Hazelnut Latte",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 210.0,
+    "fat": 5.0,
+    "sat_fat": 5.0,
+    "sodium": 210.0,
+    "carbs": 33.0,
+    "fiber": 0.0,
+    "sugar": 27.0,
+    "protein": 8.0,
+    "vit_d": 2.0,
+    "calcium": 260.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "coconut",
+    "milk"
+   ]
+  },
+  {
+   "name": "16 oz Iced Hazelnut Latte",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 270.0,
+    "fat": 7.0,
+    "sat_fat": 7.0,
+    "sodium": 260.0,
+    "carbs": 42.0,
+    "fiber": 0.0,
+    "sugar": 34.0,
+    "protein": 10.0,
+    "vit_d": 2.0,
+    "calcium": 325.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk"
+   ]
+  },
+  {
+   "name": "24 oz Iced Hazelnut Latte",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 390.0,
+    "fat": 11.0,
+    "sat_fat": 10.0,
+    "sodium": 370.0,
+    "carbs": 61.0,
+    "fiber": 0.0,
+    "sugar": 49.0,
+    "protein": 13.0,
+    "vit_d": 2.0,
+    "calcium": 455.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk"
+   ]
+  },
+  {
+   "name": "32 oz Iced Hazelnut Latte",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 530.0,
+    "fat": 14.0,
+    "sat_fat": 13.0,
+    "sodium": 510.0,
+    "carbs": 83.0,
+    "fiber": 0.0,
+    "sugar": 67.0,
+    "protein": 18.0,
+    "vit_d": 3.0,
+    "calcium": 650.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "coconut",
+    "milk"
+   ]
+  },
+  {
+   "name": "12 oz Iced White Chocolate Latte",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 220.0,
+    "fat": 6.0,
+    "sat_fat": 5.0,
+    "sodium": 250.0,
+    "carbs": 33.0,
+    "fiber": 0.0,
+    "sugar": 25.0,
+    "protein": 7.0,
+    "vit_d": 2.0,
+    "calcium": 260.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Iced White Chocolate Latte",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 280.0,
+    "fat": 8.0,
+    "sat_fat": 7.0,
+    "sodium": 320.0,
+    "carbs": 43.0,
+    "fiber": 0.0,
+    "sugar": 32.0,
+    "protein": 9.0,
+    "vit_d": 2.0,
+    "calcium": 325.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz Iced White Chocolate Latte",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 400.0,
+    "fat": 12.0,
+    "sat_fat": 11.0,
+    "sodium": 450.0,
+    "carbs": 61.0,
+    "fiber": 0.0,
+    "sugar": 46.0,
+    "protein": 12.0,
+    "vit_d": 2.0,
+    "calcium": 390.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "32 oz Iced White Chocolate Latte",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 550.0,
+    "fat": 16.0,
+    "sat_fat": 14.0,
+    "sodium": 610.0,
+    "carbs": 84.0,
+    "fiber": 0.0,
+    "sugar": 63.0,
+    "protein": 17.0,
+    "vit_d": 3.0,
+    "calcium": 520.0,
+    "iron": 0.0,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Iced Cookie Butter Latte",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 210.0,
+    "fat": 6.0,
+    "sat_fat": 6.0,
+    "sodium": 200.0,
+    "carbs": 32.0,
+    "fiber": 0.0,
+    "sugar": 27.0,
+    "protein": 8.0,
+    "vit_d": 2.0,
+    "calcium": 260.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "16 oz Iced Cookie Butter Latte",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 270.0,
+    "fat": 8.0,
+    "sat_fat": 8.0,
+    "sodium": 260.0,
+    "carbs": 42.0,
+    "fiber": 0.0,
+    "sugar": 34.0,
+    "protein": 10.0,
+    "vit_d": 2.0,
+    "calcium": 325.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk",
+    "soy",
+    "wheat"
+   ]
+  },
+  {
+   "name": "12 oz Iced Dark Chocolate Latte",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 190.0,
+    "fat": 3.0,
+    "sat_fat": 2.5,
+    "sodium": 180.0,
+    "carbs": 34.0,
+    "fiber": 2.0,
+    "sugar": 28.0,
+    "protein": 9.0,
+    "vit_d": 2.0,
+    "calcium": 260.0,
+    "iron": 1.8,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "16 oz Iced Dark Chocolate Latte",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 250.0,
+    "fat": 4.0,
+    "sat_fat": 3.5,
+    "sodium": 220.0,
+    "carbs": 44.0,
+    "fiber": 2.0,
+    "sugar": 36.0,
+    "protein": 11.0,
+    "vit_d": 2.0,
+    "calcium": 325.0,
+    "iron": 2.7,
+    "potassium": 940.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "24 oz Iced Dark Chocolate Latte",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 350.0,
+    "fat": 6.0,
+    "sat_fat": 5.0,
+    "sodium": 310.0,
+    "carbs": 63.0,
+    "fiber": 3.0,
+    "sugar": 51.0,
+    "protein": 15.0,
+    "vit_d": 2.0,
+    "calcium": 455.0,
+    "iron": 5.4,
+    "potassium": 1175.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "32 oz Iced Dark Chocolate Latte",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 480.0,
+    "fat": 8.0,
+    "sat_fat": 7.0,
+    "sodium": 430.0,
+    "carbs": 86.0,
+    "fiber": 4.0,
+    "sugar": 70.0,
+    "protein": 21.0,
+    "vit_d": 3.0,
+    "calcium": 650.0,
+    "iron": 6.3,
+    "potassium": 1645.0
+   },
+   "allergens": [
+    "coconut",
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "12 oz Iced Cappuccino",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 60.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 90.0,
+    "carbs": 9.0,
+    "fiber": 0.0,
+    "sugar": 8.0,
+    "protein": 6.0,
+    "vit_d": 1.2,
+    "calcium": 195.0,
+    "iron": 0.0,
+    "potassium": 282.0
+   },
+   "allergens": [
+    "milk"
+   ]
+  },
+  {
+   "name": "16 oz Iced Cappuccino",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 90.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 130.0,
+    "carbs": 13.0,
+    "fiber": 0.0,
+    "sugar": 11.0,
+    "protein": 8.0,
+    "vit_d": 2.0,
+    "calcium": 325.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "milk"
+   ]
+  },
+  {
+   "name": "24 oz Iced Cappuccino",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 110.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 170.0,
+    "carbs": 16.0,
+    "fiber": 0.0,
+    "sugar": 14.0,
+    "protein": 10.0,
+    "vit_d": 2.0,
+    "calcium": 390.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk"
+   ]
+  },
+  {
+   "name": "32 oz Iced Cappuccino",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 150.0,
+    "fat": 0.0,
+    "sat_fat": 0.0,
+    "sodium": 220.0,
+    "carbs": 22.0,
+    "fiber": 0.0,
+    "sugar": 18.0,
+    "protein": 14.0,
+    "vit_d": 3.0,
+    "calcium": 520.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk"
+   ]
+  },
+  {
+   "name": "16 oz Caramel Iced Cappuccino",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 280.0,
+    "fat": 10.0,
+    "sat_fat": 6.0,
+    "sodium": 190.0,
+    "carbs": 42.0,
+    "fiber": 0.0,
+    "sugar": 35.0,
+    "protein": 7.0,
+    "vit_d": 2.0,
+    "calcium": 325.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "milk and soy"
+   ]
+  },
+  {
+   "name": "24 oz Caramel Iced Cappuccino",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 390.0,
+    "fat": 13.0,
+    "sat_fat": 7.0,
+    "sodium": 250.0,
+    "carbs": 59.0,
+    "fiber": 0.0,
+    "sugar": 49.0,
+    "protein": 9.0,
+    "vit_d": 2.0,
+    "calcium": 390.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk and soy"
+   ]
+  },
+  {
+   "name": "32 oz Caramel Iced Cappuccino",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 490.0,
+    "fat": 16.0,
+    "sat_fat": 9.0,
+    "sodium": 310.0,
+    "carbs": 75.0,
+    "fiber": 0.0,
+    "sugar": 63.0,
+    "protein": 11.0,
+    "vit_d": 3.0,
+    "calcium": 520.0,
+    "iron": 0.0,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk and soy"
+   ]
+  },
+  {
+   "name": "12 oz Cold Brew Coffee",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 25.0,
+    "fat": 0.5,
+    "sat_fat": 0.0,
+    "sodium": 25.0,
+    "carbs": 4.0,
+    "fiber": 1.0,
+    "sugar": 1.0,
+    "protein": 1.0,
+    "vit_d": 0.0,
+    "calcium": 26.0,
+    "iron": 1.08,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "milk"
+   ]
+  },
+  {
+   "name": "16 oz Cold Brew Coffee",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 40.0,
+    "fat": 1.0,
+    "sat_fat": 0.0,
+    "sodium": 40.0,
+    "carbs": 6.0,
+    "fiber": 1.0,
+    "sugar": 1.0,
+    "protein": 2.0,
+    "vit_d": 0.0,
+    "calcium": 26.0,
+    "iron": 1.08,
+    "potassium": 705.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "24 oz Cold Brew Coffee",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 60.0,
+    "fat": 1.0,
+    "sat_fat": 0.0,
+    "sodium": 55.0,
+    "carbs": 9.0,
+    "fiber": 1.0,
+    "sugar": 1.0,
+    "protein": 2.0,
+    "vit_d": 0.0,
+    "calcium": 52.0,
+    "iron": 1.08,
+    "potassium": 940.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "32 oz Cold Brew Coffee",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 70.0,
+    "fat": 1.5,
+    "sat_fat": 0.0,
+    "sodium": 70.0,
+    "carbs": 11.0,
+    "fiber": 2.0,
+    "sugar": 2.0,
+    "protein": 3.0,
+    "vit_d": 0.0,
+    "calcium": 52.0,
+    "iron": 1.8,
+    "potassium": 1175.0
+   },
+   "allergens": []
+  },
+  {
+   "name": "12 oz Cold Brew Latte",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 100.0,
+    "fat": 5.0,
+    "sat_fat": 2.5,
+    "sodium": 80.0,
+    "carbs": 9.0,
+    "fiber": 0.0,
+    "sugar": 6.0,
+    "protein": 5.0,
+    "vit_d": 1.2,
+    "calcium": 195.0,
+    "iron": 0.0,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk"
+   ]
+  },
+  {
+   "name": "16 oz Cold Brew Latte",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 120.0,
+    "fat": 6.0,
+    "sat_fat": 3.0,
+    "sodium": 100.0,
+    "carbs": 11.0,
+    "fiber": 0.0,
+    "sugar": 8.0,
+    "protein": 6.0,
+    "vit_d": 2.0,
+    "calcium": 195.0,
+    "iron": 1.08,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk"
+   ]
+  },
+  {
+   "name": "24 oz Cold Brew Latte",
+   "section": null,
+   "serving_desc": "24 oz",
+   "nutrients": {
+    "kcal": 150.0,
+    "fat": 7.0,
+    "sat_fat": 4.0,
+    "sodium": 125.0,
+    "carbs": 14.0,
+    "fiber": 1.0,
+    "sugar": 10.0,
+    "protein": 7.0,
+    "vit_d": 2.0,
+    "calcium": 260.0,
+    "iron": 1.08,
+    "potassium": 705.0
+   },
+   "allergens": [
+    "milk"
+   ]
+  },
+  {
+   "name": "12 oz Vanilla Bean Cold Brew Latte",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 150.0,
+    "fat": 5.0,
+    "sat_fat": 2.5,
+    "sodium": 65.0,
+    "carbs": 23.0,
+    "fiber": 0.0,
+    "sugar": 20.0,
+    "protein": 5.0,
+    "vit_d": 1.2,
+    "calcium": 195.0,
+    "iron": 0.0,
+    "potassium": 188.0
+   },
+   "allergens": [
+    "milk"
+   ]
+  },
+  {
+   "name": "16 oz Vanilla Bean Cold Brew Latte",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 230.0,
+    "fat": 6.0,
+    "sat_fat": 3.5,
+    "sodium": 85.0,
+    "carbs": 39.0,
+    "fiber": 0.0,
+    "sugar": 35.0,
+    "protein": 6.0,
+    "vit_d": 1.2,
+    "calcium": 195.0,
+    "iron": 0.0,
+    "potassium": 282.0
+   },
+   "allergens": [
+    "milk"
+   ]
+  },
+  {
+   "name": "32 oz Vanilla Bean Cold Brew Latte",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 420.0,
+    "fat": 10.0,
+    "sat_fat": 5.0,
+    "sodium": 130.0,
+    "carbs": 73.0,
+    "fiber": 1.0,
+    "sugar": 62.0,
+    "protein": 9.0,
+    "vit_d": 2.0,
+    "calcium": 325.0,
+    "iron": 0.0,
+    "potassium": 376.0
+   },
+   "allergens": [
+    "milk"
+   ]
+  },
+  {
+   "name": "12 oz Vietnamese Cold Brew Coffee",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 150.0,
+    "fat": 3.5,
+    "sat_fat": 2.0,
+    "sodium": 35.0,
+    "carbs": 26.0,
+    "fiber": 1.0,
+    "sugar": 22.0,
+    "protein": 4.0,
+    "vit_d": 0.0,
+    "calcium": 104.0,
+    "iron": 0.0,
+    "potassium": 4418.0
+   },
+   "allergens": [
+    "milk"
+   ]
+  },
+  {
+   "name": "16 oz Vietnamese Cold Brew Coffee",
+   "section": null,
+   "serving_desc": "16 oz",
+   "nutrients": {
+    "kcal": 290.0,
+    "fat": 7.0,
+    "sat_fat": 3.5,
+    "sodium": 70.0,
+    "carbs": 49.0,
+    "fiber": 1.0,
+    "sugar": 43.0,
+    "protein": 7.0,
+    "vit_d": 0.0,
+    "calcium": 195.0,
+    "iron": 0.0,
+    "potassium": 8883.0
+   },
+   "allergens": [
+    "milk"
+   ]
+  },
+  {
+   "name": "12 oz Midnight Mocha Cold Brew Latte",
+   "section": null,
+   "serving_desc": "12 oz",
+   "nutrients": {
+    "kcal": 200.0,
+    "fat": 5.0,
+    "sat_fat": 3.0,
+    "sodium": 80.0,
+    "carbs": 35.0,
+    "fiber": 1.0,
+    "sugar": 30.0,
+    "protein": 5.0,
+    "vit_d": 1.2,
+    "calcium": 195.0,
+    "iron": 1.08,
+    "potassium": 188.0
+   },
+   "allergens": [
+    "milk",
+    "soy"
+   ]
+  },
+  {
+   "name": "32 oz Midnight Mocha Cold Brew Latte",
+   "section": null,
+   "serving_desc": "32 oz",
+   "nutrients": {
+    "kcal": 360.0,
+    "fat": 11.0,
+    "sat_fat": 6.0,
+    "sodium": 160.0,
+    "carbs": 57.0,
+    "fiber": 2.0,
+    "sugar": 48.0,
+    "protein": 10.0,
+    "vit_d": 2.0,
+    "calcium": 325.0,
+    "iron": 1.08,
+    "potassium": 470.0
+   },
+   "allergens": [
+    "milk",
+    "soy"
+   ]
+  }
+ ]
+}

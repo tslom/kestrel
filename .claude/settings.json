@@ -1,0 +1,66 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s http://localhost:8788/*)",
+      "Bash(curl -s 'http://localhost:8788/*)",
+      "Bash(curl -s http://127.0.0.1:8788/*)",
+      "Bash(curl -s 'http://127.0.0.1:8788/*)",
+      "Bash(curl -s -m 2 http://localhost:8788/*)",
+      "Bash(python -m app.providers *)",
+      "Bash(source .venv/bin/activate)",
+      "mcp__claude_ai_Google_Calendar__list_events",
+      "mcp__claude_ai_Google_Calendar__search_events",
+      "mcp__claude_ai_Google_Calendar__get_event",
+      "mcp__claude_ai_Google_Calendar__list_calendars",
+      "mcp__claude_ai_Gmail__search_threads"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/session_start.py\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/bash_check.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "mcp__claude_ai_Google_Calendar__(update_event|create_event|delete_event|respond_to_event)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR/backend\" && .venv/bin/python -c 'from app.providers import calendar; calendar.refresh()' 2>/dev/null || true",
+            "timeout": 60,
+            "statusMessage": "Refreshing calendar cache..."
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/lint_on_edit.py\"",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}

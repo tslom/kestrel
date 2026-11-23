@@ -1,0 +1,102 @@
+# Panda Express "Nutrition & Allergen information" page (pandaexpress.com),
+# nutrition view, pasted by the user 2026-10-14. Columns: Portion (oz),
+# Calories, Calories From Fat, Total Fat (g), Saturated Fat (g), Trans Fat (g),
+# Cholesterol (mg), Sodium (mg), Total Carb (g), Dietary Fiber (g), Sugars (g),
+# Protein (g). Kids' Cub Meals and the ranged "Panda Crafted Beverages" row
+# are left out. * = regional / limited time; ** = regional beverage.
+## Base
+Chow Mein
+12    520    110    12    2    0    0    1040    89    5    11    14
+Chow Fun*
+12    580    120    13    1    0    0    1570    103    1    8    13
+Fried Rice
+12    610    120    13    3    0    120    810    109    3    2    15
+White Steamed Rice
+12    570    0    0    0    0    0    0    129    0    0    11
+Quinoa Fried Rice*
+12    600    170    19    4    0    115    740    91    4    1    15
+Super Greens
+10    180    80    9    2    0    0    660    17    8    8    8
+## Vegetables
+Eggplant Tofu*
+6.1    310    190    21    4    0    0    350    23    4    15    8
+Super Greens (Entree)
+3.5    45    15    2    0    0    0    130    5    3    2    3
+## Chicken
+Black Pepper Chicken*
+6.3    200    110    12    2    0    50    1070    9    1    3    15
+Kung Pao Chicken
+6.7    270    120    14    3    0    55    1300    16    2    7    20
+Grilled Teriyaki Chicken
+6.1    280    80    9    3    0    180    610    13    0    9    38
+Mushroom Chicken
+5.7    180    80    9    2    0    45    820    12    1    5    13
+The Original Orange Chicken®
+6.2    560    230    25    5    0    65    1000    63    1    24    19
+## Chicken Breast
+Honey Sesame Chicken Breast
+6.2    420    180    20    5    0    35    540    44    2    19    16
+String Bean Chicken Breast
+5.6    210    100    10    2    0    40    600    15    3    7    15
+SweetFire Chicken Breast®*
+5.8    360    140    15    3    0    45    370    40    2    19    15
+## Beef
+Beijing Beef®
+5.6    480    250    27    5    0    35    600    46    2    21    14
+Broccoli Beef
+6.3    190    60    7    2    0    30    600    14    2    7    17
+Black Pepper Sirloin Steak
+5.9    200    80    8    2    0    30    560    15    1    8    17
+## Seafood
+Honey Walnut Shrimp
+4.4    340    180    20    3    0    90    790    28    1    6    13
+## Appetizers
+Chicken Egg Roll
+2.75 oz / 1 roll    200    90    10    2    0    20    340    20    2    2    6
+Chicken Potsticker*
+3.3 oz / 3 pcs    160    60    6    1.5    0    20    250    20    1    2    6
+Cream Cheese Rangoon
+2.4 oz / 3 pcs    190    70    8    5    0    35    180    24    2    1    5
+Vegetable Spring Roll
+3.5 oz / 2 rolls    240    130    14    2    0    0    560    24    2    0    4
+## Soup
+Hot & Sour Soup (Cup)*
+12.2    140    35    4    1    0    65    1000    16    1    4    9
+Hot & Sour Soup (Bowl)*
+17.4    170    60    6    1    0    90    1260    20    1    6    10
+## Sauces & More
+Teriyaki Sauce
+1.8    70    5    0    0    0    0    380    16    0    14    0
+Sweet & Sour Sauce
+1.8    70    0    0    0    0    0    120    21    0    20    0
+Chili Sauce
+1 Packet (7g)    10    0    0    0    0    0    130    2    0    2    0
+Soy Sauce
+1 Packet (6g)    5    0    0    0    0    0    380    0    0    0    0
+Potsticker Sauce*
+1 Packet (11.4g)    10    0    0    0    0    0    290    3    0    2    0
+Hot Mustard
+1 Packet (7g)    10    10    1    0    0    0    115    0    0    0    0
+Fortune Cookies
+5 g / 1 pc    20    0    0    0    0    0    0    5    0    2    0
+## Fountain
+Coca-Cola
+12    140    0    0    0    0    0    40    39    1    39    0
+Coca-Cola
+22    260    0    0    0    0    0    75    71    1    71    0
+Coca-Cola
+30    360    0    0    0    0    0    100    97    1    97    0
+Coca-Cola Zero Sugar
+22    0    0    0    0    0    0    75    0    1    0    0
+Diet Coke
+22    0    0    0    0    0    0    210    0    1    0    0
+Dr Pepper
+22    260    0    0    0    0    0    80    72    1    70    0
+Sprite
+22    250    0    0    0    0    0    125    67    1    67    0
+Minute Maid Lemonade
+22    240    0    0    0    0    0    180    63    1    63    0
+Black Tea**
+22    5    0    0    0    0    0    20    2    0    0    0
+Sweet Tea**
+22    280    0    0    0    0    0    15    71    0    69    0

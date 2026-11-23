@@ -1,0 +1,37 @@
+/* Round 3's accent line-up: the round-2 system exactly, one variable moved —
+   the accent hue — like amber.css. Each is OKLCH at the blue's lightness and
+   roughly its chroma, so the vote is about hue, not weight:
+     light desk  L 0.52-0.55, >= 4.9:1 on white, white text on a fill
+     console ink L 0.72,      >= 6.5:1 on #1A1A1C
+     dark desk   L 0.70,      >= 6:1 on the dark raise, dark text on a fill
+   Watch: green sits on top of --good and rose next to --bad, so in those
+   looks a primary button and a status colour read alike. That is part of
+   what's being judged. Hexes, not oklch(), because the map's canvas reads
+   these with hexToRgb. */
+
+:root[data-look="green"] {
+  --accent: #0A7E3A;       /* oklch(0.52 0.14 150) 5.2:1 on white */
+  --accent-ink: #5BBD74;   /* oklch(0.72 0.14 150) 7.4:1 on the console */
+}
+:root[data-look="green"][data-theme="dark"] { --accent: #4CB86A; }   /* oklch(0.70 0.15 150) */
+@media (prefers-color-scheme: dark) {
+  :root[data-look="green"]:not([data-theme="light"]) { --accent: #4CB86A; }
+}
+
+:root[data-look="violet"] {
+  --accent: #7A53B4;       /* oklch(0.53 0.15 300) 5.6:1 on white */
+  --accent-ink: #B28FEF;   /* oklch(0.72 0.14 300) 6.7:1 on the console */
+}
+:root[data-look="violet"][data-theme="dark"] { --accent: #AD87ED; }   /* oklch(0.70 0.15 300) */
+@media (prefers-color-scheme: dark) {
+  :root[data-look="violet"]:not([data-theme="light"]) { --accent: #AD87ED; }
+}
+
+:root[data-look="rose"] {
+  --accent: #B03D58;       /* oklch(0.53 0.15 10) 5.7:1 on white */
+  --accent-ink: #EE7C90;   /* oklch(0.72 0.14 10) 6.6:1 on the console */
+}
+:root[data-look="rose"][data-theme="dark"] { --accent: #EB7289; }   /* oklch(0.70 0.15 10) */
+@media (prefers-color-scheme: dark) {
+  :root[data-look="rose"]:not([data-theme="light"]) { --accent: #EB7289; }
+}

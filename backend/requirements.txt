@@ -1,0 +1,61 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+claude-agent-sdk>=0.2.181
+python-frontmatter>=1.1
+python-dotenv>=1.0
+pywebview>=5.0  # native desktop window for launch_app.py (pulls in pyobjc on macOS)
+pyobjc-framework-UserNotifications; sys_platform == "darwin"  # Kestrel's own banners (desktop_shell.Notifier)
+
+# Attachment text extraction. Pure Python on purpose: it parses files that
+# arrived from outside, and the realistic failure of a pure-Python parser is a
+# decompression bomb (contained — see providers/_extract_worker.py) rather than
+# the memory-safety bugs that live in C image/PDF libraries. Nothing here
+# decodes images; that goes to the model instead. Do not add Pillow, pdf2image,
+# ghostscript, or an OCR binding to make images work locally — that trades the
+# whole containment story for a convenience.
+pypdf>=6.0
+
+# The expenses export (app/expenses.py) — the file goes to someone who opens
+# it in Excel or Numbers, so it's a real .xlsx with money formats and a total.
+openpyxl>=3.1
+
+# The phone door (app/phone.py). cryptography and httpx were already here
+# through other packages; named because app/webpush.py is the Web Push sender
+# (ECDH, HKDF, AES-GCM, ES256, one outbound POST) and must not vanish with
+# someone else's dependency. segno draws the pairing QR as SVG, pure Python.
+cryptography>=42
+httpx>=0.27
+segno>=1.6
+
+# Voice (app/voice.py). Audio is transduced locally and only the transcript
+# reaches the model, so these are the ears and the mouth both:
+#   parakeet-mlx  — ASR on the Metal GPU (~2.5GB model, pulled on first use).
+#                   The Apple-silicon port is the whole point; NVIDIA's newer
+#                   Nemotron ASR is a stronger model with no Metal path.
+#   openwakeword  — the two cheap gates in front of it, Silero VAD (~1MB) and
+#                   the wake-word spotter, so the 600M model is not running
+#                   all day and nothing becomes text until it's summoned.
+#   onnxruntime   — what both of those gates run on.
+# Speech out is macOS `say`, and the one system dep is ffmpeg (parakeet-mlx
+# shells out to it). The two models are optional — voice.py imports them
+# inside the functions that need them, so an install without them still
+# boots, /api/voice/status reports what's missing, and the UI hides the mic.
+# numpy is the exception: it is what a frame of audio *is* here, so voice.py
+# needs it at import time and main.py imports voice.py.
+#   mlx-audio + misaki — Kokoro-82M for speech out, on Metal. `say` is still
+#     the fallback and still the floor, so these stay optional like the two
+#     above: without them voice.kokoro_ready() is False and synthesis drops
+#     back to `say` rather than failing. misaki is Kokoro's G2P and is not
+#     optional *to Kokoro* — mlx-audio imports cleanly without it and then
+#     fails on every sentence, which is why kokoro_ready() checks for both.
+#     misaki pulls spacy and downloads en_core_web_sm (~13MB) on first use.
+numpy>=1.26
+parakeet-mlx>=0.5
+openwakeword>=0.6
+onnxruntime>=1.20
+mlx-audio>=0.4
+misaki[en]>=0.9
+
+# dev/test: `cd backend && source .venv/bin/activate && pytest`
+pytest>=8
+ruff>=0.16  # backend/ruff.toml; held by tests/test_lint.py and the lint-on-edit hook

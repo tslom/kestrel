@@ -1,0 +1,29 @@
+<!-- Malar, as a browser tab. Same mark and same Flexoki values as the Dock
+     icon (scripts/gen-icon.py) and ui/Mark.jsx: a kestrel's face cut down to
+     its two tells, the yellow-ringed eye and the black tear stripe (the malar
+     stripe) under it, on a rufous tile. Hand-kept in sync with that script;
+     the geometry below is the shared 100-unit box.
+
+     Deliberately not theme-aware. The mark carries its own colours, so it
+     reads on a light or dark tab strip without a media query.
+
+     (Comment text here avoids a doubled hyphen on purpose: XML forbids one
+     inside a comment, so writing CSS token names with their leading dashes
+     makes this file fail to parse and the favicon silently vanish.) -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <!-- Superellipse |x|^5 + |y|^5 = 1: four cubics with their controls at
+         the corners, which is what makes it a squircle and not a rounded
+         rectangle. -->
+    <clipPath id="tile">
+      <path d="M100 50C100 99.3 99.3 100 50 100C.7 100 0 99.3 0 50C0 .7 .7 0 50 0C99.3 0 100 .7 100 50Z"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#tile)">
+    <rect width="100" height="100" fill="#BC5215"/>
+    <path d="M53 55C51 66 47 77 42 91C50 79 56 67 60 56Z" fill="#100F0F"/>
+    <circle cx="59" cy="39" r="15" fill="none" stroke="#D0A215" stroke-width="4.5"/>
+    <circle cx="59" cy="39" r="11.5" fill="#100F0F"/>
+    <circle cx="63" cy="35" r="3.2" fill="#F2F0E5"/>
+  </g>
+</svg>

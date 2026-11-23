@@ -1,0 +1,41 @@
+/* Flexoki: the look Kestrel shipped with until round 2 (11-13), kept so the
+   new baseline always has its "before" one keystroke away. Paper and ink in
+   Flexoki colours, orange as the one loud colour, JetBrains Mono as the UI
+   face, paper grain, 4/8px corners and wide-tracked caps. It rides on the
+   round-2 type and spacing scale (those were normalized in styles.css, not
+   tokenized per look), so it is the old *palette and face*, not a pixel
+   replay of the old app: `git show a4736a2:frontend/src/styles.css` is that. */
+:root[data-look="flexoki"] {
+  --paper: #F2F0E5; --paper-raise: #FFFCF0;
+  --paper-line: #E6E4D9; --paper-line-2: #DAD8CE; --paper-line-3: #B7B5AC;
+  --paper-ink: #100F0F; --paper-mid: #6F6E69; --paper-faint: #B7B5AC;
+  --ink: #0D0C0C; --ink-raise: #1C1B1A; --ink-line: #282726; --ink-line-2: #343331;
+  --ink-text: #CECDC3; --ink-mid: #878580; --ink-faint: #575653;
+  --accent: #BC5215; --accent-ink: #DA702C; --on-accent: #FFFCF0;
+  --data: #205EA6; --good: #66800B; --bad: #AF3029;
+  --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/></filter><rect width='140' height='140' filter='url(%23g)' opacity='0.05'/></svg>");
+  --mono: var(--code);
+  --r1: 4px; --r2: 8px;
+  --caps-track: 0.06em;
+  --shadow-1: none;
+}
+:root[data-look="flexoki"][data-theme="dark"] {
+  --paper: #23211E; --paper-raise: #2B2825;
+  --paper-line: #37332E; --paper-line-2: #443F39; --paper-line-3: #64605A;
+  --paper-ink: #CECDC3; --paper-mid: #8F8C85; --paper-faint: #64605A;
+  --ink: #0D0C0C; --ink-raise: #1C1B1A; --ink-line: #282726; --ink-line-2: #343331;
+  --accent: #DA702C; --data: #4385BE; --good: #879A39; --bad: #D14D41;
+  --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/></filter><rect width='140' height='140' filter='url(%23g)' opacity='0.022'/></svg>");
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-look="flexoki"]:not([data-theme="light"]) {
+    --paper: #23211E; --paper-raise: #2B2825;
+    --paper-line: #37332E; --paper-line-2: #443F39; --paper-line-3: #64605A;
+    --paper-ink: #CECDC3; --paper-mid: #8F8C85; --paper-faint: #64605A;
+    --ink: #0D0C0C; --ink-raise: #1C1B1A; --ink-line: #282726; --ink-line-2: #343331;
+    --accent: #DA702C; --data: #4385BE; --good: #879A39; --bad: #D14D41;
+    --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/></filter><rect width='140' height='140' filter='url(%23g)' opacity='0.022'/></svg>");
+  }
+}
+/* The old needs-list buttons wore the accent edge. */
+:root[data-look="flexoki"] .pbtn.go { border-color: var(--accent); color: var(--accent); }

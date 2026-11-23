@@ -1,0 +1,29 @@
+# §21 step 5 — vault-dashboard scheduled wake (app/wake.py).
+#
+# Install (once per machine, needs your password once — nothing automates this):
+#     sudo install -m 0440 -o root -g wheel \
+#       backend/scripts/kestrel-wake.sudoers /etc/sudoers.d/kestrel-wake
+# Verify:  sudo -n -l | grep pmset
+# Remove:  sudo rm /etc/sudoers.d/kestrel-wake
+#
+# Not installed by anything in the repo, and NOT carried over by Migration
+# Assistant — a new Mac starts without it. Nothing breaks loudly if it is
+# missing: the two write verbs fail on `sudo -n`, apply() logs and retries, and
+# the wake half degrades to exactly the pre-step-5 behaviour. Alarms are already
+# on the phone via iCloud and fire regardless; what is lost is the overnight
+# reconcile that keeps a *moved* flight's alarm honest.
+#
+# The `tslom` below is a username, not a variable. Change it if the account
+# changes, then re-check with `visudo -c -f` before installing.
+#
+# `pmset schedule` checks euid and refuses for an admin user; the rights
+# database's system.preferences.energysaver entry governs the Energy Saver
+# pane through the Admin framework and never reaches this binary.
+#
+# Scoped to the two calls app/wake.py makes — `schedule wake <date> <owner>`
+# and `schedule cancel wake <date> <owner>` — so a process running as you
+# can't use it to schedule a shutdown/sleep/restart or `cancelall` other
+# owners' events. The SETTING verbs (`pmset -a`, `-b`, `-c`) stay out of reach.
+# The absolute path matters — a bare `pmset` would match anything by that name
+# earlier on $PATH.
+tslom ALL=(root) NOPASSWD: /usr/bin/pmset schedule wake *, /usr/bin/pmset schedule cancel wake *

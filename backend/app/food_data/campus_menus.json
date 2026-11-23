@@ -1,0 +1,209 @@
+{
+ "_about": "§25 campus café menus beyond what USC publishes. 'published' items carry numbers (with their origin); 'estimate' items are names only and go through app/food_estimate.py. Item names for the USC-run counters come from USC Hospitality's 'Balanced Dining on Campus' guide (Fall 2025, updated Oct 2025), which lists items but no nutrition. Load with `python -m app.food_seed`; it never overwrites a food the user corrected.",
+ "vegan": [
+  "Kimchi Fried Rice",
+  "Grain Power Salad Bowl",
+  "Shirataki Sweet Potato Almond Crunch",
+  "Kale Hemp Caesar Salad",
+  "Beet Poke Snack Box",
+  "Hummus Mezze Box",
+  "EatWell Guacamole Bowl",
+  "Alu Chole Bowl",
+  "Tofu Poke Bowl"
+ ],
+ "vegetarian": [
+  "Banana Bread Chia Oat Pudding",
+  "Veggie Korma Bowl",
+  "Palak Paneer Bowl"
+ ],
+ "venues": {
+  "panda-express": {
+   "note": "official macros from food_data/panda_nutrition.txt (Panda's own page); micronutrients estimated per item — Panda publishes none"
+  },
+  "seeds-marketplace": {
+   "estimate": [
+    "EatWell Veggie Scramble Bowl",
+    "EatWell Breakfast Buddha Bowl",
+    "Poke Bowl",
+    "Rock Roots Reggae Salad",
+    "Woodstock & Curry Salad",
+    "Backyard Salad",
+    "Santorini Greek Salad",
+    "Banana Bread Chia Oat Pudding",
+    "Lemon Roast Chicken Breast",
+    "Moroccan Style Chicken Breast",
+    "Blackened Chicken Alfredo Pasta",
+    "Herb Chicken Green Goddess Salad",
+    "Achiote Lime Chicken Salad Bowl",
+    "Chicken Banh Mi Salad Bowl",
+    "Sesame Peanut Chicken Salad Bowl",
+    "Chicken Caesar Salad Bowl",
+    "Spicy Chicken Quinoa Bowl",
+    "Chicken Breast Chimichurri & Hummus Snack Box",
+    "Chicken Dill Salad Sandwich on Whole Wheat",
+    "Roast Salmon with Sage Tomato Jam",
+    "Salmon, Dill & Caper Crunch Salad Bowl",
+    "Salmon, Kale & Cucumber Mint Salad",
+    "Mediterranean Muhammara Snack Box",
+    "Kimchi Fried Rice",
+    "Grain Power Salad Bowl",
+    "Shirataki Sweet Potato Almond Crunch",
+    "Kale Hemp Caesar Salad",
+    "Beet Poke Snack Box",
+    "Hummus Mezze Box",
+    "Kikka Brown Rice Sushi",
+    "Breakfast Burrito",
+    "KIND Bar"
+   ],
+   "packaged": [
+    "Banana Bread Chia Oat Pudding",
+    "Lemon Roast Chicken Breast",
+    "Moroccan Style Chicken Breast",
+    "Blackened Chicken Alfredo Pasta",
+    "Herb Chicken Green Goddess Salad",
+    "Achiote Lime Chicken Salad Bowl",
+    "Chicken Banh Mi Salad Bowl",
+    "Sesame Peanut Chicken Salad Bowl",
+    "Chicken Caesar Salad Bowl",
+    "Spicy Chicken Quinoa Bowl",
+    "Chicken Breast Chimichurri & Hummus Snack Box",
+    "Chicken Dill Salad Sandwich on Whole Wheat",
+    "Roast Salmon with Sage Tomato Jam",
+    "Salmon, Dill & Caper Crunch Salad Bowl",
+    "Salmon, Kale & Cucumber Mint Salad",
+    "Mediterranean Muhammara Snack Box",
+    "Kimchi Fried Rice",
+    "Grain Power Salad Bowl",
+    "Shirataki Sweet Potato Almond Crunch",
+    "Kale Hemp Caesar Salad",
+    "Beet Poke Snack Box",
+    "Hummus Mezze Box",
+    "Kikka Brown Rice Sushi",
+    "KIND Bar"
+   ]
+  },
+  "trojan-grounds-featuring-illy": {
+   "estimate": [
+    "Moroccan Style Chicken Breast",
+    "Blackened Chicken Alfredo Pasta",
+    "Herb Chicken Green Goddess Salad",
+    "Achiote Lime Chicken Salad Bowl",
+    "Sesame Peanut Chicken Salad Bowl",
+    "Salmon, Kale & Cucumber Mint Salad",
+    "Grain Power Salad Bowl",
+    "Kale Hemp Caesar Salad",
+    "Hummus Mezze Box",
+    "Latte (12 oz)",
+    "Croissant"
+   ],
+   "packaged": [
+    "Moroccan Style Chicken Breast",
+    "Blackened Chicken Alfredo Pasta",
+    "Herb Chicken Green Goddess Salad",
+    "Achiote Lime Chicken Salad Bowl",
+    "Sesame Peanut Chicken Salad Bowl",
+    "Salmon, Kale & Cucumber Mint Salad",
+    "Grain Power Salad Bowl",
+    "Kale Hemp Caesar Salad",
+    "Hummus Mezze Box"
+   ]
+  },
+  "law-school-cafe": {
+   "estimate": [
+    "Chicken Teriyaki Bowl",
+    "Chicken Teriyaki Bowl (lighter portion)",
+    "Signature Salmon Rice Bowl",
+    "Signature Salmon Rice Bowl (lighter portion)",
+    "Banana Bread Chia Oat Pudding",
+    "Lemon Roast Chicken Breast",
+    "Chicken Banh Mi Salad Bowl",
+    "Sesame Peanut Chicken Salad Bowl",
+    "Chicken Caesar Salad Bowl",
+    "Spicy Chicken Quinoa Bowl",
+    "Kimchi Fried Rice",
+    "Chicken Dill Salad Sandwich on Whole Wheat",
+    "Roast Salmon with Sage Tomato Jam",
+    "Salmon, Dill & Caper Crunch Salad Bowl",
+    "Salmon, Kale & Cucumber Mint Salad",
+    "Grain Power Salad Bowl",
+    "Beet Poke Snack Box"
+   ],
+   "packaged": [
+    "Banana Bread Chia Oat Pudding",
+    "Lemon Roast Chicken Breast",
+    "Chicken Banh Mi Salad Bowl",
+    "Sesame Peanut Chicken Salad Bowl",
+    "Chicken Caesar Salad Bowl",
+    "Spicy Chicken Quinoa Bowl",
+    "Kimchi Fried Rice",
+    "Chicken Dill Salad Sandwich on Whole Wheat",
+    "Roast Salmon with Sage Tomato Jam",
+    "Salmon, Dill & Caper Crunch Salad Bowl",
+    "Salmon, Kale & Cucumber Mint Salad",
+    "Grain Power Salad Bowl",
+    "Beet Poke Snack Box"
+   ]
+  },
+  "burger-crush": {
+   "estimate": [
+    "Single Crush Burger",
+    "Double Crush Burger",
+    "Single Crush Burger, lettuce wrap",
+    "Impossible Burger",
+    "Chicken Tenders (3 piece)",
+    "French Fries"
+   ]
+  },
+  "taco-taco": {
+   "estimate": [
+    "Carne Asada Burrito",
+    "Carne Asada Bowl with brown rice and black beans",
+    "Grilled Chicken Street Tacos (3)",
+    "Carne Asada Street Tacos (3)",
+    "Grilled Chicken Salad",
+    "Chips and Guacamole"
+   ]
+  },
+  "new-bowl-concept": {
+   "estimate": [
+    "EatWell Medi Crunch Chicken Bowl",
+    "Tuna Poke Bowl",
+    "Salmon Poke Bowl",
+    "Tofu Poke Bowl"
+   ]
+  },
+  "cg-juice-co": {
+   "estimate": [
+    "Mother Nature Juice",
+    "Freshly Squeezed Orange Juice (16 oz)"
+   ]
+  },
+  "cafe-annenberg": {
+   "estimate": [
+    "Chicken Curry Bowl",
+    "Butter Chicken Bowl",
+    "Chicken Tikka Masala Bowl",
+    "Alu Chole Bowl",
+    "Veggie Korma Bowl",
+    "Palak Paneer Bowl",
+    "Chinese Chicken Salad"
+   ]
+  },
+  "tutor-hall-cafe": {
+   "estimate": [
+    "EatWell White Bean and Farro Soup",
+    "EatWell Roasted Chicken Salad",
+    "Farro and Kale Salad",
+    "Chicken Tikka Masala"
+   ]
+  },
+  "slice-shop": {
+   "estimate": [
+    "Cheese Pizza Slice",
+    "Pepperoni Pizza Slice",
+    "Garlic Knots"
+   ],
+   "note": "not in USC's guide — typical items, names guessed"
+  }
+ }
+}

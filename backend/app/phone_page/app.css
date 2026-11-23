@@ -1,0 +1,48 @@
+/* The phone door's one page (app/phone.py). Dark first, like the desk; the
+   hexes are the desk's dark tokens (frontend/src/styles.css). */
+:root {
+  color-scheme: dark;
+  --bg: #0F0F11; --surface: #19191B; --line: #27272A; --line-2: #363639;
+  --text: #F0F0F2; --mid: #A4A4A8; --faint: #7A7A7E;
+  --accent: #3293FC; --on-accent: #08080A; --good: #47C86E; --bad: #F45A51;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); }
+body {
+  font: 16px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  padding: calc(env(safe-area-inset-top) + 16px) 16px calc(env(safe-area-inset-bottom) + 24px);
+  -webkit-text-size-adjust: 100%;
+}
+[hidden] { display: none !important; }
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+h1 { margin: 0; font-size: 22px; font-weight: 700; }
+h2 { margin: 0 0 8px; font-size: 17px; }
+p { margin: 0 0 12px; }
+#state { margin: 0; font-size: 13px; color: var(--mid); text-align: right; }
+#state.off { color: var(--bad); }
+.hint { color: var(--mid); font-size: 14px; }
+.bad { color: var(--bad); }
+
+button, input {
+  font: inherit; min-height: 44px; border-radius: 10px; border: 1px solid var(--line-2);
+  background: var(--surface); color: var(--text); padding: 0 16px;
+}
+button:disabled { opacity: 0.4; }
+button.quiet { border: 0; background: none; color: var(--mid); font-size: 14px; padding: 0; }
+#pair-form { display: flex; gap: 8px; margin-bottom: 12px; }
+#pair-code { flex: 1; min-width: 0; font-size: 20px; letter-spacing: 0.08em; font-variant-numeric: tabular-nums; }
+#pair-form button, #notify { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+
+#card-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.card { padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 12px; }
+.card.linked { border-color: var(--accent); }
+.card-tab { margin: 0 0 2px; font-size: 13px; color: var(--mid); }
+.card-what { margin: 0 0 6px; font-size: 17px; font-weight: 600; overflow-wrap: anywhere; }
+.card-tool { font: 13px ui-monospace, "SF Mono", Menlo, monospace; color: var(--mid); }
+.card-why { margin: 0 0 8px; font-size: 14px; color: var(--mid); overflow-wrap: anywhere; }
+.card-warn { margin: 0 0 8px; font-size: 14px; color: var(--bad); }
+.card-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.card-btns .allow { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+.card-done { margin: 10px 0 0; font-size: 14px; color: var(--mid); }
+footer { display: grid; gap: 12px; justify-items: start; margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--line); }
+#notify { width: 100%; }

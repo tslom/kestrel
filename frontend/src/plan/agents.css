@@ -1,0 +1,93 @@
+/* The agent visualizer (plan/AgentLayer.jsx). Each agent is a fixed
+   element whose transform the layer sets to the place its tool call touches;
+   the glide is the transition here. Dark first: the hues are Apple's dark-mode
+   system colours, and the glow is additive on dark. */
+
+.agent-layer { position: fixed; inset: 0; z-index: 45; pointer-events: none; }
+.cx-agent {
+  position: fixed; left: 0; top: 0; transform: translate(-60px, -60px);
+  transition: transform 750ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+/* ---- orbs: a soft light with a comet trail ---------------------------- */
+.cx-agent.orbs .ag-orb {
+  position: absolute; left: -7px; top: -7px; width: 14px; height: 14px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #fff 0 18%, var(--hue) 45%, color-mix(in srgb, var(--hue) 60%, transparent) 100%);
+  box-shadow: 0 0 12px 3px color-mix(in srgb, var(--hue) 70%, transparent),
+              0 0 32px 8px color-mix(in srgb, var(--hue) 28%, transparent);
+  animation: ag-breathe 2.4s ease-in-out infinite;
+}
+/* the trail: sibling dots sent to the same point on slower transitions, so
+   on a move they string out behind the orb and settle into it */
+.ag-trail {
+  position: fixed; left: -4px; top: -4px; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--hue); transform: translate(-60px, -60px);
+  filter: blur(1px); will-change: transform;
+}
+.ag-trail.t1 { opacity: 0.5; transition: transform 950ms cubic-bezier(0.22, 1, 0.36, 1); }
+.ag-trail.t2 { opacity: 0.3; width: 6px; height: 6px; left: -3px; top: -3px; transition: transform 1150ms cubic-bezier(0.22, 1, 0.36, 1); }
+.ag-trail.t3 { opacity: 0.16; width: 5px; height: 5px; left: -2.5px; top: -2.5px; transition: transform 1400ms cubic-bezier(0.22, 1, 0.36, 1); }
+.cx-agent.orbs .ag-tag { left: 14px; top: -11px; }
+.cx-agent.orbs.write .ag-orb { animation: ag-write 0.9s ease-in-out infinite; }
+.cx-agent.orbs.sub .ag-orb { transform: scale(0.7); }
+.cx-agent.waiting .ag-orb { animation: ag-write 1.2s ease-in-out infinite; }
+@keyframes ag-breathe { 50% { box-shadow: 0 0 16px 5px color-mix(in srgb, var(--hue) 75%, transparent), 0 0 40px 12px color-mix(in srgb, var(--hue) 30%, transparent); } }
+@keyframes ag-write { 50% { transform: scale(1.35); } }
+
+/* ---- cursors: a pointer with a name tag ------------------------------- */
+.cx-agent.cursors { transition-duration: 450ms; }
+.cx-agent.cursors .ag-pointer { position: absolute; left: -2px; top: -2px; overflow: visible;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.5)); }
+.cx-agent.cursors .ag-pointer path { fill: var(--hue); stroke: #fff; stroke-width: 1.2; stroke-linejoin: round; }
+.cx-agent.cursors .ag-tag { left: 16px; top: 14px; background: var(--hue); color: #0b0b0d; }
+.cx-agent.cursors .ag-tag .ag-what { color: rgba(0, 0, 0, 0.7); }
+/* flipped: the label on the left of its orb or pointer (near the right edge) */
+.cx-agent.flip .ag-tag { left: auto; right: 14px; }
+.cx-agent.cursors.flip .ag-tag { right: 6px; }
+
+/* the label: who, and what it's doing right now */
+.ag-tag {
+  position: absolute; display: flex; flex-direction: column; max-width: 260px; padding: 4px 9px 5px;
+  border-radius: 9px; white-space: nowrap;
+  /* tinted by the agent's hue: a neutral near-black is the same colour as a
+     dark card and the label vanished into it */
+  background: color-mix(in srgb, var(--hue) 16%, rgba(8, 8, 10, 0.96)); color: #fff;
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--hue) 55%, transparent), 0 8px 22px rgba(0, 0, 0, 0.55);
+  font: var(--text-xs)/1.3 var(--sans);
+}
+.ag-tag b { font-weight: 600; color: var(--hue); overflow: hidden; text-overflow: ellipsis; }
+.cx-agent.cursors .ag-tag b { color: #0b0b0d; }
+.ag-what { color: rgba(255, 255, 255, 0.75); overflow: hidden; text-overflow: ellipsis; }
+
+/* a write rings what it's changing */
+.agent-ring {
+  position: fixed; border-radius: 14px; pointer-events: none;
+  box-shadow: 0 0 0 2px var(--hue), 0 0 24px 2px color-mix(in srgb, var(--hue) 45%, transparent);
+  animation: ag-ring 1.1s ease-in-out infinite;
+  transition: left 600ms cubic-bezier(0.22, 1, 0.36, 1), top 600ms cubic-bezier(0.22, 1, 0.36, 1),
+              width 600ms cubic-bezier(0.22, 1, 0.36, 1), height 600ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes ag-ring { 50% { box-shadow: 0 0 0 3px var(--hue), 0 0 36px 6px color-mix(in srgb, var(--hue) 35%, transparent); } }
+
+/* the replay's controls */
+.ag-replay {
+  position: fixed; z-index: 46; left: 16px; bottom: 16px; display: flex; align-items: center; gap: 6px;
+  padding: 6px 6px 6px 12px; border-radius: 14px;
+  background: rgba(18, 18, 22, 0.9); color: #fff; font: var(--text-sm) var(--sans);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.ag-replay-dot { width: 8px; height: 8px; border-radius: 50%; background: #64D2FF; animation: pulse 1.4s ease-in-out infinite; }
+.ag-replay-what { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-replay button {
+  height: 24px; min-width: 24px; padding: 0 8px; border: 0; border-radius: 8px; cursor: pointer;
+  background: rgba(255, 255, 255, 0.1); color: #fff; font: inherit;
+}
+.ag-replay button:hover { background: rgba(255, 255, 255, 0.18); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cx-agent { transition-duration: 0ms; }
+  .cx-agent .ag-orb, .agent-ring { animation: none; }
+}

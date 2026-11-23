@@ -1,0 +1,21 @@
+# Not a style linter. Each rule is a correction that kept coming back, made
+# into a check (11-17, after the "All Code Is Slop" report): pyflakes for
+# undefined and unused names, and banned APIs for rules that lived as prose.
+# The lint-on-edit hook (.claude/hooks/lint_on_edit.py) runs this on every
+# file a Claude Code session edits; `ruff check` runs it on the tree, and
+# tests/test_lint.py keeps the tree at zero. PGH004 and RUF100: a noqa names
+# its code, and only for a rule that fires there (one for an unselected rule
+# suppresses nothing). The trailing reason is .claude/hooks/comment_checks.py.
+target-version = "py312"
+extend-exclude = ["data", ".venv"]
+
+[lint]
+select = ["F", "TID251", "PGH004", "RUF100"]
+
+[lint.flake8-tidy-imports.banned-api]
+"datetime.date.today".msg = "a day key is db.day_key() (local, 4am rollover; CLAUDE.md). A real civil date that must not roll at 4am: `# noqa: TID251` with the reason."
+"datetime.datetime.today".msg = "a day key is db.day_key() (local, 4am rollover; CLAUDE.md). For a timestamp use datetime.now()."
+
+[lint.per-file-ignores]
+# Mirrors weather._fetch's civil-date anchor (Open-Meteo's own calendar).
+"tests/test_weather_horizon.py" = ["TID251"]

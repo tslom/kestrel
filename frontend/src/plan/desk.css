@@ -1,0 +1,416 @@
+/* The rooms desk (plan/Rooms.jsx, plan/FocusLine.jsx), html[data-layout=hybrid]:
+   the default desk since 11-22 (New Features #46, the look lab's round 5).
+     a sidebar of rooms and a page per room, Today as home
+     a floating glass top bar: the day as a sentence, the glance chips, and
+       the focus line (the one most urgent ask) under them
+     the console as a centred ask bar over the page; ⌘J opens it as a column
+   Nothing is re-parented (the console holds live sessions): the existing
+   panes are re-gridded around the rooms' own elements. Classic (no rules
+   here) is still in the look lab.
+   Dark first (CLAUDE.md): judged in dark, light only kept legible. Checked
+   in WebKit, the app's engine, at 1417px (the usual window) down to 700px. */
+
+/* ---- shared parts: icons, badges, cards, asks, doors ------------------- */
+
+.cx-room-icon {
+  flex: none; display: inline-grid; place-items: center;
+  width: 24px; height: 24px; border-radius: 7px;
+  background: var(--room, var(--accent)); color: #fff;
+  box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+}
+.cx-room-icon .icon { stroke-width: 2; }
+.cx-badge {
+  flex: none; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+  display: inline-grid; place-items: center;
+  background: var(--accent); color: #fff; font: 600 var(--text-2xs) var(--sans);
+  font-variant-numeric: tabular-nums;
+}
+.cx-icon-btn {
+  flex: none; display: inline-grid; place-items: center; width: 26px; height: 26px; padding: 0;
+  border: 0; border-radius: 13px; background: none; color: var(--paper-mid); cursor: pointer;
+}
+.cx-icon-btn:hover { background: color-mix(in srgb, var(--paper-ink) 7%, transparent); color: var(--paper-ink); }
+.cx-card .grow, .cx-nav .grow { flex: 1; }
+
+/* A card, whole. inline-flex, not flex: WebKit ignores break-inside on a
+   flex box in a multi-column flow, so a card split across two columns and
+   left a sliver of its foot on top of the next column. An inline box can't
+   be split. */
+.cx-card {
+  display: inline-flex; flex-direction: column; width: 100%; vertical-align: top;
+  break-inside: avoid; margin: 0 0 12px; min-width: 0; overflow: hidden;
+  background: var(--paper-raise); border-radius: 14px;
+  box-shadow: 0 0 0 0.5px var(--paper-line-2), 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: box-shadow 300ms;
+}
+/* No position on a card or anything in it: WebKit then paints nothing of an
+   inline box past the first column (three of the Plans page's five cards
+   were laid out and invisible). */
+.cx-card.focus { box-shadow: 0 0 0 2px var(--accent), 0 6px 20px rgba(0, 0, 0, 0.08); }
+.cx-card-head { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 8px 10px 0 16px; }
+.cx-card-head h3 { margin: 0; min-width: 0; font: 600 var(--text-md) var(--sans); letter-spacing: -0.01em; color: var(--paper-ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cx-card-head .band-pill { flex: none; }
+.band-pill.snoozed { color: var(--paper-mid); border-style: dashed; }
+.cx-card-body { padding: 0 16px 14px; min-width: 0; overflow-wrap: anywhere; }
+/* The widget brings its own frame and title; the card is the frame and its
+   head the title. Where the widget's header is only buttons (refresh, pin,
+   edit), they ride up into the card's head row, by the expand button,
+   instead of taking a row of their own: pulled up by a negative margin, not
+   positioned (above). A header with more in it (the calendar's day switch,
+   a filter) keeps its row. */
+.cx-card-body > .widget { border: 0; border-radius: 0; background: none; padding: 0; box-shadow: none; }
+.cx-card-body > .widget > header h2 { display: none; }
+.cx-card-body > .widget > header { min-height: 26px; margin-bottom: 8px; align-items: center; }
+.cx-card-body > .widget > header:not(:has(> :not(h2, .widget-actions))) {
+  width: max-content; max-width: calc(100% - 170px); margin: -33px 26px 8px auto; overflow: hidden;
+}
+.cx-card:not(:has(.cx-icon-btn)) .cx-card-body > .widget > header:not(:has(> :not(h2, .widget-actions))) { margin-right: -6px; }
+.cx-card-body > .widget .widget-actions button:not(.pin):not(:disabled) { opacity: 1; }
+/* a room page has the height a side-column card didn't: the tasks list's
+   9.5em scroll box cut its fifth row in half */
+.cx-card-body .task-list { max-height: none; }
+
+/* An ask, compact. */
+.cx-asks {
+  list-style: none; margin: 0 0 16px; padding: 4px 0; border-radius: 14px;
+  background: var(--paper-raise); box-shadow: 0 0 0 0.5px var(--paper-line-2);
+}
+.cx-ask { display: flex; align-items: center; gap: 10px; padding: 8px 12px 8px 16px; min-width: 0; }
+.cx-ask + .cx-ask { border-top: 0.5px solid var(--paper-line); }
+.cx-ask-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.cx-ask-dot.bad { background: var(--bad); }
+.cx-ask.blocking .cx-ask-dot { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent); }
+.cx-ask-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.cx-ask-title { font: 500 var(--text-base) var(--sans); color: var(--paper-ink); overflow-wrap: anywhere; }
+.cx-ask-why { font: var(--text-sm) var(--sans); color: var(--paper-mid); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cx-ask-acts { flex: none; display: flex; gap: 6px; }
+.cx-ask .pbtn.ghost { border-color: transparent; background: none; color: var(--paper-mid); }
+.cx-ask .pbtn.ghost.on, .cx-ask .pbtn.ghost:hover { color: var(--paper-ink); border-color: var(--paper-line-2); }
+.cx-later { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+
+/* A room's page. */
+.cx-room { min-height: 0; min-width: 0; overflow: auto; padding: 4px 4px 24px; scrollbar-gutter: stable; }
+.cx-room-head { display: flex; align-items: center; gap: 12px; margin: 4px 0 16px; min-width: 0; }
+.cx-room-head > div { min-width: 0; }
+.cx-room-head .cx-room-icon { width: 38px; height: 38px; border-radius: 10px; }
+.cx-room-head h2 { margin: 0; font: 700 var(--text-2xl) var(--sans); letter-spacing: -0.02em; color: var(--paper-ink); }
+.cx-room-head p { margin: 2px 0 0; font: var(--text-base) var(--sans); color: var(--paper-mid);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cx-cards { columns: 340px; column-gap: 12px; }
+
+/* A room's door on Today: its name, its badge, its most pressing line. */
+.cx-door {
+  position: relative; display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 12px 14px 12px 12px;
+  border: 0; border-radius: 14px; text-align: left; cursor: pointer;
+  background: var(--paper-raise); color: var(--paper-ink);
+  box-shadow: 0 0 0 0.5px var(--paper-line-2), 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: box-shadow 160ms, transform 160ms;
+}
+.cx-door:hover { box-shadow: 0 0 0 0.5px var(--paper-line-2), 0 4px 14px rgba(0, 0, 0, 0.07); }
+.cx-door:active { transform: scale(0.985); }
+.cx-door-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.cx-door-name { flex: 1; min-width: 0; font: 600 var(--text-md) var(--sans); letter-spacing: -0.01em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the count sits on the corner, like an app's badge, so the name keeps its width */
+.cx-door .cx-badge { position: absolute; top: -6px; right: -6px; box-shadow: 0 0 0 2px var(--paper); }
+.cx-door-line {
+  font: var(--text-sm)/1.35 var(--sans); color: var(--paper-mid);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+/* The sidebar. */
+.cx-nav {
+  min-height: 0; display: flex; flex-direction: column; gap: 2px; padding: 10px 8px;
+  border-radius: 14px; overflow: auto;
+  background: color-mix(in srgb, var(--paper-ink) 3.5%, var(--paper));
+  box-shadow: inset 0 0 0 0.5px var(--paper-line);
+}
+.cx-nav ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.cx-nav-label { margin: 14px 10px 4px; font: 600 var(--text-xs) var(--sans); color: var(--paper-faint); }
+.cx-nav-item {
+  position: relative; width: 100%; display: flex; align-items: center; gap: 9px; height: 32px; padding: 0 8px;
+  border: 0; border-radius: 8px; background: none; cursor: pointer; text-align: left;
+  font: 500 var(--text-base) var(--sans); color: var(--paper-ink);
+}
+.cx-nav-item:hover { background: color-mix(in srgb, var(--paper-ink) 5%, transparent); }
+.cx-nav-item.on { background: color-mix(in srgb, var(--paper-ink) 9%, transparent); }
+.cx-nav-item .cx-room-icon { width: 22px; height: 22px; border-radius: 6px; }
+.cx-nav-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cx-nav-item .cx-badge { background: color-mix(in srgb, var(--paper-ink) 12%, transparent); color: var(--paper-ink); }
+.cx-nav-item.on .cx-badge, .cx-nav li:first-child .cx-nav-item[data-room="today"] .cx-badge { background: var(--accent); color: #fff; }
+.cx-nav-search {
+  display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; margin-top: 8px;
+  border: 0; border-radius: 8px; cursor: pointer;
+  background: color-mix(in srgb, var(--paper-ink) 5%, transparent);
+  font: var(--text-sm) var(--sans); color: var(--paper-mid);
+}
+.cx-nav-search kbd { margin-left: auto; font: var(--text-2xs) var(--sans); color: var(--paper-faint); }
+
+/* ---- the frame ----------------------------------------------------------
+   --nav-w the sidebar, --top-h the floating bar's height (PlanApp measures
+   it: one line, two with the focus line, more where a narrow window wraps). */
+:root[data-layout="hybrid"] .plan:not(.full):not(.console-full) {
+  --nav-w: 208px; --gap: 16px; --under-top: calc(var(--top-h, 48px) + 16px);
+  position: relative; grid-template-rows: minmax(0, 1fr); padding: 12px 14px 14px;
+}
+:root[data-layout="hybrid"] .plan:not(.full):not(.console-full) .plan-main {
+  grid-template-columns: var(--nav-w) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: "nav page";
+  column-gap: var(--gap);
+}
+:root[data-layout="hybrid"] .plan:not(.full):not(.console-full):has(.plan-stage:not(.peek)) .plan-main {
+  grid-template-columns: var(--nav-w) minmax(0, 1fr) minmax(360px, 36%);
+  grid-template-areas: "nav page work";
+}
+:root[data-layout="hybrid"] .plan:not(.full):not(.console-full) .cx-nav { grid-area: nav; }
+:root[data-layout="hybrid"] .plan:not(.full):not(.console-full) .cx-room {
+  grid-area: page; padding-top: var(--under-top); padding-bottom: calc(var(--dock-h, 120px) + 24px);
+}
+/* with the console open as a column, nothing floats over the page's foot */
+:root[data-layout="hybrid"] .plan:not(.full):not(.console-full):has(.plan-stage:not(.peek)) .cx-room { padding-bottom: 24px; }
+
+/* ---- the floating top bar: the sentence and chips, the focus line under */
+:root[data-layout="hybrid"] .plan:not(.full):not(.console-full) .plan-top {
+  position: absolute; z-index: 6; top: 12px; left: calc(14px + var(--nav-w) + var(--gap)); right: 14px;
+  flex-direction: row; flex-wrap: wrap; align-items: center; column-gap: 12px; row-gap: 2px;
+  padding: 6px 8px 6px 16px; border-radius: 16px;
+  background: color-mix(in srgb, var(--paper-raise) 78%, transparent);
+  -webkit-backdrop-filter: blur(22px) saturate(1.7); backdrop-filter: blur(22px) saturate(1.7);
+  box-shadow: var(--shadow-pop);
+}
+:root[data-layout="hybrid"] .plan:not(.full):not(.console-full) .plan-top .glance { flex: none; flex-wrap: nowrap; min-width: 0; }
+/* the sentence says the day and what's next, so the strip's own day and
+   "next" chip go, and the leave chip keeps only its time (the sentence names
+   the event). The "N need you" chip opened the side column, which this desk
+   doesn't have: the focus line and the Today badge say it. */
+:root[data-layout="hybrid"] .plan:not(.full):not(.console-full) .plan-top
+  :is(.glance-mast, .glance-chip.next, .glance-spacer, .glance-chip.needs-toggle, .glance-chip.leave .k) { display: none; }
+
+.hy-sentence {
+  flex: 1 1 260px; min-width: 0; display: flex; align-items: baseline; gap: 8px; height: 30px; line-height: 30px;
+  font: var(--text-md)/30px var(--sans); color: var(--paper-mid); white-space: nowrap;
+}
+.hy-sentence b { color: var(--paper-ink); font-weight: 600; }
+.hy-day { font: 700 var(--text-lg)/30px var(--sans); letter-spacing: -0.015em; color: var(--paper-ink); flex: none; }
+.hy-sep { color: var(--paper-faint); flex: none; }
+/* the event's name gives way before "in 31 min" does */
+.hy-next { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.hy-next:has(b) { min-width: 9em; }
+.hy-when { flex: none; color: var(--paper-ink); }
+
+/* The focus line: the most urgent ask, one at a time (FocusLine.jsx). */
+.hy-focus {
+  flex: 1 0 100%; min-width: 0; display: flex; align-items: center; gap: 10px; height: 34px;
+  margin: 0 -2px 0 -8px; padding: 0 0 0 8px; border-top: 0.5px solid var(--paper-line);
+  font: var(--text-base) var(--sans); color: var(--paper-mid);
+}
+.hy-focus-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.hy-focus.fix .hy-focus-dot { background: var(--bad); }
+.hy-focus.blocking .hy-focus-dot { animation: pulse 1.4s ease-in-out infinite;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent); }
+.hy-focus-where {
+  flex: none; display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px 0 4px;
+  border: 0; border-radius: 11px; cursor: pointer;
+  background: color-mix(in srgb, var(--paper-ink) 7%, transparent);
+  font: 600 var(--text-xs) var(--sans); color: var(--paper-ink);
+}
+.hy-focus-where.static { cursor: default; padding-left: 8px; }
+.hy-focus-where:not(.static):hover { background: color-mix(in srgb, var(--paper-ink) 12%, transparent); }
+.hy-focus-where .cx-room-icon { width: 15px; height: 15px; border-radius: 4px; }
+.hy-focus-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hy-focus-text b { color: var(--paper-ink); font-weight: 600; }
+.hy-focus-acts { flex: none; display: flex; align-items: center; gap: 6px; }
+.hy-focus-acts .pbtn { height: 26px; }
+.hy-focus .pbtn.ghost { border-color: transparent; background: none; color: var(--paper-mid); }
+.hy-focus .pbtn.ghost.on, .hy-focus .pbtn.ghost:hover { color: var(--paper-ink); border-color: var(--paper-line-2); }
+.hy-focus-nav { flex: none; display: flex; align-items: center; gap: 2px; padding-left: 4px;
+  border-left: 0.5px solid var(--paper-line); }
+.hy-focus-count { padding: 0 4px 0 6px; font: var(--text-xs) var(--sans); color: var(--paper-faint);
+  font-variant-numeric: tabular-nums; white-space: nowrap; }
+.hy-later-wrap { position: relative; }
+.hy-later {
+  position: absolute; z-index: 20; top: calc(100% + 6px); right: 0; min-width: 200px;
+  display: flex; flex-direction: column; padding: 4px; border-radius: 10px;
+  background: var(--paper-raise); box-shadow: 0 0 0 0.5px var(--paper-line-2), var(--shadow-pop);
+}
+.hy-later button {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 6px 10px; border: 0; border-radius: 6px; background: none; cursor: pointer; text-align: left;
+  font: var(--text-sm) var(--sans); color: var(--paper-ink); white-space: nowrap;
+}
+.hy-later button:hover { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.hy-later-hint { color: var(--paper-faint); font-size: var(--text-xs); }
+
+/* A full view (⌘K's sheets) and the full-screen console (⌘F) keep the
+   classic desk's own rules, which know nothing of the sidebar or a room's
+   page: left in, they were stray grid cells, the sidebar stretched across
+   the whole full-screen conversation. */
+:root[data-layout="hybrid"] .plan:is(.full, .console-full) :is(.cx-nav, .cx-room) { display: none; }
+
+/* the list lives in the rooms, not a column: shown only as the sheet below */
+:root[data-layout="hybrid"] .plan:not(.full):not(.console-full) .plan-side { display: none; }
+
+/* ---- the console ------------------------------------------------------ */
+/* Open (⌘J): a right-hand column, under the floating bar. */
+:root[data-layout="hybrid"] .plan:not(.full):not(.console-full) .plan-work { grid-area: work; padding-top: 0; }
+:root[data-layout="hybrid"] .plan:not(.full):not(.console-full):not([data-cview="map"]) .plan-stage:not(.peek):not(.full) {
+  grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas: "console" "prompt"; padding-top: var(--under-top);
+}
+:root[data-layout="hybrid"] .plan:not(.full):not(.console-full):not([data-cview="map"]) .plan-stage:not(.full) > .map-wrap { display: none; }
+/* a document or Claude's view takes the map's place, over the console */
+:root[data-layout="hybrid"] .plan:not(.full):not(.console-full):not([data-cview="map"]) .plan-stage:not(.peek):not(.full):is(.viewing, :has(> .doc-stage:not(:empty))) {
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto; grid-template-areas: "map" "console" "prompt";
+}
+/* Folded (the default): the dock, centred at the page's foot: the console's
+   bar with the composer under it, one stack laid out in flow, so a composer
+   that grows (queued messages, the task strip, a long draft) pushes the bar
+   up instead of sliding under it. The work column lies over the page and
+   lets clicks through, but for the dock. */
+:root[data-layout="hybrid"] .plan:not(.full):not(.console-full):has(.plan-stage.peek) .plan-work {
+  grid-area: page; position: relative; z-index: 5; pointer-events: none;
+}
+:root[data-layout="hybrid"] .plan:not(.full):not(.console-full) .plan-stage.peek {
+  position: relative; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
+  gap: 6px; padding: 0 16px 18px;
+}
+:root[data-layout="hybrid"] .plan:not(.full):not(.console-full) .plan-stage.peek > :is(.stage-sheet, .prompt-bar, .doc-stage, .view-pane) { pointer-events: auto; }
+:root[data-layout="hybrid"] .plan:not(.full):not(.console-full) .plan-stage.peek > :is(.stage-sheet, .prompt-bar) {
+  position: relative; z-index: 4; flex: none; width: min(760px, 100%);
+  box-shadow: var(--shadow-pop);
+}
+:root[data-layout="hybrid"] .plan:not(.full):not(.console-full) .plan-stage.peek > .stage-sheet {
+  height: var(--peek-h);
+  /* near-opaque: at 86% a card's text read straight through the bar */
+  background: color-mix(in srgb, var(--ink-raise) 96%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4); backdrop-filter: blur(24px) saturate(1.4);
+}
+:root[data-layout="hybrid"] .plan:not(.full):not(.console-full) .plan-stage.peek > .prompt-bar {
+  background: var(--ink-raise); border-radius: var(--r2);
+}
+/* A document or Claude's view opened while the console is folded (a PDF from
+   a card, the files pane): a pane over the page, under the top bar, above
+   the dock, rather than nowhere. */
+:root[data-layout="hybrid"] .plan:not(.full):not(.console-full) .plan-stage.peek > :is(.view-pane, .doc-stage:not(:empty)) {
+  position: absolute; z-index: 3; top: var(--under-top); bottom: calc(var(--dock-h, 120px) + 12px); left: 0; right: 0;
+  margin: 0 auto; width: min(980px, calc(100% - 16px)); box-shadow: var(--shadow-pop); border-radius: 12px;
+}
+:root[data-layout="hybrid"] .plan:not(.full):not(.console-full) .plan-stage.peek > .doc-stage:empty { display: none; }
+
+/* the map room: the map takes the page, the ask bar floats on it */
+:root[data-layout="hybrid"] .plan:not(.full):not(.console-full)[data-cview="map"] .plan-stage.peek > .map-wrap {
+  /* stops above the dock (its measured height), so no node sits under it */
+  position: absolute; inset: 0 0 calc(var(--dock-h, 120px) + 8px) 0; pointer-events: auto; border-radius: 16px;
+}
+:root[data-layout="hybrid"] .plan:not(.full):not(.console-full):not([data-cview="map"]) .plan-stage.peek > .map-wrap { display: none; }
+:root[data-layout="hybrid"] .plan:not(.full):not(.console-full)[data-cview="map"]:has(.plan-stage:not(.peek)) .plan-work {
+  grid-column: page-start / work-end;
+}
+:root[data-layout="hybrid"] .plan:not(.full):not(.console-full)[data-cview="map"] .plan-stage:not(.peek):not(.full) {
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 40%);
+  grid-template-rows: minmax(0, 1fr) auto; grid-template-areas: "map console" "map prompt";
+}
+:root[data-layout="hybrid"] .plan:not(.full):not(.console-full)[data-cview="map"] .map-wrap { margin-top: calc(var(--top-h, 48px) + 8px); }
+
+/* ---- the ask bar, folded ----------------------------------------------
+   One row, always whole: the tab strip, the turn's state and action (with
+   Yes / No, Answer or Resume when it needs you), usage, the console's own
+   controls (model · effort, mode, review, ⋯), new tab, full screen, and the
+   open / fold chevron. Where it runs out of room the priority fold
+   (lib/barHost.js) moves the least-needed into ⋯, a real button like every
+   other one, so everything is a click or a Tab away with the chat folded.
+   (Round 5 hid all of it until hovered, and wrapped what it showed, which
+   never let the fold run: unreachable by keyboard, and a jumble on hover.)
+   Queued messages, the task strip and attachments are the composer's, under it. */
+:root[data-layout="hybrid"] .plan-stage.peek .status-bar { padding-left: 12px; padding-right: 6px; }
+/* folded, what it's doing is the point of the bar: controls fold before it does */
+:root[data-layout="hybrid"] .plan-stage.peek .status-bar .st-action:not(:empty) { min-width: min(240px, 36%); }
+:root[data-layout="hybrid"] .plan-stage.peek .status-bar[data-cut~="squeeze"] .st-action { min-width: 0; }
+/* the undo toast floats over the dock, not on the composer */
+:root[data-layout="hybrid"] .plan:not(.full):not(.console-full):has(.plan-stage.peek) .undo-toast {
+  bottom: calc(var(--dock-h, 120px) + 14px + 12px);   /* 14px: .plan's own bottom padding */
+}
+/* over a sheet or the full-screen console only the composer stays: above it */
+.plan:is(.full, .console-full) .undo-toast { bottom: 84px; }
+/* a turn waiting on you keeps the accent edge, so it reads from across the room */
+:root[data-layout="hybrid"] .plan-stage.peek .stage-sheet.waiting { box-shadow: 0 0 0 1.5px var(--accent-ink), var(--shadow-pop); }
+/* the page fades out under the ask bar, so the gap between the bar and the
+   prompt isn't a slice of half-read text (not on the map, which runs to the edge) */
+:root[data-layout="hybrid"] .plan:not(.full):not(.console-full):not([data-cview="map"]) .plan-stage.peek::before {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -14px; height: 190px; z-index: 2; pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--paper) 62%);
+}
+
+/* ---- Today ------------------------------------------------------------ */
+.hy-today { padding-left: 4px; padding-right: 4px; }
+.hy-h { margin: 6px 0 6px; font: 700 var(--text-2xl) var(--sans); letter-spacing: -0.02em; color: var(--paper-ink); }
+.hy-today > .brief-line { margin: 0 0 14px; padding: 0; min-height: 0; }
+.hy-today > .brief-line .brief-text { font-size: var(--text-base); color: var(--paper-mid); }
+.hy-today > :is(.hy-h + .hy-group, .hy-h + .hy-clear) { margin-top: 14px; }
+.hy-sub { margin: 22px 0 10px; font: 600 var(--text-sm) var(--sans); color: var(--paper-mid); }
+.hy-group { margin-bottom: 14px; }
+.hy-group h3 { margin: 0 0 6px; font: 600 var(--text-sm) var(--sans); color: var(--paper-mid); }
+.hy-group .cx-asks { margin: 0; }
+.hy-roomlink {
+  display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; background: none; cursor: pointer;
+  font: inherit; color: inherit;
+}
+.hy-roomlink:hover { color: var(--paper-ink); }
+.hy-roomlink .cx-room-icon { width: 16px; height: 16px; border-radius: 4px; }
+.hy-clear { color: var(--paper-mid); font: var(--text-md) var(--sans); }
+.hy-rooms { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+
+/* ---- the sheet: Sources, a left-behind branch -------------------------- */
+/* the column opens only as a sheet here, holding the panel, not the list
+   (every ask is already on its room's page and Today) */
+:root[data-layout="hybrid"] .plan:not(.full):not(.console-full).side-wide .plan-side {
+  display: flex; position: fixed; z-index: 40; top: calc(var(--top-h, 48px) + 20px); bottom: 96px;
+  left: calc(50% - min(330px, 45vw)); width: min(660px, 90vw);
+  filter: drop-shadow(0 18px 50px rgba(0, 0, 0, 0.45));
+}
+:root[data-layout="hybrid"] .plan.side-wide .plan-side > .side-list { display: none; }
+:root[data-layout="hybrid"] .plan.side-wide .plan-side > .side-panel { flex: 1; max-height: none; }
+.hy-scrim {
+  position: fixed; inset: 0; z-index: 39;
+  background: rgba(0, 0, 0, 0.42); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+}
+
+/* ---- narrow windows ----------------------------------------------------- */
+/* Under 1100px the sidebar folds to its icons (the badges ride on them), and
+   the open console narrows; under 860px the open console takes the page. */
+@media (max-width: 1100px) {
+  :root[data-layout="hybrid"] .plan:not(.full):not(.console-full) { --nav-w: 52px; --gap: 12px; }
+  :root[data-layout="hybrid"] .cx-nav { padding: 10px 6px; align-items: center; }
+  :root[data-layout="hybrid"] .cx-nav :is(.cx-nav-name, .cx-nav-label, kbd) { display: none; }
+  :root[data-layout="hybrid"] .cx-nav ul { width: 100%; }
+  :root[data-layout="hybrid"] .cx-nav-label { display: block; height: 0; margin: 8px 6px; border-top: 0.5px solid var(--paper-line); }
+  :root[data-layout="hybrid"] .cx-nav-item { justify-content: center; padding: 0; height: 36px; }
+  :root[data-layout="hybrid"] .cx-nav-item .cx-badge { position: absolute; top: -2px; right: -3px; min-width: 16px; height: 16px;
+    padding: 0 4px; box-shadow: 0 0 0 2px var(--paper); }
+  :root[data-layout="hybrid"] .cx-nav-search { width: 36px; padding: 0; justify-content: center; }
+  /* the bar keeps the event's name over the weather's high/low */
+  :root[data-layout="hybrid"] .plan-top :is(.glance-chip.weather .hilo, .glance-chip.pin, .glance-chip.sync) { display: none; }
+  :root[data-layout="hybrid"] .plan:not(.full):not(.console-full):has(.plan-stage:not(.peek)) .plan-main {
+    grid-template-columns: var(--nav-w) minmax(0, 1fr) minmax(320px, 44%);
+  }
+}
+@media (max-width: 860px) {
+  :root[data-layout="hybrid"] .plan:not(.full):not(.console-full):has(.plan-stage:not(.peek)) .plan-main {
+    grid-template-columns: var(--nav-w) minmax(0, 1fr); grid-template-areas: "nav work";
+  }
+  :root[data-layout="hybrid"] .plan:not(.full):not(.console-full):has(.plan-stage:not(.peek)) .cx-room { display: none; }
+  :root[data-layout="hybrid"] .plan:not(.full):not(.console-full)[data-cview="map"] .plan-stage:not(.peek):not(.full) {
+    grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto;
+    grid-template-areas: "map" "console" "prompt";
+  }
+  .hy-focus-why { display: none; }
+  .hy-sentence { flex-basis: 200px; }
+}
+@media (max-width: 700px) {
+  .hy-focus-where { display: none; }
+  .hy-focus-count { display: none; }
+  .hy-focus-nav { border-left: 0; }
+}

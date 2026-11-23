@@ -1,0 +1,603 @@
+// A quiz or a deck of flashcards the console wrote, made something to do.
+//
+// The model writes a ```quiz or ```cards fence holding JSON (the format is in
+// console_prompt.py). JSON rather than prose because the answer key has to be
+// in the reply and out of sight: a quiz written as a list gives its answers
+// away before the first one is attempted.
+//
+// Results go back the way a debt nudge does — drafted into the composer, not
+// sent — so the user can add "I guessed on 3" before the console sees them,
+// and the console logs the real misses with course_review_add.
+//
+// A fence still streaming is a placeholder, not a parse error: half a JSON
+// object is the normal state of this block for a few seconds.
+import { useMemo, useState } from "react";
+import Cite from "./Cite.jsx";
+import DocPage from "./DocPage.jsx";
+import MathInput from "./MathInput.jsx";
+import { draftConsole } from "../lib/turn.js";
+import { postJSON } from "../lib/api.js";
+
+// The durable copy of what was answered (study_attempts, read back by the
+// console's study_coverage). Keyed by a hash of the block's source, so
+// sending a block's results twice replaces rather than doubles. Fire and
+// forget: the drafted message is what the user is waiting on.
+function hashOf(s) {
+  let h = 2166136261;
+  for (const ch of str(s)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  return (h >>> 0).toString(16);
+}
+function record(data, items) {
+  postJSON("/api/study/attempts", { block: data.block, course: data.course || null, items })
+    .catch(() => {});
+}
+
+const DOC_CITE = /^([^#\s]{1,64})#p(\d{1,4})$/;
+// A slide is only drawn for a real doc ref; anything looser has nothing to load.
+const DOC_SLIDE = /^(d[0-9a-f]{5,10})#p(\d{1,4})$/;
+
+function SourceCite({ cite, quote }) {
+  const m = DOC_CITE.exec(String(cite || "").trim());
+  if (!m) return null;
+  return <Cite refId={m[1]} page={Number(m[2])} quote={quote || undefined} />;
+}
+
+// The page an item is worked from, drawn beside it — `slide`, as opposed to
+// `cite` (where the answer is, shown only once answered). Drawn per item
+// because the first walk-through put three slides above a six-question quiz
+// and every slide had scrolled away by the time its question came up.
+function Slide({ slide }) {
+  const m = DOC_SLIDE.exec(String(slide || "").trim().toLowerCase());
+  if (!m) return null;
+  return <div className="study-slide"><DocPage docRef={m[1]} page={Number(m[2])} width={520} /></div>;
+}
+const hasSlide = (item) => DOC_SLIDE.test(String(item?.slide || "").trim().toLowerCase());
+
+const str = (v) => (typeof v === "string" ? v : v == null ? "" : String(v));
+
+// The model puts the right answer in the same slot far more often than
+// chance — the first live quiz had all three at B — so the choices are
+// reordered here. Seeded by the question's text, so a re-render (every
+// streamed token re-renders the reply) keeps the order the user is reading.
+function shuffled(q) {
+  let h = 2166136261;
+  for (const ch of str(q.q)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  const rand = () => ((h = Math.imul(h ^ (h >>> 15), 2246822507) >>> 0) / 4294967296);
+  const order = q.choices.map((_, i) => i);
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  return { ...q, choices: order.map((i) => q.choices[i]), answer: order.indexOf(q.answer) };
+}
+
+// Free response: no `choices`, and `answer` is the model answer as text.
+// `accept` (optional) lists short exact answers that check themselves — a
+// number, a term, what a line prints; anything else is revealed and the user
+// grades themselves, with what they wrote sent back so the console can
+// regrade it. `long` asks for a textarea (explain, compare, derive).
+const isFree = (q) => !Array.isArray(q.choices);
+const isChoice = (q) => Array.isArray(q.choices) && q.choices.length >= 2
+  && Number.isInteger(q.answer) && q.answer >= 0 && q.answer < q.choices.length;
+const norm = (s) => str(s).toLowerCase().replace(/[\s`'"“”‘’.,;:!?$\\]+/g, " ").trim();
+
+// How sure (study.CONFIDENCE holds the same values). Right/wrong alone can't
+// tell a slip from a misconception: wrong and sure is the misconception, right
+// and guessed is a pass that won't hold. "don't know" is its own button because
+// it is also an answer — the honest alternative to a guess, which would
+// otherwise score as one in four. Asked before the answer is seen; if that was
+// skipped it can still be given after, marked as such (`late`) because a rating
+// made with the verdict on screen can be fitted to it.
+const RATED = [["guess", "guess"], ["unsure", "unsure"], ["sure", "sure"]];
+const SAID = { guess: "guessing", unsure: "unsure", sure: "sure" };
+const DONT_KNOW = -1;   // `picked` value for a choice question answered "don't know"
+
+function parse(kind, source) {
+  let data;
+  try { data = JSON.parse(source); } catch { return null; }
+  if (Array.isArray(data)) data = kind === "quiz" ? { questions: data } : { cards: data };
+  if (!data || typeof data !== "object") return null;
+  const base = { title: str(data.title), course: str(data.course), block: hashOf(source) };
+  if (kind === "quiz") {
+    const questions = (Array.isArray(data.questions) ? data.questions : []).filter((q) =>
+      q && str(q.q) && (isChoice(q) || (isFree(q) && str(q.answer))));
+    const hints = (q) => (Array.isArray(q.hints) ? q.hints.map(str).filter(Boolean) : []);
+    return questions.length
+      ? { ...base, questions: questions.map((q) => (isFree(q) ? {
+          ...q, free: true, hints: hints(q),
+          accept: (Array.isArray(q.accept) ? q.accept : []).map(norm).filter(Boolean),
+        } : { ...shuffled(q), hints: hints(q) })) }
+      : null;
+  }
+  const cards = (Array.isArray(data.cards) ? data.cards : []).filter((c) =>
+    c && str(c.front) && str(c.back));
+  return cards.length ? { ...base, cards } : null;
+}
+
+function Quiz({ data, inline }) {
+  const [picked, setPicked] = useState({});   // choice question index -> choice index
+  const [typed, setTyped] = useState({});     // free question index -> what they wrote
+  const [spelled, setSpelled] = useState({}); // … a math answer as typed text, for `accept`
+  const [mathMode, setMathMode] = useState({}); // free question index -> math field on or off
+  const [graded, setGraded] = useState({});   // free question index -> { ok, auto } once graded
+  const [shown, setShown] = useState({});     // free question index -> answer revealed, not yet graded
+  const [hinted, setHinted] = useState({});   // question index -> hints opened
+  const [sure, setSure] = useState({});       // question index -> confidence
+  const [late, setLate] = useState({});       // question index -> true when rated after the verdict
+  const [notes, setNotes] = useState({});     // question index -> their question or comment on it
+  const [noting, setNoting] = useState({});   // question index -> note box open
+  const [struck, setStruck] = useState({});   // question index -> { choice index: true } crossed out
+  const qs = data.questions;
+  const strike = (i, j) => setStruck((s) => {
+    const row = { ...s[i] };
+    if (row[j]) delete row[j]; else row[j] = true;
+    return { ...s, [i]: row };
+  });
+  const struckCount = (i) => Object.keys(struck[i] || {}).length;
+  const hintNote = (i) => (hinted[i] ? ` (after ${hinted[i]} hint${hinted[i] > 1 ? "s" : ""})` : "");
+  const lateNote = (i) => (late[i] ? ", rated after seeing the answer" : "");
+  const sureNote = (i) => (SAID[sure[i]] ? `, I was ${SAID[sure[i]]}${lateNote(i)}` : "");
+  const noted = qs.map((q, i) => i).filter((i) => str(notes[i]).trim());
+  const ok =(q, i) => (q.free ? graded[i]?.ok : i in picked ? picked[i] === q.answer : undefined);
+  const answered = qs.filter((q, i) => ok(q, i) !== undefined).length;
+  const right = qs.filter((q, i) => ok(q, i) === true).length;
+
+  function check(q, i) {
+    const mine = norm(typed[i]);
+    if (!mine) return;
+    if (q.accept.includes(mine) || q.accept.includes(norm(spelled[i]))) setGraded((g) => ({ ...g, [i]: { ok: true, auto: true } }));
+    else setShown((s) => ({ ...s, [i]: true }));
+  }
+  function reset() {
+    setPicked({}); setTyped({}); setSpelled({}); setMathMode({}); setGraded({}); setShown({}); setHinted({}); setSure({});
+    setLate({}); setNotes({}); setNoting({}); setStruck({});
+  }
+  function dontKnow(q, i) {
+    setSure((s) => ({ ...s, [i]: "dont_know" }));
+    if (q.free) setGraded((g) => ({ ...g, [i]: { ok: false } }));
+    else setPicked((p) => ({ ...p, [i]: DONT_KNOW }));
+  }
+
+  function send() {
+    const missed = qs.map((q, i) => [q, i]).filter(([q, i]) => ok(q, i) === false);
+    const skipped = qs.length - answered;
+    const lines = [`Quiz results${data.title ? ` (${data.title})` : ""}: ${right}/${qs.length} right`
+      + (skipped ? `, ${skipped} skipped` : "") + "."];
+    if (missed.length) {
+      lines.push("Missed:");
+      for (const [q, i] of missed)
+        lines.push(q.free
+          ? `- Q${i + 1}: ${str(q.q)} — `
+            + (str(typed[i]).trim() ? `I wrote "${str(typed[i]).trim()}"` : "I didn't know")
+            + `, the answer was "${str(q.answer)}"${sureNote(i)}${hintNote(i)}`
+          : `- Q${i + 1}: ${str(q.q)} — `
+            + (picked[i] === DONT_KNOW ? "I didn't know" : `I picked "${str(q.choices[picked[i]])}"`)
+            + `, the answer was "${str(q.choices[q.answer])}"${sureNote(i)}${hintNote(i)}`
+            + (struckCount(i) ? ` (had crossed out ${struckCount(i)} of ${q.choices.length})` : ""));
+    }
+    const helped = qs.map((q, i) => i).filter((i) => ok(qs[i], i) === true && hinted[i]);
+    if (helped.length)
+      lines.push("Right with hints: " + helped.map((i) => `Q${i + 1}${hintNote(i)}`).join(", "));
+    const shaky = qs.map((q, i) => i).filter((i) => ok(qs[i], i) === true
+      && (sure[i] === "guess" || sure[i] === "unsure"));
+    if (shaky.length)
+      lines.push("Right but not sure: " + shaky.map((i) => `Q${i + 1} (${SAID[sure[i]]}${lateNote(i)})`).join(", "));
+    // Self-graded "right"s go back too: the console is the better judge of
+    // whether "it's the derivative" covered what the answer actually asked.
+    const selfRight = qs.map((q, i) => [q, i]).filter(([q, i]) => q.free && graded[i]?.ok && !graded[i].auto);
+    if (selfRight.length) {
+      lines.push("Self-graded right (check me):");
+      for (const [q, i] of selfRight)
+        lines.push(`- Q${i + 1}: ${str(q.q)} — I wrote "${str(typed[i]).trim()}"${sureNote(i)}`);
+    }
+    // Last, and with the question restated: a note is as likely to be on one
+    // they got right, which nothing above would have named.
+    if (noted.length) {
+      lines.push("My notes on specific questions:");
+      for (const i of noted) {
+        const verdict = ok(qs[i], i) === true ? "right" : ok(qs[i], i) === false ? "missed" : "not graded";
+        lines.push(`- Q${i + 1} (${verdict}): ${str(qs[i].q)} — ${str(notes[i]).trim()}`);
+      }
+    }
+    draftConsole(lines.join("\n"));
+    record(data, qs.map((q, i) => [q, i]).filter(([q, i]) => ok(q, i) !== undefined)
+      .map(([q, i]) => ({ idx: i, kind: q.free ? "free" : "choice", question: str(q.q),
+                          correct: ok(q, i), self_graded: !!(q.free && !graded[i]?.auto),
+                          ref: str(q.slide || q.cite), confidence: sure[i] || null,
+                          rated_after: !!late[i] })));
+  }
+
+  // Clicking the lit one clears it. "don't know" is an answer, so it only
+  // exists while the question is open.
+  function confidence(q, i, open) {
+    const rate = (v) => {
+      setSure((s) => {
+        const next = { ...s };
+        if (next[i] === v) delete next[i]; else next[i] = v;
+        return next;
+      });
+      setLate((l) => ({ ...l, [i]: !open && sure[i] !== v }));
+    };
+    return (
+      <div className="study-conf" role="group" aria-label="How sure are you?">
+        <span className="study-conf-label">{open ? "how sure?" : "how sure were you?"}</span>
+        {RATED.map(([v, label]) => (
+          <button key={v} className={`study-act${sure[i] === v ? " on" : ""}`} aria-pressed={sure[i] === v}
+                  onClick={() => rate(v)}>
+            {label}
+          </button>
+        ))}
+        {open && <button className="study-act" onClick={() => dontKnow(q, i)}>don’t know</button>}
+      </div>
+    );
+  }
+
+  // Under an answered question, right or wrong: the rating if it wasn't given
+  // up front, and a note that rides along with the results. A rating given
+  // before the answer stays as it was — that's the one worth trusting, so it
+  // isn't offered for revision once the verdict is showing.
+  function afterAnswer(q, i) {
+    const open = noting[i] || str(notes[i]);
+    return (
+      <div className="study-after">
+        <div className="study-after-row">
+          {sure[i] === "dont_know" ? null
+            : sure[i] && !late[i] ? <span className="study-conf-label">you said {RATED.find(([v]) => v === sure[i])[1]}</span>
+            : confidence(q, i, false)}
+          {!open && (
+            <button className="study-act study-note-btn"
+                    onClick={() => setNoting((n) => ({ ...n, [i]: true }))}>
+              Ask or comment
+            </button>
+          )}
+        </div>
+        {open && (
+          <textarea className="study-input study-note" rows={2} autoFocus={!!noting[i]}
+                    aria-label={`Your question or comment on question ${i + 1}`}
+                    placeholder="Ask about this, or leave a comment. It goes with the results."
+                    value={notes[i] || ""}
+                    onChange={(e) => setNotes((x) => ({ ...x, [i]: e.target.value }))} />
+        )}
+      </div>
+    );
+  }
+
+  // Hints open one at a time, only while the question is still open — once
+  // it's answered the `why` says everything they would have.
+  function hints(q, i, open) {
+    if (!q.hints.length) return null;
+    const n = hinted[i] || 0;
+    return (
+      <>
+        {q.hints.slice(0, n).map((h, k) => (
+          <p key={k} className="study-hint">
+            <span className="study-hint-num">hint {k + 1}</span> {inline(h, `q${i}h${k}`)}
+          </p>
+        ))}
+        {open && n < q.hints.length && (
+          <button className="study-act study-hint-btn"
+                  onClick={() => setHinted((x) => ({ ...x, [i]: n + 1 }))}>
+            {n ? "Another hint" : "Hint"} <span className="study-hint-count">{n}/{q.hints.length}</span>
+          </button>
+        )}
+      </>
+    );
+  }
+
+  return (
+    <div className="study study-quiz">
+      <div className="study-head">
+        <span className="study-kind">quiz</span>
+        {data.title && <span className="study-title">{inline(data.title, "qt")}</span>}
+      </div>
+      {/* One group per run of questions on the same slide: the slide drawn
+          once beside all of them (the first live quiz drew slide 5 three
+          times in a row), pinned while its questions scroll past. Numbered
+          by hand — a grid item loses its list marker. */}
+      <div className="study-qs">
+        {groupBySlide(qs).map((g) => (
+          <div key={g.items[0]} className={`study-q${g.slide ? " with-slide" : ""}`}>
+            {g.slide && <div className="study-slide-pin"><Slide slide={g.slide} /></div>}
+            <div className="study-q-group">
+              {g.items.map((i) => question(qs[i], i))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="study-foot">
+        <span>{answered}/{qs.length} answered{answered ? ` · ${right} right` : ""}</span>
+        <button className="study-act" onClick={reset} disabled={!answered}>Reset</button>
+        <button className="study-act primary" onClick={send} disabled={!answered && !noted.length}>
+          Send results
+        </button>
+      </div>
+    </div>
+  );
+
+  function question(q, i) {
+          if (q.free) return freeQuestion(q, i);
+          const pick = picked[i];
+          const done = pick !== undefined;
+          return (
+              <div key={i} className="study-q-main">
+              <div className="study-q-text">
+                <span className="study-q-num">{i + 1}.</span> {inline(str(q.q), `q${i}`)}
+              </div>
+              {hints(q, i, !done)}
+              {!done && confidence(q, i, true)}
+              {/* A choice can be crossed out while the question is open — the
+                  ✕ at its end, or a right-click on it. Crossed out isn't
+                  ruled out: it can still be picked, as on paper. */}
+              <div className="study-choices">
+                {q.choices.map((c, j) => {
+                  const state = !done ? "" : j === q.answer ? " right" : j === pick ? " wrong" : " dim";
+                  const out = !!struck[i]?.[j];
+                  const letter = String.fromCharCode(65 + j);
+                  return (
+                    <div key={j} className={`study-choice-row${out ? " struck" : ""}`}>
+                      <button className={`study-choice${state}`} disabled={done}
+                              onClick={() => setPicked((p) => ({ ...p, [i]: j }))}
+                              onContextMenu={(e) => { if (!done) { e.preventDefault(); strike(i, j); } }}>
+                        <span className="study-letter">{letter}</span>
+                        <span className="study-choice-text">{inline(str(c), `q${i}c${j}`)}</span>
+                      </button>
+                      {!done && (
+                        <button className="study-strike" aria-pressed={out}
+                                aria-label={out ? `Restore ${letter}` : `Cross out ${letter}`}
+                                title={out ? "Restore" : "Cross out (or right-click the choice)"}
+                                onClick={() => strike(i, j)}>✕</button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {done && (
+                <p className={`study-why${pick === q.answer ? " right" : " wrong"}`}>
+                  <strong>{pick === q.answer ? "Right." : `It’s ${String.fromCharCode(65 + q.answer)}.`}</strong>
+                  {q.why ? <> {inline(str(q.why), `q${i}w`)}</> : null}
+                  <SourceCite cite={q.cite} quote={q.quote} />
+                </p>
+              )}
+              {done && afterAnswer(q, i)}
+              </div>
+          );
+  }
+
+  // Type, check, then either it matched an `accept` or the model answer is
+  // shown beside yours and you call it. Locked once graded, like a choice.
+  function freeQuestion(q, i) {
+    const g = graded[i];
+    const open = !g && !shown[i];
+    const Field = q.long ? "textarea" : "input";
+    const math = mathMode[i] ?? !!q.math;
+    const toggleMath = () => {
+      // Each field's text means something else to the other, so it starts over.
+      setTyped((t) => ({ ...t, [i]: "" }));
+      setSpelled((t) => ({ ...t, [i]: "" }));
+      setMathMode((m) => ({ ...m, [i]: !math }));
+    };
+    return (
+      <div key={i} className="study-q-main">
+        <div className="study-q-text">
+          <span className="study-q-num">{i + 1}.</span> {inline(str(q.q), `q${i}`)}
+        </div>
+        {hints(q, i, open)}
+        {open && confidence(q, i, true)}
+        <div className="study-free">
+          {math && open && (
+            <div className="study-input study-math">
+              <MathInput key={i} label="Your answer" placeholder="Your answer"
+                onChange={(latex, ascii) => {
+                  setTyped((t) => ({ ...t, [i]: latex ? `$${latex}$` : "" }));
+                  setSpelled((t) => ({ ...t, [i]: ascii }));
+                }}
+                onEnter={() => check(q, i)} />
+            </div>
+          )}
+          {math && !open && (
+            <div className={`study-input study-math${g ? (g.ok ? " right" : " wrong") : ""}`}>
+              {inline(str(typed[i]), `q${i}t`)}
+            </div>
+          )}
+          {!math && (
+          <Field className={`study-input${g ? (g.ok ? " right" : " wrong") : ""}`}
+                 value={typed[i] || ""} readOnly={!open} rows={q.long ? 3 : undefined}
+                 placeholder={q.long ? "Write your answer…" : "Your answer"}
+                 onChange={(e) => setTyped((t) => ({ ...t, [i]: e.target.value }))}
+                 onKeyDown={(e) => {
+                   // Enter checks a one-liner; a textarea needs ⌘/Ctrl+Enter.
+                   if (e.key === "Enter" && (!q.long || e.metaKey || e.ctrlKey)) {
+                     e.preventDefault(); check(q, i);
+                   }
+                 }} />
+          )}
+          {open && (
+            <div className="study-free-acts">
+              <button className={`study-act study-math-toggle${math ? " on" : ""}`}
+                      onClick={toggleMath} aria-pressed={math}
+                      title={math ? "Back to plain text" : "Type this as math"}>ƒx</button>
+              <button className="study-act primary" onClick={() => check(q, i)}
+                      disabled={!norm(typed[i])}>Check</button>
+              <button className="study-act" onClick={() => setShown((s) => ({ ...s, [i]: true }))}>
+                Show answer
+              </button>
+            </div>
+          )}
+        </div>
+        {(shown[i] || g) && (
+          <div className={`study-why${g ? (g.ok ? " right" : " wrong") : ""}`}>
+            {g ? <strong>{g.auto ? "Right." : g.ok ? "Marked right."
+                          : sure[i] === "dont_know" ? "Didn’t know." : "Marked missed."}</strong>
+               : <strong className="study-answer-label">Answer:</strong>}
+            {" "}{inline(str(q.answer), `q${i}a`)}
+            {q.why ? <> — {inline(str(q.why), `q${i}w`)}</> : null}
+            <SourceCite cite={q.cite} quote={q.quote} />
+            {!g && (
+              <div className="study-free-acts">
+                <button className="study-act wrong"
+                        onClick={() => setGraded((x) => ({ ...x, [i]: { ok: false } }))}>Missed it</button>
+                <button className="study-act right" disabled={!norm(typed[i])}
+                        onClick={() => setGraded((x) => ({ ...x, [i]: { ok: true } }))}>Got it</button>
+              </div>
+            )}
+          </div>
+        )}
+        {!open && afterAnswer(q, i)}
+      </div>
+    );
+  }
+}
+
+// Consecutive questions that share a slide, as [{ slide, items: [index…] }].
+// Only consecutive: a quiz that returns to slide 5 after slide 6 is asking
+// about it again, and that should be drawn where it's asked.
+function groupBySlide(qs) {
+  const groups = [];
+  qs.forEach((q, i) => {
+    const slide = hasSlide(q) ? String(q.slide).trim().toLowerCase() : null;
+    const last = groups[groups.length - 1];
+    if (last && slide && last.slide === slide) last.items.push(i);
+    else groups.push({ slide, items: [i] });
+  });
+  return groups;
+}
+
+function Cards({ data, inline }) {
+  const all = useMemo(() => data.cards.map((_, i) => i), [data]);
+  const [order, setOrder] = useState(all);
+  const [pos, setPos] = useState(0);
+  const [flipped, setFlipped] = useState(false);
+  const [known, setKnown] = useState({});    // card index -> true (got it) | false (missed)
+
+  const done = pos >= order.length;
+  const card = done ? null : data.cards[order[pos]];
+  const missed = Object.keys(known).filter((k) => known[k] === false).map(Number);
+
+  function mark(ok) {
+    setKnown((k) => ({ ...k, [order[pos]]: ok }));
+    setFlipped(false);
+    setPos((p) => p + 1);
+  }
+  function again(indices) {
+    setOrder(indices);
+    setPos(0);
+    setFlipped(false);
+    setKnown((k) => {
+      const next = { ...k };
+      for (const i of indices) delete next[i];
+      return next;
+    });
+  }
+  function send() {
+    const got = Object.values(known).filter(Boolean).length;
+    const lines = [`Flashcard results${data.title ? ` (${data.title})` : ""}: `
+                   + `${got}/${data.cards.length} known.`];
+    if (missed.length) {
+      lines.push("Missed:");
+      for (const i of missed) lines.push(`- ${str(data.cards[i].front)}`);
+    }
+    draftConsole(lines.join("\n"));
+    record(data, Object.keys(known).map(Number).map((i) => ({
+      idx: i, kind: "card", question: str(data.cards[i].front), correct: known[i],
+      self_graded: true, ref: str(data.cards[i].slide || data.cards[i].cite) })));
+  }
+  // Keys only while the deck has focus, so typing in the composer never flips
+  // a card: space/enter flips, then 1 (or ←) missed, 2 (or →) got it.
+  function onKey(e) {
+    if (done) return;
+    if (e.key === " " || e.key === "Enter") { e.preventDefault(); setFlipped((f) => !f); }
+    else if (flipped && (e.key === "1" || e.key === "ArrowLeft")) { e.preventDefault(); mark(false); }
+    else if (flipped && (e.key === "2" || e.key === "ArrowRight")) { e.preventDefault(); mark(true); }
+  }
+
+  return (
+    <div className="study study-cards" tabIndex={0} onKeyDown={onKey}>
+      <div className="study-head">
+        <span className="study-kind">cards</span>
+        {data.title && <span className="study-title">{inline(data.title, "ct")}</span>}
+        <span className="study-count">{done ? "done" : `${pos + 1} / ${order.length}`}</span>
+      </div>
+      {!done && (
+        <div className={`study-cardrow${hasSlide(card) ? " with-slide" : ""}`}>
+          <Slide key={order[pos]} slide={card.slide} />
+          <div className="study-q-main">
+          <button className={`study-card${flipped ? " flipped" : ""}`}
+                  onClick={() => setFlipped((f) => !f)}
+                  title={flipped ? "Show the front" : "Flip (space)"}>
+            <span className="study-side">{flipped ? "back" : "front"}</span>
+            <span className="study-face">
+              {inline(str(flipped ? card.back : card.front), `c${order[pos]}${flipped ? "b" : "f"}`)}
+            </span>
+          </button>
+          <div className="study-foot">
+            {/* Outside the card: the pill is a button, and the card is one. */}
+            {flipped && card.cite && (
+              <span className="study-source">source <SourceCite cite={card.cite} quote={card.quote} /></span>
+            )}
+            {flipped ? (
+              <>
+                <button className="study-act wrong" onClick={() => mark(false)}>Missed it <kbd>1</kbd></button>
+                <button className="study-act right" onClick={() => mark(true)}>Got it <kbd>2</kbd></button>
+              </>
+            ) : (
+              <button className="study-act" onClick={() => setFlipped(true)}>Flip <kbd>space</kbd></button>
+            )}
+          </div>
+          </div>
+        </div>
+      )}
+      {done && (
+        <div className="study-foot">
+          <span>
+            {Object.values(known).filter(Boolean).length}/{data.cards.length} known
+            {missed.length ? ` · ${missed.length} missed` : ""}
+          </span>
+          {missed.length > 0 && (
+            <button className="study-act" onClick={() => again(missed)}>Again, missed only</button>
+          )}
+          <button className="study-act" onClick={() => { setKnown({}); again(all); }}>Start over</button>
+          <button className="study-act primary" onClick={send}>Send results</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// The model sometimes escapes a newline twice inside the JSON string ("\\n"),
+// so a code question's ``` fence arrives as one line with literal `\n`s in it
+// and showed as backticks and backslashes (11-10). It can mix the two in one
+// string, a real break after the bold title and then a fence written with
+// literal `\n`s, which opened a fence that never closed and drew an empty code
+// box (11-10). So the literal ones are turned into breaks wherever they sit
+// outside math and outside code that's already well formed: `$\nabla f$`,
+// `\neq` and `\nu` are TeX, and the `\n` in a real fence's `printf("\n")` is C.
+const KEEP_SPLIT = new RegExp(`(${[
+  /\$\$[^$]*\$\$|\$[^$]*\$|\\\([\s\S]*?\\\)/.source,   // math
+  /```[^\n]*\n[\s\S]*?```/.source,                     // a fence with real breaks
+  /(?<!`)`[^`\n]+`(?!`)/.source,                       // inline code
+].join("|")})`);
+export function unescapeBreaks(text) {
+  const s = str(text);
+  if (!s.includes("\\n")) return s;
+  return s.split(KEEP_SPLIT).map((part, k) => (k % 2 ? part : part.replace(/\\n/g, "\n"))).join("");
+}
+
+export default function StudyBlock({ kind, source, closed, renderInline }) {
+  const data = useMemo(() => (closed ? parse(kind, source) : null), [kind, source, closed]);
+  const inline = (text, key) => renderInline(unescapeBreaks(text), `study-${key}`);
+  if (!closed) {
+    return <div className="study study-pending">Writing the {kind === "quiz" ? "quiz" : "cards"}…</div>;
+  }
+  if (!data) {
+    // Malformed JSON shouldn't eat the content: show it as the code it is.
+    return (
+      <div className="study study-broken">
+        <p className="study-note">Couldn’t read this as a {kind === "quiz" ? "quiz" : "card deck"}; here’s what was written.</p>
+        <pre className="md-code">{source}</pre>
+      </div>
+    );
+  }
+  return kind === "quiz"
+    ? <Quiz data={data} inline={inline} />
+    : <Cards data={data} inline={inline} />;
+}

@@ -1,0 +1,11 @@
+{
+  "name": "Kestrel",
+  "short_name": "Kestrel",
+  "description": "Answer what Kestrel is waiting on.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0F0F11",
+  "theme_color": "#0F0F11",
+  "icons": [{ "src": "/icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }]
+}

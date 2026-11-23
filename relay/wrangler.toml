@@ -1,0 +1,13 @@
+name = "vault-location-relay"
+main = "src/index.js"
+compatibility_date = "2026-06-01"
+
+# `wrangler d1 create vault-location-relay` prints the id to paste here.
+[[d1_databases]]
+binding = "DB"
+database_name = "vault-location-relay"
+database_id = "<your-d1-database-id>"
+
+# Secrets, set once with `wrangler secret put <NAME>` — never in this file:
+#   INGEST_TOKEN  OwnTracks' password (can only add points)
+#   PULL_TOKEN    the backend's LOCATION_RELAY_TOKEN (reads and deletes)
