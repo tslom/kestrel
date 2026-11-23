@@ -1,4 +1,4 @@
-"""Held messages (app/console_queue.py, New Features #92): typed mid-turn in
+"""Held messages (app/console_queue.py): typed mid-turn in
 "queue" mode, kept in app.db, sent as their own turn when a clean turn ends,
 editable and reorderable until then, handed to the CLI by "steer now", back
 to the prompt on Stop, and still there after a backend reload. Drives the

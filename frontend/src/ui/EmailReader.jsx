@@ -29,7 +29,7 @@ import { fmtDay, fmtTime } from "../lib/time";
 // The Text view is the old stripped rendering, one click away for mail
 // whose HTML is worse than its words.
 //
-// Bodies are never stored (§5), so each open is a Gmail round-trip; the
+// Bodies are never stored, so each open is a Gmail round-trip; the
 // cache is per page load, so reopening a message doesn't pay twice.
 const cache = new Map();
 

@@ -142,7 +142,7 @@ export function useCoursesCard() {
 
   // Reference, not a to-do: hours you can still walk into today are content,
   // a day whose hours have all run out is quiet. The one thing that *does*
-  // ask something of you is a proposed amendment read out of mail (§22) —
+  // ask something of you is a proposed amendment read out of mail —
   // until you approve or reject it, the card is showing hours that mail says
   // are wrong, and that is the one state worth interrupting for.
   // Folded, one open slot can say when it closes — that's the whole decision

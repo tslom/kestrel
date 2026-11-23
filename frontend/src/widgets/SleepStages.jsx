@@ -5,7 +5,7 @@ import { dragPin } from "../lib/drag.js";
 import { useChartWidth } from "../ui/charts.jsx";
 import { dayDate, fmtHM, shortDay } from "../lib/time";
 
-// Sleep-stage stacked bars (IDEAS §11 polish): one bar per night stacking
+// Sleep-stage stacked bars: one bar per night stacking
 // deep / rem / light / awake minutes. The four series are already synced by
 // the health provider (providers/health.py) and served on /api/health — this
 // is UI only, no backend. Depth reads as a single-hue blue ramp (deep darkest

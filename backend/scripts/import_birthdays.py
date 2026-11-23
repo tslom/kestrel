@@ -1,5 +1,4 @@
-"""Rerunnable importer: macOS AddressBook birthdays -> people (archive/ROUND34_PLAN.md
-§17). ZBIRTHDAY is a Core Data timestamp (seconds since 2001-01-01 — the same
+"""Rerunnable importer: macOS AddressBook birthdays -> people. ZBIRTHDAY is a Core Data timestamp (seconds since 2001-01-01 — the same
 APPLE_EPOCH offset chat.db uses for message.date, minus its nanosecond scale)
 representing noon UTC on the birthday. Apple stores a sentinel year (commonly
 1604) when the contact card has no real year, so a year is only kept when

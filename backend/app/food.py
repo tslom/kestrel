@@ -1,4 +1,4 @@
-"""§25 food tracker — what was eaten, against what a lean bulk needs, and what
+"""Food tracker — what was eaten, against what a lean bulk needs, and what
 on campus would close the gap (FOOD_PLAN.md is the spec).
 
 app.db is truth for every row here: `foods` (the reusable thing you eat),
@@ -16,7 +16,7 @@ Numbers carry their provenance. A food's nutrients are per serving; a nutrient
 it doesn't have is absent, never 0, and day totals say how many entries were
 missing it — "you got no vitamin D" and "nobody knows" are different facts.
 
-Targets follow the decision of 2026-10-14: protein is fixed (g/kg every day),
+Targets: protein is fixed (g/kg every day),
 energy is maintenance on a rest day and maintenance + the session's burn + a
 surplus on a training day — a surplus is only built with when there's training
 to build with. A training day is the Exercise habit checked (Fitbit's AZM
@@ -438,7 +438,7 @@ def reconcile(old: dict, given: dict) -> dict:
 
     A correction usually names kcal (and maybe protein) and nothing else. Laid
     over the old row as-is, that left "230 kcal" next to 24 g fat and 17 g
-    carbs, which is 400 kcal of macros (the BBQ chicken, 10-15). So when kcal
+    carbs, which is 400 kcal of macros. So when kcal
     is given, the unstated macros share what's left after the stated ones, in
     their old proportions, and everything else that scales with the amount
     (sugar, sat fat, fiber, sodium, micros) moves by the kcal ratio — most

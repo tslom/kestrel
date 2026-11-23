@@ -14,7 +14,9 @@ import { anchor, commitMessage, conflictMessage, isCode, lines, numbered, place,
 // uncommitted, and — for a tab in its own worktree — its branch against its
 // base, which is the review: what a merge would land
 // (console_worktree.review, merge-base and all), the Merge button, and what
-// the merge would stop on. The change card above it is the ledger of
+// the merge would stop on, then the worktree's uncommitted files (the
+// uncommitted scope's own payload) in a part of their own, since a merge
+// carries only commits. The change card above it is the ledger of
 // *calls*; this is the lines, read off git, so Bash's edits are in it too.
 //
 // Any line in any scope takes a comment (shift-click a second one for a
@@ -346,11 +348,15 @@ export function DiffPane({ turns = [], turn = null, path, scope, project, worktr
   const scopeQuery = `project=${encodeURIComponent(project || "")}`
     + (worktree ? `&worktree=${encodeURIComponent(worktree.path)}` : "");
 
+  // The branch view reads the uncommitted payload too: what the tab changed
+  // but hasn't committed is part of "everything it did", shown apart because
+  // the merge carries only commits.
   function load(v) {
     if (v === "turn" || !project) return Promise.resolve();
-    return fetchJSON(v === "branch" ? `/api/console/review?${scopeQuery}` : `/api/console/diff?${scopeQuery}`)
-      .then((d) => setLoaded((p) => ({ ...p, [v]: d })))
-      .catch((err) => setLoaded((p) => ({ ...p, [v]: { error: err.message, files: [] } })))
+    const one = (k) => fetchJSON(k === "branch" ? `/api/console/review?${scopeQuery}` : `/api/console/diff?${scopeQuery}`)
+      .then((d) => setLoaded((p) => ({ ...p, [k]: d })))
+      .catch((err) => setLoaded((p) => ({ ...p, [k]: { error: err.message, files: [] } })));
+    return Promise.all(v === "branch" ? [one("branch"), one("all")] : [one(v)])
       .finally(() => setGen((g) => g + 1));
   }
   // On open (and the desk's refresh broadcasts); Console calls reloadRef
@@ -365,8 +371,14 @@ export function DiffPane({ turns = [], turn = null, path, scope, project, worktr
   const picked = turnPick ? turns.findIndex((t) => t.entry === turnPick) : -1;
   const turnAt = picked >= 0 ? picked : turns.length - 1;
   const data = view === "turn" ? { files: turns[turnAt]?.files || [] } : loaded[view];
-  const files = data?.files || [];
-  const file = files.find((f) => f.path === current) || files[0];
+  const committed = data?.files || [];
+  // Branch view only: the worktree's uncommitted files, after the commits.
+  // The same path can be in both, so a row's key carries its part.
+  const loose = view === "branch" && !data?.error
+    ? (loaded.all?.files || []).map((f) => ({ ...f, uncommitted: true })) : [];
+  const files = [...committed, ...loose];
+  const rowKey = (f) => (f.uncommitted ? `u:${f.path}` : f.path);
+  const file = files.find((f) => rowKey(f) === current) || files.find((f) => f.path === current) || files[0];
   const conflicts = (result?.conflicts?.length ? result.conflicts.map((p) => ({ path: p, regions: [] })) : null)
     || (view === "branch" && review?.conflicts) || [];
   const conflictOf = (p) => review?.conflicts?.find((c) => c.path === p)
@@ -464,8 +476,9 @@ export function DiffPane({ turns = [], turn = null, path, scope, project, worktr
     bands.push(
       <Band key="dirty" tone="plain" action="Ask the tab to commit" onAction={onSend && (() => ask(commitMessage(review.dirty)))}>
         {review.dirty.length} uncommitted file{review.dirty.length === 1 ? "" : "s"} in the tab's worktree
-        {review.dirty.length === 1 ? " isn't" : " aren't"} in this review, and the merge waits for
-        {review.dirty.length === 1 ? " it" : " them"} to be committed: {review.dirty.slice(0, 6).join(", ")}
+        {" "}(listed under <em>uncommitted</em>) {review.dirty.length === 1 ? "isn't" : "aren't"} in any commit, so
+        the merge won't carry {review.dirty.length === 1 ? "it" : "them"}, and it won't run until
+        {review.dirty.length === 1 ? " it's" : " they're"} committed or dropped: {review.dirty.slice(0, 6).join(", ")}
         {review.dirty.length > 6 ? ` and ${review.dirty.length - 6} more` : ""}
       </Band>);
   }
@@ -474,8 +487,25 @@ export function DiffPane({ turns = [], turn = null, path, scope, project, worktr
     : view === "turn" ? (turns.length ? "Nothing changed." : "No turn in this session's log has changed the repo yet.")
     : view === "all" ? "Nothing uncommitted."
     : review && !review.ahead ? `No commits beyond ${worktree.base} yet.`
-      + (review.dirty?.length ? " What's there is uncommitted: see uncommitted." : "")
     : "Nothing to review.";
+  const row = (f) => {
+    const [dir, name] = base(f.path);
+    const cf = view === "branch" && !f.uncommitted && conflictOf(f.path);
+    return (
+      <button key={rowKey(f)} className={`dp-frow${f === file ? " on" : ""}${f.uncommitted ? " loose" : ""}`}
+        onClick={() => setCurrent(rowKey(f))} title={f.path}>
+        <span className={`df-st ${f.status}`}>{STATUS[f.status] || "M"}</span>
+        <span className="df-path"><span className="df-name">{name}</span>
+          <span className="df-dir">{dir}</span></span>
+        {cf && <span className="df-cf" title={`conflicts with ${worktree.base}`}>conflict</span>}
+        {byFile.get(f.path) > 0 && (
+          <span className="df-nc" title="your comments on it">
+            <Icon name="message" size={10} />{byFile.get(f.path)}</span>
+        )}
+        <Counts f={f} />
+      </button>
+    );
+  };
 
   return (
     <div className="diff-pane" tabIndex={-1} onKeyDown={(e) => {
@@ -484,7 +514,7 @@ export function DiffPane({ turns = [], turn = null, path, scope, project, worktr
       if (e.key !== "j" && e.key !== "k") return;
       const i = files.indexOf(file);
       const next = files[(i + (e.key === "j" ? 1 : -1) + files.length) % files.length];
-      if (next) setCurrent(next.path);
+      if (next) setCurrent(rowKey(next));
     }}>
       <div className="dp-head">
         <span className="dp-seg">
@@ -492,7 +522,7 @@ export function DiffPane({ turns = [], turn = null, path, scope, project, worktr
             disabled={!turns.length} title="What one turn changed: the latest, or pick another">turn</button>
           {worktree && (
             <button className={view === "branch" ? "on" : ""} onClick={() => pick("branch")}
-              title={`${worktree.branch} against ${worktree.base}: everything the tab committed, what a merge would land`}>
+              title={`${worktree.branch} against ${worktree.base}: the commits a merge would land, then what's still uncommitted`}>
               vs {worktree.base}</button>
           )}
           <button className={view === "all" ? "on" : ""} onClick={() => pick("all")}
@@ -530,31 +560,25 @@ export function DiffPane({ turns = [], turn = null, path, scope, project, worktr
               )}
             </div>
           )}
-          {data !== undefined && files.length === 0 && <p className="status">{empty}</p>}
-          {files.map((f) => {
-            const [dir, name] = base(f.path);
-            const cf = view === "branch" && conflictOf(f.path);
-            return (
-              <button key={f.path} className={`dp-frow${f === file ? " on" : ""}`}
-                onClick={() => setCurrent(f.path)} title={f.path}>
-                <span className={`df-st ${f.status}`}>{STATUS[f.status] || "M"}</span>
-                <span className="df-path"><span className="df-name">{name}</span>
-                  <span className="df-dir">{dir}</span></span>
-                {cf && <span className="df-cf" title={`conflicts with ${worktree.base}`}>conflict</span>}
-                {byFile.get(f.path) > 0 && (
-                  <span className="df-nc" title="your comments on it">
-                    <Icon name="message" size={10} />{byFile.get(f.path)}</span>
-                )}
-                <Counts f={f} />
-              </button>
-            );
-          })}
+          {data !== undefined && committed.length === 0 && <p className="status">{empty}</p>}
+          {loose.length > 0 && committed.length > 0 && <div className="dp-part">committed · the merge lands these</div>}
+          {committed.map(row)}
+          {loose.length > 0 && (
+            <div className="dp-part loose" title="In the worktree but in no commit: worktree_merge carries only commits">
+              uncommitted · won't merge yet</div>
+          )}
+          {loose.map(row)}
         </div>
         <div className="dp-patch">
+          {file?.uncommitted && (
+            <div className="dp-note dp-loose">uncommitted: in the worktree, in no commit yet, so a merge
+              wouldn't carry this. Diffed against the tab's last commit.</div>
+          )}
           {file && (
-            <Patch key={`${view}:${file.path}:${view === "turn" ? turnAt : gen}`} file={file} view={view}
+            <Patch key={`${view}:${rowKey(file)}:${view === "turn" ? turnAt : gen}`} file={file}
+              view={file.uncommitted ? "all" : view}
               review={review} scope={scopeQuery} branch={worktree?.branch} base={worktree?.base}
-              conflict={view === "branch" ? conflictOf(file.path) : null}
+              conflict={view === "branch" && !file.uncommitted ? conflictOf(file.path) : null}
               notes={comments.filter((c) => c.path === file.path)}
               draft={draft} onPick={startComment} onDraft={(body) => setDraft((d) => ({ ...d, body }))}
               onSave={saveDraft} onCancel={() => setDraft(null)}

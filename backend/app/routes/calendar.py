@@ -1,4 +1,4 @@
-"""Calendar writes — the WRITE face of the calendar provider (IDEAS §2).
+"""Calendar writes — the WRITE face of the calendar provider.
 
 The provider only reads: Google Calendar is the truth and `events` in app.db is
 a droppable cache of it. Creating, moving, cancelling and RSVPing are explicit
@@ -6,10 +6,9 @@ actions, and they live here rather than in the provider for the reason the
 mailbox writes live in routes/email.py — a provider that mutates its own
 upstream stops being a cache of it.
 
-Until 2026-08-16 these existed only as claude.ai MCP connector tools, and that
-connector goes needs-auth in every headless session (console_prompt.py's
-SYSTEM_APPEND has the history), so the console could read the calendar all week and not move
-one event. This path goes out through the backend's own Google token — the same
+The claude.ai MCP connector tools can't stand in for these: that connector
+goes needs-auth in every headless session, so the console could read the
+calendar all week and not move one event. This path goes out through the backend's own Google token — the same
 one the provider reads with — and works wherever the backend does.
 
 A repeat is a property of an event, not a fifth operation: Google stores one
@@ -330,8 +329,8 @@ def _reschedule(event: dict, start: str | None, end: str | None,
         # Timed <-> all-day. A PATCH merges into the stored start and end
         # rather than replacing them, so an all-day event handed a clock time
         # would hold both `date` and `dateTime`, which Google refuses as
-        # "Invalid start time". 11-18: four refusals in two sessions, each
-        # worked around by deleting the event and creating it again. A null is
+        # "Invalid start time" — and the console then works around it by
+        # deleting the event and creating it again. A null is
         # how a PATCH clears a field.
         stale = ({"date": None} if "dateTime" in pair["start"]
                  else {"dateTime": None, "timeZone": None})

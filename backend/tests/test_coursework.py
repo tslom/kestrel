@@ -5,7 +5,7 @@ import pytest
 from app.providers import coursework
 from app.providers.ranges import parse_range
 
-# Shapes copied from the real feed (2026-10-13).
+# Shapes copied from the real feed.
 FEED = "\r\n".join([
     "BEGIN:VCALENDAR",
     "BEGIN:VEVENT",

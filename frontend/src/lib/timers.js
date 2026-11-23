@@ -1,7 +1,7 @@
 // Every wall-clock delay in src/ goes through here; this is the one file
 // eslint.config.js lets call setTimeout. The ban is there because agents
 // reach for a timeout to paper over an ordering bug (wait 300ms and hope the
-// state landed). Each one that was doing that on 11-22 was really waiting on
+// state landed). Every one found doing that here was really waiting on
 // something it could name: a re-render, a subscriber, a backend job. So
 // before you add a delay, find the event, promise or response it would be
 // guessing at, and wait on that.

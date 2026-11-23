@@ -201,8 +201,8 @@ async def test_a_stop_landing_after_the_result_does_not_mark_the_next_turn(socke
 #
 # A Bash call that outlives its timeout goes to the background; the model ends
 # its turn, and when the command finishes the CLI runs another turn unasked.
-# Read per query, that reply never rendered and every later answer arrived one
-# turn late (session 1c15caea, 2026-10-23).
+# Read per query, that reply never renders and every later answer arrives one
+# turn late.
 
 
 def _said(text):
@@ -266,10 +266,10 @@ async def test_an_unprompted_turn_can_be_stopped_and_holds_the_input(socket):
 
 # ---------- Stop always answers ----------
 #
-# 10-29: a mode switch with an approval card up reconnected the tab, and the
-# turn died with the old socket. The page still thought it was running, so
-# Stop was the only control on screen — and Stop on a socket with nothing
-# running got no reply at all. The tab sat there until a reload.
+# A mode switch with an approval card up can reconnect the tab, and the turn
+# dies with the old socket. The page still thinks it is running, so Stop is
+# the only control on screen — and Stop on a socket with nothing running
+# must still get a reply, or the tab sits there until a reload.
 
 
 @pytest.mark.anyio

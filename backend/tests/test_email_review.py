@@ -1,4 +1,4 @@
-"""Review files every message so it can be found again (IDEAS §5).
+"""Review files every message so it can be found again.
 
 Three things have to hold for that to be worth doing. The label set stays
 closed — a model that invents a label is how free-form bins forked into
@@ -174,7 +174,7 @@ def test_unsubscribe_files_after_the_request(con, gmail, monkeypatch):
 
 
 def test_filing_is_the_one_post_marked_safe_to_resend(con, gmail):
-    """The modify call is what Gmail dropped on 10-26 and 11-01."""
+    """The modify call is the one Gmail has been seen to drop."""
     with con:
         _email(con, "m7")
     email_routes.post_action("m7", email_routes.ActionIn(action="keep",
@@ -228,8 +228,8 @@ def test_a_lost_network_is_a_502_with_a_reason_not_a_bare_500(monkeypatch):
 
 
 def test_one_click_falls_back_to_mailto_when_refused(con, gmail, monkeypatch):
-    """Consensus via loops.so, 10-29: Cloudflare 403'd the POST. The header
-    carried a mailto too, and a refused POST reached nobody, so that's next."""
+    """Consensus via loops.so: Cloudflare 403s the POST. The header carries a
+    mailto too, and a refused POST reaches nobody, so that's next."""
     def refused(url):
         raise email_routes.HTTPException(502, "unsubscribe endpoint returned 403")
     mailed = []

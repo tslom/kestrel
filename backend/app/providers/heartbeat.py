@@ -160,7 +160,7 @@ def _record_freshness(provider: str) -> None:
     `broke`/`recovered` above read the *refresh outcome*, so a source that
     keeps refreshing successfully while its cache stops advancing leaves no
     trace at all: the `stale` state is computed live by routes/status.py and
-    evaporates the moment the data catches up. That happened on 2026-09-13 —
+    evaporates the moment the data catches up. It has happened:
     location ingest stopped for four days and then OwnTracks' store-and-forward
     flushed the backlog, and `provider_events` for location was *empty*
     afterwards. The outage was real, self-healing, and completely unrecoverable

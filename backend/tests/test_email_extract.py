@@ -1,7 +1,6 @@
 """Package identity in providers/email_extract.py.
 
-The spec here is one real order. Campus Ready's confirmation (2026-08-02)
-carried merchant + order id and created `Campus Ready:41415`. Its reply two
+The spec here is one real order. Campus Ready's confirmation carried merchant + order id and created `Campus Ready:41415`. Its reply two
 days later gave the pickup date — "Orders will be available for pick-up at the
 USC bookstone patio on August 18th" — and named neither an order number nor a
 tracking number, only the sending domain. The extractor parsed it correctly
@@ -336,7 +335,7 @@ def test_backfill_does_not_shove_an_old_delivery_into_the_return_window(dbfile):
     assert ex.active_packages() == []
 
 
-# ---------- the at-desk channel (§21 step 4) ----------
+# ---------- the at-desk channel ----------
 
 def _queued():
     con = db.connect()
@@ -450,11 +449,10 @@ def test_an_unchanged_flight_status_queues_nothing(dbfile):
 
 # ---------- create_trip (flights no email will ever mention) ----------
 #
-# Live case: the 2026-08-17 RDU->LAX move flight, AA 2299 on PNR FLZUNL. It sat
-# on the calendar and in no other store, so /api/trips returned only the two
-# November legs and the travel card read "2 trips booked" meaning Thanksgiving.
-# The booking predates the mail sync's own history (earliest message 06-01), so
-# there was no message to extract and never would be.
+# Live case: the RDU->LAX move flight, AA 2299 on PNR FLZUNL. It sat on the
+# calendar and in no other store, so /api/trips left it out and the travel
+# card's count meant only the other trips. The booking predates the mail
+# sync's own history, so there is no message to extract and never will be.
 
 def _trips():
     con = db.connect()
@@ -544,8 +542,7 @@ def test_create_trip_rejects_a_non_iata_airport(dbfile):
 # ---------- live status: which of an ident's flights, and from which zone ----------
 #
 # Payloads below are trimmed from real AeroAPI responses for AA2299 (the move
-# flight's own ident), captured 2026-08-12 while verifying the poller had ever
-# worked. Two facts they encode and no unit test can rediscover: the API returns
+# flight's own ident). Two facts they encode and no unit test can rediscover: the API returns
 # an ident's operations *newest first*, and some rows carry no schedule at all.
 
 def _op(sched_out, *, zone="America/New_York", gate=None, status="Scheduled",
@@ -650,9 +647,8 @@ def test_a_bad_request_does_not_mark_the_source_degraded(dbfile, monkeypatch):
 # ---------- the poll loop itself, which nothing covered ----------
 #
 # Everything above tests one lookup. These test which rows get looked up at all
-# — the horizon SQL, the re-check interval, and what gets written back. Until
-# 2026-08-12 the only poll_flight_status test asserted it returns 0 with the key
-# unset, so the loop had neither run in production nor been exercised here.
+# — the horizon SQL, the re-check interval, and what gets written back. A test
+# that only asserts it returns 0 with the key unset exercises none of the loop.
 
 def _banners():
     """What the at-desk channel was told, oldest first. Ordered by rowid rather
@@ -669,7 +665,7 @@ def _banners():
 @pytest.fixture
 def polling(monkeypatch):
     """The poller with its one outside edge stubbed: the network. The
-    notification edge needs no stub since §21 step 4 — notify.send() only
+    notification edge needs no stub — notify.send() only
     queues a row, and it is _post(), reached from flush(), that shells out to
     osascript. So the assertions below read the queue via _banners()."""
     monkeypatch.setattr(ex, "AEROAPI_KEY", "k")

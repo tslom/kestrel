@@ -90,7 +90,7 @@ async def one(question: str, arm: str) -> dict:
 
 def explored(calls: list[str]) -> int:
     """Calls made before the first run_script: the schema-finding the
-    script arm is supposed to do without (11-17: 2-3 db_query probes).
+    script arm is supposed to do without (typically 2-3 db_query probes).
     ToolSearch is loading the tools, not exploring, so it doesn't count; a
     run that never scripts counts every call."""
     before = calls[:calls.index("run_script")] if "run_script" in calls else calls

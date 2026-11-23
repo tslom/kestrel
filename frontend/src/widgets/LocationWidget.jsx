@@ -9,16 +9,16 @@ import { dragPin } from "../lib/drag.js";
 import { fmtDur, dayKeyLabel, fmtTime } from "../lib/time.js";
 import { fmtKm } from "../lib/units.js";
 
-// Location card (IDEAS §10), on the lede form.
+// Location card, on the lede form.
 //
-// The card's standing problem is unchanged and still shapes everything here:
+// The card's standing problem shapes everything here:
 // OwnTracks reports *movement*, so every number is a lower bound over whatever
 // slice of the day got recorded, and **silence is not a failure** — a phone
 // that sits at home all day produces no fixes at all, which looks exactly like
 // OwnTracks having died. The last fix's location breaks the tie.
 //
-// What the lede form changes is that distance/places/at-home/pattern no longer
-// get a four-cell grid every day. They're a muted line unless one of them
+// On the lede form distance/places/at-home/pattern don't get a four-cell
+// grid every day. They're a muted line unless one of them
 // actually broke pattern, and the out-and-back clock times, the entropy label
 // and the 28-day trend live in the sheet.
 //

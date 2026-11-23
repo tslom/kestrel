@@ -1,7 +1,7 @@
 """PreToolUse hook on Bash: refuse a command that can't work here, and say what does.
 
 Exit 2 blocks the call and hands stderr back to the model. Each rule is a
-failure class mined from 30 days of transcripts (10-19 to 11-18), and
+failure class mined from 30 days of transcripts, and
 backend/tests/test_bash_check.py replays the real commands:
 
 - `timeout` / `gtimeout`: macOS has neither (no coreutils). 46 calls in 37

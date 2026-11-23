@@ -8,13 +8,13 @@ import Icon from "../ui/icons.jsx";
 import { dragPin } from "../lib/drag.js";
 import { fmtDur } from "../lib/time.js";
 
-// Music card (IDEAS §8), on the lede form.
+// Music card, on the lede form.
 //
 // This card had the most on it and the least at stake: four stat cells, the
 // top track, a genre mix with a coverage caveat, the last thing played, and a
 // rolling-week sparkline with a top artist — all of it about whether you put
 // music on. Listening is something you did, never something you have to do,
-// so it reports HAS or QUIET and now earns even that.
+// so it reports HAS or QUIET and earns even that.
 //
 // The top track survives the cut where the genre mix and the last-played line
 // don't, because it's the one line here a person actually reads. The rest —

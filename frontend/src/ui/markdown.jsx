@@ -1,6 +1,6 @@
-// The markdown renderer for console output, lifted out of Console.jsx: it
-// holds no state and knows nothing about the component, and BriefWidget needs
-// the inline half of it too. Pure move — the parser below is unchanged.
+// The markdown renderer for console output, apart from Console.jsx: it holds
+// no state and knows nothing about the component, and BriefWidget needs the
+// inline half of it too.
 import { lazy, Suspense } from "react";
 import VaultLink from "./VaultLink.jsx";
 import Cite from "./Cite.jsx";
@@ -18,9 +18,9 @@ import { FILE_PATH_SRC, looksLikePath } from "../lib/paths";
 // KaTeX can't parse.
 //
 // The load must not reject. lazy() caches a rejection and rethrows it on every
-// render, so one failed import took the page down for good: 11-03, a window
-// open across a rebuild asked for a chunk that build had deleted, and a tutoring
-// reply's first formula blanked the desk until the app was restarted. A miss
+// render, so one failed import takes the page down for good: a window open
+// across a rebuild asks for a chunk that build deleted, and the first formula
+// blanks the desk until the app is restarted. A miss
 // costs the typesetting and nothing else. There's no retry: this page's chunk
 // is gone from the server, so only a reload (⌘R) brings KaTeX back.
 const RAW_TITLE = "KaTeX didn't load — reload (⌘R) to typeset this";
@@ -107,7 +107,7 @@ const CITE_SRC = "\\[cite:([^\\]\\s]{1,64})\\]";
 const DOC_CITE_SRC = '\\[(?:cite|page):([^\\]\\s#]{1,64})#p(\\d{1,4})(?:\\s+"([^"\\]\\n]{1,300})")?\\]';
 
 // The constructs below the math were added after replaying every console
-// reply on record through this renderer (scratch audit, 2026-10-27) and
+// reply on record through this renderer and
 // listing what came out raw — plus the CommonMark/GFM forms the model is
 // known to write that hadn't turned up yet. A bold run's body steps over
 // code spans whole, or **`char**`** closes on the stars inside the code.
@@ -115,7 +115,7 @@ const DOC_CITE_SRC = '\\[(?:cite|page):([^\\]\\s#]{1,64})#p(\\d{1,4})(?:\\s+"([^
 // The lookahead keeps the two alternatives disjoint, and it isn't optional.
 // With both able to match a code span, every span is a coin flip the regex
 // retries when the closer never comes, 2.6× per span: an unclosed ** with 22
-// code spans on its line took 10s on the main thread (measured 11-03), and an
+// code spans on its line takes 10s on the main thread, and an
 // unclosed ** is what every bold line looks like while it streams. A boundary
 // can't catch a hang.
 const SPAN = "(?:`[^`\\n]+`|(?!`[^`\\n]+`)[^\\n])+?";
@@ -377,8 +377,8 @@ function renderList(items, cur, key) {
 
 // The same text, the same elements. The console re-renders its whole log on
 // every keystroke in the prompt and every streamed token, and in a long chat
-// re-parsing each message (and re-typesetting its math) was the lag
-// (New Features, 11-10). Handing React back the identical element objects lets
+// re-parsing each message (and re-typesetting its math) is the lag.
+// Handing React back the identical element objects lets
 // it skip those subtrees outright. Output depends on nothing but the text, so
 // the cache is safe; bounded, oldest out first.
 const MD_CACHE_MAX = 600;

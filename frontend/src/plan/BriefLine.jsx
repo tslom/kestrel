@@ -24,8 +24,8 @@ export default function BriefLine({ asks, onPin, onFull }) {
   const [open, setOpen] = useState(false);
   // Not the console's own rows (`console:` ids: an approval card, a question,
   // tabs the limit stopped). They last seconds and are already on screen, and
-  // each one was a new set of asks, so a model call: about 250 of the
-  // ~530 background calls in the week to 11-17 (New Features #53).
+  // each one would be a new set of asks, so a model call: left in, they are
+  // about half of this line's background calls (New Features #53).
   const payload = asks.filter((a) => !String(a.id || "").startsWith("console:"))
     .map((a) => ({ title: a.title, why: (a.why || "").replace(AGE, "").trim(),
                    card: a.card || null }));

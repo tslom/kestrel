@@ -16,7 +16,7 @@ def test_a_subagent_is_followed_from_start_to_finish():
         "usage": {"total_tokens": 12000, "tool_uses": 4, "duration_ms": 9000}})
     row = agents["t1"]
     assert (row["last_tool"], row["tokens"], row["tool_uses"]) == ("Grep", 12000, 4)
-    # progress's description is the activity (measured 11-13, CLI 2.1.318), not the task
+    # progress's description is the activity (measured on CLI 2.1.318), not the task
     assert row["description"] == "Find the brief route"
     assert row["activity"] == "Searching for brief"
     assert ca.apply(agents, "task_notification", {

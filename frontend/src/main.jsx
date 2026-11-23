@@ -54,7 +54,7 @@ if (isSpecimen()) {
   // for the theme tool's screenshot. No console, no cards, no sockets.
   mountSpecimen(document.getElementById("root"));
 } else {
-  // Themes Kestrel made (lib/look.js): from the server now, and again whenever
+  // Themes Kestrel made (lib/look.js): from the server at load, and again whenever
   // a console turn sets one.
   loadThemes();
   onTopic("looks", loadThemes);

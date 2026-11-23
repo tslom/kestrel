@@ -3,10 +3,9 @@ import { report } from "../lib/report";
 
 // Fault isolation for one card.
 //
-// Until this existed there was no boundary anywhere in the desk, so any widget
-// throwing during render unmounted the whole tree: twenty-eight working cards
-// replaced by a blank page, and the only trace in a devtools console nobody
-// had open. That is the opposite of how the provider layer behaves one floor
+// Without a boundary, any widget throwing during render unmounts the whole
+// tree: twenty-eight working cards replaced by a blank page, and the only
+// trace in a devtools console nobody has open. That is the opposite of how the provider layer behaves one floor
 // down, where a source that breaks reports four states and keeps the others
 // running.
 //

@@ -145,9 +145,9 @@ def test_db_query_caps_rows(dbfile):
 
 
 def test_db_query_names_the_real_columns_after_a_guess(dbfile):
-    """22 `no such column` refusals in the 14 days to 11-18 (`li.text` for
-    `name`, `messages.date` for `day`), each answered by a schema probe or
-    another guess. The error now carries the columns of every table the
+    """A `no such column` refusal (`li.text` for `name`, `messages.date` for
+    `day`) gets answered by a schema probe or another guess, so the error
+    carries the columns of every table the
     statement reads, aliases and all."""
     db.create_task(title="seed")
     text, err = call(ct.db_query, sql="SELECT i.text FROM lists l JOIN "
@@ -169,8 +169,8 @@ def test_db_query_suggests_tables_with_near_names(dbfile):
 
 
 def test_db_query_stops_a_runaway_query(dbfile, monkeypatch):
-    """A correlated subquery per message row (11-18) held its call until the
-    CLI's MCP timeout, 1,260s: the general tab sizes it for use_computer."""
+    """A correlated subquery per message row holds its call until the CLI's
+    MCP timeout, 1,260s: the general tab sizes it for use_computer."""
     db.create_task(title="seed")
     monkeypatch.setattr(ct, "DB_QUERY_SECONDS", 0.2)
     started = time.monotonic()
@@ -294,9 +294,9 @@ def test_reddit_search_needs_a_subreddit(monkeypatch):
 
 def test_reddit_search_translates_a_busy_archive(monkeypatch):
     """The archive says "Timeout. Maybe slow down a bit", which reads as a
-    rate limit and invites an immediate retry. The old advice, "narrow it",
-    was the waste on 11-17: the search was down, and every narrower retry
-    422'd too. The tool now points past the archive instead."""
+    rate limit and invites an immediate retry. "Narrow it" is the wrong
+    advice: when the search is down every narrower retry 422s too. The tool
+    points past the archive instead."""
     from app.providers import reddit
 
     def busy(*a, **k):
@@ -551,8 +551,7 @@ def test_list_item_done_ticks_off_and_undoes(dbfile):
 
 
 def test_list_item_done_attaches_a_note_and_keeps_the_old_one(dbfile):
-    """11-17: every research tab wanted to say where its report was when it
-    ticked its item off, and the tool had nowhere to put it."""
+    """A research tab says where its report is when it ticks its item off."""
     item = db.create_list_item(_shopping(), name="Research X", note="from the user")
     text, err = call(ct.list_item_done, item_id=item["id"], note="Report: R/X.md")
     assert not err and "Report: R/X.md" in text
@@ -1118,10 +1117,10 @@ def test_package_delete_requires_an_order_key(dbfile):
 
 # ---------- trip_add ----------
 #
-# The 2026-08-17 move flight was on the calendar and in no other store, so
-# /api/trips returned only the November legs and the travel card read "2 trips
-# booked" meaning Thanksgiving. Nothing in the system could have added it: the
-# booking predates the mail sync's history, so there was no message to extract.
+# A flight can be on the calendar and in no other store, so /api/trips leaves
+# it out and the travel card's count means only the other trips. Nothing else
+# in the system can add it when the booking predates the mail sync's history:
+# there is no message to extract.
 
 def test_trip_add_puts_a_flight_on_the_card_with_no_email_behind_it(dbfile):
     text, err = call(ct.trip_add, flight_no="2299",
@@ -1155,9 +1154,9 @@ def test_trip_add_reports_a_bad_airport_rather_than_raising(dbfile):
 
 # ---------- trip_delete ----------
 #
-# 2026-11-17: FLZUNL's AA3042 on 11-29 was exchanged for the 11-22 AA2308, and
-# the airline's change email opened the new leg without ever closing the old,
-# so the card showed both and the dead leg kept its check-in task and alarm.
+# An exchanged flight: the airline's change email opens the new leg without
+# ever closing the old, so the card shows both and the dead leg keeps its
+# check-in task and alarm.
 
 def _two_legs():
     for dep in ("2026-11-22T09:40:00", "2026-11-29T05:00:00"):
@@ -1317,9 +1316,9 @@ def served(name, **args):
 
 
 def test_a_refusal_reaches_the_cli_as_an_error(dbfile):
-    """_err said `isError`, which the SDK server doesn't read, so all 82
-    handler refusals in the 14 days to 11-18 went out as successes: green
-    cards, and failed writes counted in the turn's change summary."""
+    """The SDK server doesn't read `isError`, so a refusal sent that way goes
+    out as a success: a green card, and a failed write counted in the turn's
+    change summary."""
     db.create_task(title="seed")
     text, err = served("db_query", sql="SELECT * FROM no_such_table")
     assert err and text.startswith("error: no such table")
@@ -1371,8 +1370,8 @@ def test_email_body_takes_id_past_the_schema(monkeypatch):
 
 def test_email_body_reads_by_the_ref_an_email_line_ends_in(dbfile, monkeypatch):
     """A `provider source=email` line carries its ref and no id, so the ref is
-    what the model passes: five calls in one session on 11-18 came back "no
-    cached message 'e12f01'" for emails that were cached all along."""
+    what the model passes; read only by msg_id it comes back "no cached
+    message 'e12f01'" for an email that was cached all along."""
     from app import citations
     from app.providers import email as email_provider
     with db.session() as con, con:

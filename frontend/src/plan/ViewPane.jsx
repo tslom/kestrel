@@ -15,7 +15,7 @@ const TerminalPane = lazy(() => import("../console/TerminalPane.jsx").catch(() =
 
 // Claude's view: the map's place in the stage, given over to what Claude is
 // looking at. Beside the conversation, at a size you can read, like a preview
-// pane in an editor. Two things can be there:
+// pane in an editor. What can be there:
 //
 //   seen     the images tools handed the model this turn: a file it read, a
 //            Chrome screenshot. Newest shows unless you pick one.

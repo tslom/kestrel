@@ -65,7 +65,7 @@ export function useCalendarCard() {
     reload();
   }, [view, reload, setPayload]);
 
-  // Leave-by times for today's located events (§14). A clock, so it's
+  // Leave-by times for today's located events. A clock, so it's
   // re-read every few minutes rather than only on the refresh bus; the
   // backend caches the Routes lookups for 5 minutes, so the glance strip
   // asking too costs nothing extra.

@@ -111,7 +111,7 @@ def _profile(deno: str, workdir: str) -> str:
     lits = " ".join(f"(literal {q(p)})" for p in meta_dirs)
     trees = " ".join(f"(subpath {q(p)})" for p in read_trees)
     # The mach services Deno touches at startup (logging, directory lookups,
-    # trust evaluation). Narrower than mach-lookup for all: tested 11-17.
+    # trust evaluation). Narrower than mach-lookup for all, and tested.
     mach = " ".join(q(s) for s in (
         "com.apple.system.opendirectoryd.libinfo", "com.apple.logd",
         "com.apple.system.notification_center", "com.apple.trustd.agent",
@@ -258,7 +258,7 @@ class Run:
 class Bridge:
     reads: dict[str, Any]                 # name -> SdkMcpTool
     writes: list[str] = field(default_factory=list)
-    # Phase 2: approve(name, args) -> bool, awaited before a write runs.
+    # Awaited before a write runs.
     approve: Callable[[str, dict], Awaitable[bool]] | None = None
     max_calls: int = MAX_CALLS
     timeout: float = TIMEOUT_S
@@ -426,10 +426,9 @@ def render(run: Run) -> str:
 
 
 # The app.db tables questions join, for db_query inside a script. Without it
-# the 11-17 eval spent 2-3 db_query calls on sqlite_master and
-# pragma_table_info before every script, which is what ate the token savings.
-# Columns are the ones answers use, not every one; checked against app.db
-# 11-18 (tests/test_console_code.py holds them to the live schema).
+# a script costs 2-3 db_query calls on sqlite_master and pragma_table_info
+# first, which eats the token savings. Columns are the ones answers use, not
+# every one (tests/test_console_code.py holds them to the live schema).
 SCHEMA_TABLES = {
     "fin_transactions": "transaction_id, day, merchant, name, amount, category, pending",
     "expense_reviewed": "transaction_id",

@@ -137,8 +137,7 @@ def index_note(con: sqlite3.Connection, path: Path) -> bool:
     con.executemany("INSERT INTO links (src, target) VALUES (?,?)",
                     [(rel, t) for t in link_targets(post.content)])
 
-    # Checkbox tasks found in notes, for the by-hand query in IDEAS.md's
-    # reconcile-sweep note — the tasks DB is truth now; the generated tasks.md
+    # Checkbox tasks found in notes, for a by-hand reconcile sweep — the tasks DB is truth now; the generated tasks.md
     # view is skipped to avoid re-ingesting our own output.
     if rel != TASKS_VIEW_FILE:
         for i, line in enumerate(post.content.splitlines(), start=1):

@@ -3,7 +3,7 @@
 The console asks the browser for permission from inside `can_use_tool`, once
 per call, and an assistant turn can emit several calls at once. A card apiece
 meant the user answered the first while the rest sat queued: three
-`event_create` calls on 2026-08-29 all came back "AbortError: Stream closed"
+`event_create` calls in one turn all came back "AbortError: Stream closed"
 with the later cards never answered, and that error accounts for 15 of the
 console's failed tool calls on record.
 

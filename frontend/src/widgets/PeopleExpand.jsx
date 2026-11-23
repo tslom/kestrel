@@ -33,12 +33,11 @@ const rowId = (w) => `${w.kind}-${w.key}-${w.last_at}`;
 // so the two gestures can't drift into sending different things.
 //
 // The identifier the row was drawn from rides along, because the pin carries
-// exactly one message and that message is a reply to something. Session
-// 5719a6e8 pinned "Actually here just in case ‪+1 (555) 010-0142‬" and asked
-// to update a contact; the console read it as the sender offering a second
-// number of their own, when the turn above it was "Can you send me Sam's
-// contact" and the number was Sam's. It had no way to see that turn and no
-// pointer to go looking. `their_latest_message` is named for what it is, and
+// exactly one message and that message is a reply to something: a pinned
+// "here just in case +1 (555) …" reads as the sender offering a second
+// number of their own when the turn above it asked for someone else's
+// contact, and without a pointer the console can't go looking for that turn.
+// `their_latest_message` is named for what it is, and
 // chat_guid / thread_id are what a db_query over `messages` or `emails` needs
 // to read what came before it.
 const waitingPin = (w) => ({

@@ -56,14 +56,14 @@ async def refresh_all() -> dict:
 
 
 def _reconcile_alarms_sync() -> object:
-    """§21 alarm reconcile, in a worker thread like the providers — it opens
+    """Alarm reconcile, in a worker thread like the providers — it opens
     app.db and would otherwise block the event loop on the same write lock."""
     from ..alarms import reconcile
     return reconcile()
 
 
 def _flush_notify_sync() -> object:
-    """§21 step 4's at-desk queue, drained last in the cycle so a banner a
+    """The at-desk queue, drained last in the cycle so a banner a
     provider enqueued a moment ago goes out in the same cycle rather than
     waiting for the next one. Same worker-thread and same guard as the alarms
     reconcile — this one shells out to osascript, so it has more ways to hang
@@ -73,7 +73,7 @@ def _flush_notify_sync() -> object:
 
 
 def _reconcile_wake_sync() -> object:
-    """§21 step 5's scheduled wake, last because it reads the alarms table that
+    """The scheduled wake, last because it reads the alarms table that
     _reconcile_alarms_sync just wrote — running it first would schedule wakes
     for the previous cycle's alarms. Shells out to pmset, so same guard as the
     others: a power-management refusal must not cost the cycle."""
@@ -140,7 +140,7 @@ POST_STEPS = (
 
 
 async def sync_all() -> dict:
-    """A whole cycle: every provider, the §21 alarm reconcile, the at-desk
+    """A whole cycle: every provider, the alarm reconcile, the at-desk
     queue, then the wake schedule that keeps the next cycle possible.
 
     Kept distinct from refresh_all() rather than folded into it. `refresh_all`

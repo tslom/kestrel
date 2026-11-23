@@ -8,8 +8,8 @@ const BACKEND = process.env.KESTREL_BACKEND_PORT || "8788";
 
 // A window outlives the build it loaded. Dev tabs build all day under an open
 // Kestrel window, whose page still imports its own hashed chunks on demand, so
-// a build that empties dist 404s whatever that page hasn't fetched yet — KaTeX
-// on 11-03, which blanked the desk on the first formula of the afternoon. So
+// a build that empties dist 404s whatever that page hasn't fetched yet — KaTeX,
+// say, which blanks the desk on the next formula. So
 // emptyOutDir is off below and old chunks age out here instead. Rollup rewrites
 // everything a build emits, so an mtime this old means no build wants the file.
 // A week outlasts an open window in practice; past it, ui/markdown.jsx fails soft.
@@ -36,13 +36,13 @@ function pruneOldAssets() {
 // antialiases to a faint smear or nothing ("n 1" for "n−1"), depending on where
 // it lands. Poppler and Preview give a mask at least one whole pixel per axis;
 // this does the same in pdf.js's compiled-glyph painter, snapped to the pixel
-// row/column under the glyph's centre. 6.5.438 (11-07) still has the bug.
+// row/column under the glyph's centre. 6.5.438 still has the bug.
 //
 // That alone isn't enough: the glyph's `d1` bbox (5 20 60 22 for the minus) is
 // just as thin, and pdf.js clips to it before painting. Chrome antialiases the
-// clip, so the snapped bar came out 50–75% grey; WebKit — what Kestrel.app
+// clip, so the snapped bar comes out 50–75% grey; WebKit — what Kestrel.app
 // runs — drops it outright wherever the hairline straddles pixel rows, so
-// "a[j 1]" survived the first fix there (11-08). So the clip grows one device
+// "a[j 1]" survives the snap alone there. So the clip grows one device
 // pixel each way on any axis under a pixel; the image row it must admit lies
 // within half a pixel of the bbox, and nothing outside the mask paints anyway.
 //

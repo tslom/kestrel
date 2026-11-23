@@ -4,8 +4,6 @@ None->404 translations. The DB is the temp one from `dbfile`; the tasks.md
 regeneration side effect is stubbed (see the `client` fixture)."""
 
 
-# ---------- tasks ----------
-
 def test_post_and_get_task(client):
     r = client.post("/api/tasks", json={"title": "write route tests"})
     assert r.status_code == 200
@@ -81,8 +79,6 @@ def test_post_task_validation_error_422(client):
     r = client.post("/api/tasks", json={"due": "2026-01-01"})
     assert r.status_code == 422
 
-
-# ---------- habits ----------
 
 def test_post_and_get_habit(client):
     r = client.post("/api/habits", json={"name": "meditate"})

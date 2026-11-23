@@ -713,7 +713,7 @@ def _upload(name, data, mime=""):
 
 
 def test_a_dropped_image_comes_back_as_itself_with_no_reader(monkeypatch):
-    """"Transcribe" turned a CAD sketch into "10.00 5.00 10.00 5.00" on 11-03:
+    """"Transcribe" turned a CAD sketch into "10.00 5.00 10.00 5.00":
     every word on screen and none of the picture. Your own drop goes to the
     session as the image; only what arrives on its own gets the tool-free
     reader."""
@@ -781,8 +781,8 @@ def _sips_fixture(tmp_path, fmt, extra=()):
 
 
 def test_dropped_avif_is_converted(monkeypatch, tmp_path):
-    """09-28: a browser-saved AVIF came back 'unreadable', and the user was
-    asked to resend it as a JPG."""
+    """A browser-saved AVIF is converted, not called 'unreadable' with a
+    request to resend it as a JPG."""
     avif = _sips_fixture(tmp_path, "avif")
     assert attachments._sniff_avif(avif) and not attachments._sniff_heic(avif)
     out = _upload("menu.avif", avif, "image/avif")
@@ -800,7 +800,7 @@ def test_a_big_screenshot_is_held_to_the_long_edge(tmp_path):
 
 
 def test_dropped_oversized_photo_is_shrunk_not_refused(monkeypatch, tmp_path):
-    """09-23: a 13.5MB photo was refused as too large to show the model."""
+    """A 13.5MB photo is shrunk, not refused as too large to show the model."""
     png = _sips_fixture(tmp_path, "png", ("-Z", "3000"))
     if len(png) <= attachments.ATTACHMENT_VISION_MAX_BYTES:
         pytest.skip("fixture came out small enough to send as-is")
@@ -1084,9 +1084,9 @@ def test_both_spellings_of_the_pass_type_reach_the_local_parser():
 
 # ---------- Word files ----------
 #
-# Added after a 10-16 console session couldn't read four dietitian handouts —
-# three of them pasted-in label images with a caption apiece. So the text alone
-# is not the answer; the pictures have to come back too, undecoded.
+# Handouts like a dietitian's are often pasted-in label images with a caption
+# apiece, so the text alone is not the answer; the pictures have to come back
+# too, undecoded.
 
 _WNS = ('xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
         'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '

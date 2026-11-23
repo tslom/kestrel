@@ -14,8 +14,7 @@ import Icon from "../ui/icons.jsx";
 //
 // The card is the same component the rail desk drew, over the same hook
 // result, so opening it never refetches and what it shows can't drift from
-// what ranked it. (The source's 24-sync history joins it with the map's
-// rings, IDEAS step 5.)
+// what ranked it.
 export default function CardDetail({ id, card, level, onClose, onFull, onPin, openSheet }) {
   const band = level === NEEDS ? "needs" : level === HAS ? "has" : "quiet";
   const word = level === NEEDS ? "needs you" : level === HAS ? "today" : "quiet";

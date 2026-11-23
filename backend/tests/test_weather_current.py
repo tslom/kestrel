@@ -1,9 +1,9 @@
 """weather.current() — the glance strip's chip, and what it does when
 Open-Meteo is down.
 
-The case these exist for is the one the `failures` table recorded on four
-separate days between 2026-09-05 and 2026-09-13: upstream answered 502, the
-route turned that into a 502 of its own, and the chip went blank. A cached
+The case these exist for is one the `failures` table recorded on four
+separate days: upstream answered 502, the route turned that into a 502 of its
+own, and the chip went blank. A cached
 reading is the fix, and the thing worth pinning is that it is never passed off
 as live — `stale` and `as_of` have to survive, and a reading too old to mean
 anything has to stop being served at all.

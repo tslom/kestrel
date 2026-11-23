@@ -1,4 +1,4 @@
-"""§22 — office-hours amendments read out of mail, waiting on approval.
+"""Office-hours amendments read out of mail, waiting on approval.
 
 A Piazza post saying "no OH Thursday" is the one piece of course data that
 arrives by mail and goes stale in the vault. Applying it automatically was the
@@ -334,9 +334,9 @@ def test_a_quote_naming_no_or_several_weekdays_keeps_the_date(dbfile, vault_cour
 
 # ---------- a new weekly block (action='add') ----------
 #
-# The 10-02 CSCI 103 digest: a TA signing "Devon" announced standing Thursday
-# hours "starting next week", and the extractor said relevant:false because
-# the prompt then ruled every standing schedule out. These run against a real
+# A course digest where a TA signing "Devon" announces standing Thursday
+# hours "starting next week" must not read as relevant:false, as it did when
+# the prompt ruled every standing schedule out. These run against a real
 # note on disk, because approval goes through courses.set_hours for real.
 
 DEVON_QUOTE = ("Starting next week, I will be holding office hours from 12-2 pm "

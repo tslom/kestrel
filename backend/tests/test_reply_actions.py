@@ -1,7 +1,7 @@
 """The two things you can do with a thread you owe a reply to, short of
 replying: put it on today's list, or ask for a draft.
 
-Both are suggestion-only by design (§17) — remind creates a task you asked
+Both are suggestion-only by design — remind creates a task you asked
 for, draft returns text you copy. Neither sends anything.
 """
 

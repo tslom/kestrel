@@ -6,10 +6,10 @@ import { CARD_NAME } from "../widgets/cards.js";
 import "./agents.css";
 
 // The agent visualizer, from round 5 of the look lab (New Features #46);
-// Orbs by default, Cursors or Off in the look lab (data-agents). The user on
-// the map's agent dots: "good but not useful enough". His idea: the agents
-// move around the UI itself, to whatever they're reading or writing, so you
-// can see what's being touched.
+// Orbs by default, Cursors or Off in the look lab (data-agents). The map's
+// agent dots alone don't say enough, so the agents move around the UI
+// itself, to whatever they're reading or writing, so you can see what's
+// being touched.
 //
 // Each working tab (and each live subagent) is one agent. Its current tool
 // call already names a map node (lib/turn.js nodeFor: a provider's source, a

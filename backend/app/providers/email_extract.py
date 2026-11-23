@@ -1,4 +1,4 @@
-"""Email extractors (archive/ROUND34_PLAN.md §15 packages + §16 travel) — a shared
+"""Email extractors (packages + travel) — a shared
 pipeline over the already-synced `emails` table: candidates by from/subject
 heuristics -> body fetched transiently by msg_id (email_triage.body_excerpt
 — never stored, same posture as triage) -> batched cheap-model extraction
@@ -12,13 +12,13 @@ served by their own read routes (app/routes/extract.py). refresh(token) runs
 inside email.refresh()'s cadence, called last, same way that module already
 calls email_triage.summarize_pending(token).
 
-§16 also polls FlightAware AeroAPI for live status on trips departing soon
+Travel also polls FlightAware AeroAPI for live status on trips departing soon
 (poll_flight_status) — a quiet no-op until AEROAPI_KEY is configured; trip
 extraction from email works without it. T-24h before departure it
 auto-creates a "Check in <flight>" task (source='travel', deduped on
 source_ref=pnr:flight_no:dep_day via task_exists_for_source, same pattern as
 finance.py's bill auto-task). A delay or gate change, and a package moving
-forward a status, queue an at-desk banner through app/notify.py (§21 step 4) in
+forward a status, queue an at-desk banner through app/notify.py in
 addition to surfacing in the daily brief.
 """
 
@@ -75,7 +75,7 @@ TRIP_SYSTEM = (
     'reply with just {"id": "...", "relevant": false} for it.'
 )
 
-# §22. Unlike the two above, nothing here is applied on the model's word — the
+# Office-hours proposals. Unlike the two above, nothing here is applied on the model's word — the
 # output is a *proposal* you approve, so the prompt's real job is to make the
 # proposal checkable. Hence `quote`, which is required and must be verbatim:
 # it's the one field a human can verify at a glance, and every other field is
@@ -86,10 +86,9 @@ TRIP_SYSTEM = (
 # proposal then points at a note that doesn't exist; constraining it to the
 # codes actually in the vault turns that into a `relevant: false`.
 #
-# `add` exists because the 10-02 CSCI 103 digest was dropped: "Starting next
-# week, I will be holding office hours from 12-2 pm on Thursdays" is a new
-# weekly block, and the prompt then said a standing schedule was never an
-# amendment. `current_hours` is injected beside the codes so a post that only
+# `add` exists because "Starting next week, I will be holding office hours
+# from 12-2 pm on Thursdays" is a new weekly block, and a prompt that calls a
+# standing schedule never an amendment drops it. `current_hours` is injected beside the codes so a post that only
 # restates what the note already says can still be told apart from news —
 # and _upsert_oh_proposal checks that again against the note itself.
 OFFICE_HOURS_SYSTEM = (
@@ -170,7 +169,7 @@ def _oh_preamble() -> str:
             f"current_hours: {json.dumps(current)}\n\n")
 
 
-# ---------- §22 proposals: read and decide ----------
+# ---------- office-hours proposals: read and decide ----------
 
 def pending_oh_proposals(con=None) -> list[dict]:
     """Proposals still waiting on you, soonest date first.
@@ -223,7 +222,7 @@ def decide_oh_proposal(proposal_id: int, approve: bool) -> dict:
                 where=row["where_str"], role=row["role"])
         elif approve:
             # The room too: "office hours on lower level 2 today" is a change
-            # of where, not when, and dropping it applied nothing (11-17).
+            # of where, not when, and dropping it applies nothing.
             applied = courses.set_exception(
                 row["course"], row["who"] or "", row["day"],
                 when=row["when_str"],
@@ -312,8 +311,8 @@ def _snap_to_quoted_weekday(day: date, quote: str) -> date:
     """Move `day` onto the weekday the quote names, if the model missed it.
 
     The model resolves "Thursday next week" against the send date and gets the
-    arithmetic off by one — 2026-09-25's "Thursday next week" came back as
-    Friday 10-02. The weekday in the sentence is the part a human wrote, so
+    arithmetic off by one — "Thursday next week" can come back as the
+    Friday. The weekday in the sentence is the part a human wrote, so
     when the quote names exactly one and the date disagrees, the nearest date
     on that weekday (within three days) wins. Several weekdays, or none, and
     the model's date stands."""
@@ -551,7 +550,7 @@ def _upsert_package(con, item: dict, msg_id: str, now: str) -> str | None:
 
 def _notify_package_move(con, order_key: str, existing, status: str,
                          merchant: str | None) -> None:
-    """At-desk banner when a package's status moves forward (§21 step 4).
+    """At-desk banner when a package's status moves forward.
 
     **On a transition, never on discovery.** A row that didn't exist a moment ago
     gets nothing, even if it arrives already reading 'delivered' — we can't tell
@@ -678,7 +677,7 @@ def _run_extraction(con, token: str, kind: str, candidates: list[dict],
     return done
 
 
-# ---------- §16 live flight status ----------
+# ---------- live flight status ----------
 
 def _match_flight(flights: list[dict], dep_day: str) -> dict | None:
     """Pick the operation that departs on dep_day out of an ident's several.
@@ -695,7 +694,7 @@ def _match_flight(flights: list[dict], dep_day: str) -> dict | None:
 
     Matched on the origin's timezone as the response itself reports it, which
     is deliberately *not* tz.zone_on(): that answers "which zone is the user in
-    that day", and on a moving day the two disagree — the 08-17 RDU->LAX flight
+    that day", and on a moving day the two disagree — an RDU->LAX move flight
     departs in Eastern on a date TIMELINE files under Pacific. The airport's own
     zone is the only right frame for a scheduled departure.
     """
@@ -777,7 +776,7 @@ def ensure_checkin_tasks(con) -> int:
     were opened.
 
     Deliberately outside poll_flight_status(). This used to be one call inside
-    that function's loop, which meant the single piece of §16 needing no
+    that function's loop, which meant the single piece of travel needing no
     external service at all sat behind the credential for the one that does:
     with AEROAPI_KEY unset the poller returns 0 before the loop, so no check-in
     task had ever been created. A task needs a row and a clock, nothing else.
@@ -798,8 +797,8 @@ def ensure_checkin_tasks(con) -> int:
 def _apply_flight_status(con, row: dict, status: dict, now: str) -> None:
     """Land the new status, and announce it if it's the kind worth interrupting
     for. The announcement goes through app/notify.py rather than the local
-    `_notify` this used to own — the channel had been sitting in this file since
-    §16 without a second caller, which is exactly how it went unnoticed that it
+    `_notify` this used to own — the channel had been sitting in this file for
+    months without a second caller, which is exactly how it went unnoticed that it
     never fired (the only path to it is below AEROAPI_KEY's early return).
 
     The queue write shares the UPDATE's transaction, in both directions: if the
@@ -842,7 +841,7 @@ def _apply_flight_status(con, row: dict, status: dict, now: str) -> None:
 
 def poll_flight_status(con) -> int:
     """FlightAware AeroAPI live status for trips departing soon (poll-cost
-    control per archive/ROUND34_PLAN.md §16): only flights within
+    control): only flights within
     FLIGHT_POLL_HORIZON_HOURS, re-checked at most every
     FLIGHT_POLL_INTERVAL_HOURS until FLIGHT_POLL_CLOSE_HOURS out, then every
     poller cycle. Quiet no-op until AEROAPI_KEY is set."""
@@ -1132,7 +1131,7 @@ def create_trip(flight_no: str, dep_local: str, pnr: str | None = None,
     """Open a trips row from what the user says, no email involved.
 
     Same hole `create_package` closed, one store over, and found the same way:
-    the 2026-08-17 RDU->LAX move flight was on the calendar and in no other
+    an RDU->LAX move flight was on the calendar and in no other
     store, so the travel card read "2 trips booked" and meant Thanksgiving.
     Every path into `trips` starts at a message in *this* mailbox, and that
     booking predates the mail sync's own history — there is no message to

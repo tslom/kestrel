@@ -3,9 +3,8 @@
 app.db is the source of truth for tasks, habits, checkins, debts, lists and
 the OAuth tokens — everything the vault's markdown deliberately does *not*
 hold. It had a backup script from day one and no schedule, which is a
-distinction only visible from outside: on 2026-09-19 the newest full snapshot
-was 2026-07-22, 59 days and 97MB of growth earlier, and nothing anywhere said
-so. A script nobody runs is not a backup.
+distinction only visible from outside: the newest full snapshot was once 59
+days and 97MB of growth old, and nothing anywhere said so. A script nobody runs is not a backup.
 
 **Lazy, not cron.** The scheduler this replaces would have fired at 4:30am
 into a closed lid (the same reason the daily brief generates on first open and

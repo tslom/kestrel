@@ -1,4 +1,4 @@
-"""§21 alarm delivery via Reminders — the surface that reaches a shut laptop.
+"""Alarm delivery via Reminders — the surface that reaches a shut laptop.
 
 Reminders is the target for one reason: iCloud syncs it to the phone, so an
 alarm written here fires on a device the user actually has, hours after this
@@ -73,8 +73,8 @@ def _run(script: str, *args: str) -> str:
                 break
             time.sleep(_RETRY_WAIT)
     # Every retry hit -609: not the auto-quit race but a wedged instance.
-    # On 11-11 one answered -609 to 18 straight attempts over six cycles and
-    # a leave alarm never reached the phone. Waiting doesn't clear that;
+    # One can answer -609 to every attempt for several cycles running, and
+    # then an alarm never reaches the phone. Waiting doesn't clear that;
     # killing it does (its data is in iCloud, nothing is lost).
     _restart_reminders()
     try:

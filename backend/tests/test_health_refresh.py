@@ -17,8 +17,6 @@ from app import db
 from app.providers import health, http
 
 
-# ------------------------------------------------------------------ http retry
-
 class _Resp(io.BytesIO):
     def __enter__(self):
         return self
@@ -134,8 +132,6 @@ def test_health_marks_its_rollup_posts_idempotent(monkeypatch):
     health._api("https://x", "tok", body={"range": {}})
     assert seen["method"] == "POST" and seen["idempotent"] is True
 
-
-# ------------------------------------------------------- partial health sync
 
 DAY = "2026-09-14"
 CIVIL = {"date": {"year": 2026, "month": 9, "day": 14}}

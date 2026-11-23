@@ -1,4 +1,4 @@
-"""Spotify provider (IDEAS §8) — authorization-code + PKCE against
+"""Spotify provider — authorization-code + PKCE against
 accounts.spotify.com, public client (no client secret). Spotify is truth;
 `plays` in app.db is NOT a purely derived cache (see the v16 migration
 comment in db.py) — the recently-played endpoint only ever returns the last

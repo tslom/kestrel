@@ -1,6 +1,6 @@
 """location.py feature computation — the derived metrics over raw
 `location_points`. Focus on the dwell-gated `places` count (the driving-day
-transit-inflation fix, walk-tested 2026-07-24) and that entropy stays over all
+transit-inflation fix, walk-tested) and that entropy stays over all
 clusters."""
 
 import math
@@ -141,10 +141,10 @@ def test_summary_skips_a_day_too_thin_to_trust(dbfile, monkeypatch):
 
 
 def test_a_burst_of_fixes_is_not_a_covered_day(dbfile, monkeypatch):
-    """The gate this replaced counted fixes, and a dense burst is where that
-    came apart: 2026-07-29 holds the highest fix count in the whole series
-    (121) inside 2.4h of coverage — one drive, waved through as a full day
-    whose 0 places and 0 min at home then read as facts. Many fixes over a
+    """A gate that counts fixes comes apart on a dense burst: the day with
+    the highest fix count in the whole series (121) holds 2.4h of coverage —
+    one drive, waved through as a full day whose 0 places and 0 min at home
+    then read as facts. Many fixes over a
     short window is the *least* trustworthy shape, not the most."""
     burst, full = "2026-07-24", "2026-07-23"
     monkeypatch.setattr(db, "day_key", lambda dt=None: burst)

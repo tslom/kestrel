@@ -1,6 +1,6 @@
 """Which place each visit was, and what the signature learner may claim.
 
-The premise is a correction to §24's: a cluster is not a place. The hub
+The premise is a correction to the place suggester's: a cluster is not a place. The hub
 cluster in this vault spans 168m and holds Leavey Library, McCarthy Quad,
 Everybody's Kitchen, Birnkrant and SSCI, and coordinates cannot separate them
 (p50 17m / p90 47m of error against ~15m of separation), nor can time alone,
@@ -39,8 +39,6 @@ def _seed_fixes(day="2026-09-05", n=6):
     con.close()
 
 
-# -------------------------------------------------------------------- storing
-
 def test_label_round_trips_and_clears(dbfile):
     visits.label("2026-09-05T19:00:00", *HUB, "Leavey Library")
     assert [r["name"] for r in visits.labels_at(*HUB)] == ["Leavey Library"]
@@ -57,8 +55,6 @@ def test_labels_are_local_to_their_cluster(dbfile):
     visits.label("2026-09-05T19:00:00", *HUB, "Leavey Library")
     assert visits.labels_at(34.1153, -112.2882) == []
 
-
-# ------------------------------------------------------------------ predicting
 
 def _examples(rows):
     return [(visits._signature(_stay(d, h, m)), name) for d, h, m, name in rows]
@@ -126,8 +122,6 @@ def test_duration_compares_as_a_ratio(dbfile):
     c = visits._signature(_stay("2026-09-01", 19, 80))
     assert visits._similarity(a, b) == pytest.approx(visits._similarity(b, c), rel=1e-6)
 
-
-# ----------------------------------------------------------------- the listing
 
 def test_sightings_are_shown_marked_and_never_learned_from(dbfile, monkeypatch):
     """25 of the hub's 60 real visits are one fix and then MAX_GAP_MIN of
@@ -202,8 +196,6 @@ def test_names_used_here_are_offered_back(dbfile, monkeypatch):
     out = visits.over(*HUB, ranges.parse_range("2026-09-01..2026-09-30"))
     assert out["used_before"] == ["Everybody's Kitchen", "Leavey Library"]
 
-
-# -------------------------------------------------------------------- calendar
 
 def test_same_recurring_event_pulls_two_visits_together(dbfile):
     """The calendar's one safe use here: identity, never position. Two visits

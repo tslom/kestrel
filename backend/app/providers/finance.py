@@ -1,4 +1,4 @@
-"""Finance provider (archive/PLAID_PLAN.md phase 2; archive/ROUND34_PLAN.md §18 deeper) —
+"""Finance provider (archive/PLAID_PLAN.md phase 2) —
 bank balances + transactions + recurring streams + liabilities via Plaid.
 Plaid is truth; `fin_accounts` + `fin_transactions` + `fin_recurring` +
 `fin_liabilities` in app.db are the derived cache (droppable — a cursor
@@ -25,7 +25,7 @@ Flipping for humans happens only at display layers (brief_line, widget).
 Day mapping: Plaid's civil `date` field (like calendar/health), not
 db.day_key(); day_key only anchors "today" via ranges.py.
 
-Products gotcha (§18): items originally linked with `products: ["transactions"]`
+Products gotcha: items originally linked with `products: ["transactions"]`
 only don't have liabilities consent. `/liabilities/get` on such an item
 raises PRODUCTS_NOT_SUPPORTED or ADDITIONAL_CONSENT_REQUIRED — caught and
 surfaced as item status `needs_consent`, which reuses the FinanceWidget's
@@ -217,7 +217,7 @@ def _sync_recurring(con, item: dict, now: str) -> bool:
 
 def _maybe_create_bill_task(con, account_id: str, due_day: str | None,
                              min_payment: float | None, label: str) -> None:
-    """The ONE finance auto-task (archive/ROUND34_PLAN.md §18) — a credit card's
+    """The ONE finance auto-task — a credit card's
     minimum payment, due_day - BILL_TASK_LEAD_DAYS through due_day.
     Dedupes on source_ref=account_id:due_day, so a paid-off/dismissed task
     doesn't reappear this cycle, and next month's due_day makes a fresh

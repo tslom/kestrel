@@ -1,4 +1,4 @@
-"""Features provider (archive/ROUND34_PLAN.md §11) — the keystone cross-provider day
+"""Features provider — the keystone cross-provider day
 matrix. One row per (day, feature): a pure *denormalization* of the other
 providers' cache tables into a single tall table the brief/console can reason
 over. **No external calls, no LLM, no sibling-provider get()** (those trigger
@@ -125,10 +125,6 @@ def _location_covered_days(con, days):
     covered = location.coverage_minutes(con, days)
     # Absent coverage is refused: this number is derived from the raw points,
     # so absent means no fixes at all. is_thin owns that rule for both callers.
-    # (The screen source had the opposite rule — absent coverage *passed*,
-    # because days synced before the metric existed were unknown rather than
-    # thin. It was removed with the rest of §7 on 2026-09-13, so this is now
-    # the only coverage gate and the contrast it was written against is gone.)
     return {d for d in days if not location.is_thin(covered.get(d))}
 
 
@@ -140,23 +136,19 @@ def _location_covered_days(con, days):
 #
 # The sensors that ride on hardware being awake need one; the pollers don't.
 # health/weather run server-side whether or not anything happens, so a 0 from
-# them is an observation. Only location is left in this class — screen was the
-# other, removed with §7 on 2026-09-13.
+# them is an observation. Only location is in this class.
 #
 # OwnTracks reports *movement*: a day with a single fix computes 0 places and 0
 # minutes at home, which is byte-for-byte a day spent indoors and the exact
 # opposite of the truth. location.summary() already refuses such a day, so
-# without this the card and the matrix disagreed about the same date —
-# 2026-07-21 (one fix) was a gap on the card and a never-left-the-house
-# observation in the correlations.
+# without this the card and the matrix disagree about the same date — a
+# one-fix day is a gap on the card and a never-left-the-house observation in
+# the correlations.
 #
-# aw-server was assumed to be the always-on counter-example until it turned out
-# to be a hand-launched GUI app that had been dead since 2026-08-04. It only
-# observed while the Mac was awake and the watchers were up, so a
-# barely-watched day's 0 active_min was the same lie in the same place. Kept
-# here after §7's removal because it is the clearest statement of the rule this
-# gate exists for: a sensor's silence is only a zero if the sensor was
-# watching, and "is it on?" is not answerable from the numbers it wrote.
+# The rule this gate exists for: a sensor's silence is only a zero if the
+# sensor was watching, and "is it on?" is not answerable from the numbers it
+# wrote. A sensor that looks always-on can be a hand-launched app that died
+# weeks ago.
 _COVERAGE_GATES = {"location_days": _location_covered_days}
 
 
@@ -249,7 +241,7 @@ def _listen_shape_rows(con, days):
     (scattered vs sustained), longest_listen_min. Its own extractor, not part
     of _plays_rows, so a failure here can't cost the day its listen_min.
 
-    Delegated to the provider for the same reason `reply_latency` is (§9):
+    Delegated to the provider for the same reason `reply_latency` is:
     re-expressing the math here is what let `novelty` drift for twelve days
     (v35), so there is one implementation and a test pinning them together."""
     dayset = set(days)
@@ -400,7 +392,7 @@ def _tasks_rows(con, days):
 
 def _hr_var_rows(con, days):
     """intraday HR: spread (population stdev, bpm) of a day's hourly mean heart
-    rate — a same-day physiological-load proxy from health_hours (§12). A day
+    rate — a same-day physiological-load proxy from health_hours. A day
     with < HR_MIN_HOURS covered stays a gap: partial wear makes the spread
     unreliable and the gap-not-zero rule keeps it out of correlations."""
     by_day: dict[str, list[float]] = defaultdict(list)
@@ -490,8 +482,8 @@ def _stale_days(con, days: list[str]) -> set[str]:
     the matrix reports it as *the source having no data that day*, which is
     exactly the reading the data was supposed to correct.
 
-    §10 hit this. `location._ensure_days()` recovered five days of
-    location_days (07-26..07-31) that the nightly refresh had already computed
+    Location hit this: `location._ensure_days()` recovered five days of
+    location_days that the nightly refresh had already computed
     features for, and all five stayed location-less in the matrix.
 
     A day is stale if any watched source wrote a row for it after the day's

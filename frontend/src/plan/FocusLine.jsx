@@ -3,8 +3,7 @@ import { CARD_NAME } from "../widgets/cards.js";
 import Icon from "../ui/icons.jsx";
 import { focusFirst, roomById, roomOf, todayOrder } from "./Rooms.jsx";
 
-// The focus line (New Features #46, the user 11-22: "inline layout and then
-// focus line header"): the top bar's second line carries the one most urgent
+// The focus line (New Features #46): the top bar's second line carries the one most urgent
 // ask, the round-5 focus stack squeezed to a single line. Answer or approve it
 // right there, snooze it (Later), or step past it (›) to the next; the count
 // says how many are behind it. The line reads in Today's order (Rooms.jsx

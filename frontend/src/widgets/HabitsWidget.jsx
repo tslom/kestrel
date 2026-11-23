@@ -40,7 +40,7 @@ export function useHabitsCard() {
     }));
   }
 
-  // Evening nudge (IDEAS: attention signals): unchecked habits only demand
+  // Evening nudge: unchecked habits only demand
   // attention from 8pm; before 4am it's still "tonight" (day_key rollover).
   const hr = new Date().getHours();
   const evening = hr >= 20 || hr < 4;
@@ -49,12 +49,9 @@ export function useHabitsCard() {
   // Same evening escalation the dot uses: boxes left to tick are worth the
   // room all day, but only start demanding it after 8pm. A finished list —
   // or no habits at all — has said everything it has to say.
-  // Unchecked habits are "today", not "needs you" (decided 2026-09-25, with
-  // the plan view). They were NEEDS at any hour from 2026-09-13 ("it should
-  // need attention if I haven't completed the habit for the day"), but "needs
-  // you" now means only a turn blocked, a clock, a broken source, or a person
-  // or decision waiting — "today, unless it's like a task that needs to be
-  // done that day", and a habit is the day's routine rather than a deadline.
+  // Unchecked habits are "today", not "needs you": "needs you" means only a
+  // turn blocked, a clock, a broken source, or a person or decision waiting,
+  // and a habit is the day's routine rather than a deadline.
   // The card is still on screen all day as a "today" line; `evening` stays
   // for the summary, which says what's left *tonight* once that's the useful
   // framing.

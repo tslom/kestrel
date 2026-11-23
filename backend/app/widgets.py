@@ -229,7 +229,7 @@ def get_commands():
 @router.get("/courses")
 def get_courses(term: str | None = None):
     """The week's hours, plus any amendments read out of mail and waiting on
-    you (§22). Folded into this one payload rather than given its own route —
+    you. Folded into this one payload rather than given its own route —
     the card draws them together, and a proposal means nothing without the
     hours it would change."""
     from .providers import email_extract

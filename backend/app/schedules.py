@@ -15,7 +15,7 @@ never reports back (the window closed mid-open) lapses after CLAIM_S and the
 prompt is due again.
 
 **The lid.** A closed laptop is asleep, so nothing fires at 8pm in a bag.
-§21's scheduled wake (wake.py) is deliberately not used: a dark wake keeps
+The scheduled wake (wake.py) is deliberately not used: a dark wake keeps
 the display off and the page's timers frozen, and an agent turn takes minutes,
 longer than the wake lasts. What it does instead: a missed time runs **once**
 on the first poll after the lid opens and Kestrel is up, however many times

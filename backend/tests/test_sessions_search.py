@@ -46,8 +46,6 @@ def store(tmp_path, monkeypatch):
     return tmp_path
 
 
-# ---------- search_sessions ----------
-
 def test_search_finds_a_session_by_what_was_said(store):
     hits = sessions.search_sessions("timezone")
     assert [h["id"] for h in hits] == ["aaaaaaaa-1111"]
@@ -88,8 +86,6 @@ def test_search_misses_stay_empty(store):
     assert sessions.search_sessions("nothing here says this") == []
 
 
-# ---------- the listing preview ----------
-
 def test_preview_skips_the_attached_context_dump(store):
     """A console message arrives with a pinned-widget JSON dump in front of it.
     Previewing the raw first block showed that dump instead of the question,
@@ -98,8 +94,6 @@ def test_preview_skips_the_attached_context_dump(store):
     assert row["preview"] == "add milk to the shopping list"
     assert "widget" not in row["preview"]
 
-
-# ---------- no caps ----------
 
 def test_listing_and_transcript_are_uncapped_by_default(tmp_path, monkeypatch):
     """Both used to truncate — 20 sessions, 500 entries — which silently hid
@@ -121,8 +115,6 @@ def test_listing_and_transcript_are_uncapped_by_default(tmp_path, monkeypatch):
 def test_transcript_refuses_to_escape_the_project_dir(store):
     assert sessions.session_transcript("../../etc/passwd") == []
 
-
-# ---------- the chat_search tool ----------
 
 def test_chat_search_tool_reports_the_hits(store):
     r = asyncio.run(ct.chat_search.handler({"query": "timezone"}))
@@ -151,7 +143,6 @@ def test_chat_search_is_auto_approved_as_a_read(store):
     assert "mcp__vault__chat_search" in ct.READ_TOOL_NAMES
 
 
-# ---------- tool_detail ----------
 #
 # One formatter serves both places tool calls are shown — the live websocket
 # stream and the transcript replay — so what these assert is what the console

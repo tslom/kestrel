@@ -168,8 +168,6 @@ def test_domain_speaks_only_when_the_address_is_unknown(dbfile):
     con.close()
 
 
-# ---------- labels ----------
-
 def test_a_label_needs_the_last_two_filings_to_agree(dbfile):
     con = db.connect()
     with con:

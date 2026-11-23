@@ -46,7 +46,7 @@ import { PANEL_FOR } from "../lib/palette";
 
 // The two things every desk draws from a card id: the card itself (a view
 // over its hook's result, widgets/cards.js) and the full-size sheets behind
-// it. Shared by the rail desk and the plan view so the wiring lives once.
+// it. Shared by every desk layout so the wiring lives once.
 
 // What each sheet is called. Keys are what openSheet() takes — the cards'
 // expand buttons and the ⌘K palette both address sheets by these names, and

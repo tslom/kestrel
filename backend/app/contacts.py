@@ -8,9 +8,8 @@ osascript -> Contacts.app -> CardDAV -> iCloud -> phone. Slower and
 permission-gated, and the only route that ends anywhere but this machine.
 
 Shaped after reminders.py (arguments never interpolation, one `_run`, a probe
-for the permission) but importing nothing from it: that module lives on the
-§21 alarms branch, and creating a contact shouldn't wait on an alarm
-reconciler to land.
+for the permission) but importing nothing from it, so a contact write never
+depends on the alarm reconciler.
 
 Three things checked against the real dictionary
 (/System/Applications/Contacts.app/Contents/Resources/Contacts.sdef) rather

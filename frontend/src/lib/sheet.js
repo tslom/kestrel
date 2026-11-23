@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchJSON } from "./api";
 import { useTopic } from "./refresh";
 
-// The read half of every bespoke sheet (IDEAS §1).
+// The read half of every bespoke sheet.
 //
 // A sheet is several views of one source on screen at once, which means N
 // reads per range instead of the provider panel's one. Doing that N times in

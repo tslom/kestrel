@@ -54,7 +54,7 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (habit_id, day)
     );
     """,
-    # v2 — provider foundation (IDEAS §0): oauth tokens + stub provider cache.
+    # v2 — provider foundation: oauth tokens + stub provider cache.
     # tokens holds OAuth secrets — app.db must never leave this machine, and
     # token values must never appear in API responses (see providers/oauth.py).
     """
@@ -79,7 +79,7 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (day, metric)
     );
     """,
-    # v3 — calendar provider cache (IDEAS §2). Google Calendar is truth; these
+    # v3 — calendar provider cache. Google Calendar is truth; these
     # rows are derived and droppable. A multi-day event gets one row per local
     # date it touches. calendar_days records which days have been synced, so
     # "no events rows" is distinguishable from "never fetched".
@@ -100,13 +100,13 @@ MIGRATIONS: list[str] = [
         refreshed_at TEXT NOT NULL
     );
     """,
-    # v4 — multi-calendar (§2 follow-up): human-readable calendar name per
+    # v4 — multi-calendar: human-readable calendar name per
     # event (calendar_id is an opaque email-ish id once there's more than
     # 'primary'). NULLs backfill on the next sync — the table is derived.
     """
     ALTER TABLE events ADD COLUMN calendar_name TEXT;
     """,
-    # v5 — health provider cache (IDEAS §3). Google Health is truth; these
+    # v5 — health provider cache. Google Health is truth; these
     # rows are derived and droppable. One row per (day, metric); health_sync
     # marks fetched days, so "no row" (watch not worn) is distinguishable
     # from "never fetched".
@@ -123,7 +123,7 @@ MIGRATIONS: list[str] = [
         refreshed_at TEXT NOT NULL
     );
     """,
-    # v6 — email provider (IDEAS §5). Gmail is truth; emails/email_days are
+    # v6 — email provider. Gmail is truth; emails/email_days are
     # derived and droppable (metadata only — bodies are never stored).
     # email_triage holds app-generated summaries + your review decisions:
     # summaries are regenerable (at token cost), user_action is real data —
@@ -162,7 +162,7 @@ MIGRATIONS: list[str] = [
         user_action_at TEXT
     );
     """,
-    # v7 — daily brief (IDEAS round 2). Widget-first: generated lazily on the
+    # v7 — daily brief. Generated lazily on the
     # first dashboard open of each day_key; the /daily-brief skill is a thin
     # wrapper over GET /api/brief. body is app-generated content (like
     # email_triage summaries): regenerable at token cost, DB-only — never
@@ -228,7 +228,7 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX fin_transactions_day ON fin_transactions (day);
     """,
-    # v9 — weather provider (IDEAS §6). Open-Meteo is truth; both tables are
+    # v9 — weather provider. Open-Meteo is truth; both tables are
     # derived and droppable. Day = civil date (Open-Meteo's own local day for
     # the queried lat/lon, timezone=auto) — same camp as calendar/health, not
     # day_key. sunrise/sunset store as minutes-since-midnight REAL; render
@@ -249,7 +249,7 @@ MIGRATIONS: list[str] = [
         lon REAL NOT NULL
     );
     """,
-    # v10 — tasks v2 (archive/TASKS_PLAN.md, IDEAS §13): triage fields, one-level
+    # v10 — tasks v2 (archive/TASKS_PLAN.md): triage fields, one-level
     # subtasks, provenance. All new columns nullable so v1 writers (skills,
     # console) keep working unmodified. `source` (v1) keeps meaning who
     # created the row (ui|console|migrated|reconcile|capture|travel|
@@ -277,12 +277,8 @@ MIGRATIONS: list[str] = [
     END;
     UPDATE tasks SET updated_at = created_at;
     """,
-    # v11 — task triage queue (Round 4 follow-up): the migrated backlog
-    # landed with no defer/due/priority, so everything piled into
-    # "available" undifferentiated. Same shape as email_triage — an app-
-    # generated suggestion (regenerable) + your real decision (user_action,
-    # durable). One row per task; queue = status='open' AND defer IS NULL
-    # AND user_action IS NULL.
+    # v11 — task triage queue (removed again in v12). Same shape as
+    # email_triage: an app-generated suggestion + your decision (user_action).
     """
     CREATE TABLE task_triage (
         task_id INTEGER PRIMARY KEY REFERENCES tasks(id),
@@ -299,10 +295,9 @@ MIGRATIONS: list[str] = [
     # v12 — task triage queue removed: one-time backlog cleanup after the
     # vault migration, not a standing feature (no more mass task imports).
     "DROP TABLE task_triage;",
-    # v13 — screen time provider (IDEAS §7). DROPPED AGAIN IN v46 (2026-09-13)
-    # — kept here because migrations are replayed in order on a fresh app.db,
-    # so this still has to create what v46 removes. Nothing reads these tables
-    # any more.
+    # v13 — screen time provider. DROPPED AGAIN IN v46, and kept here because
+    # migrations are replayed in order on a fresh app.db, so this still has to
+    # create what v46 removes. Nothing reads these tables any more.
     #
     # ActivityWatch (aw-server, one per configured host) is truth; both tables
     # are derived/droppable. Day is **day_key** (4am rollover), not civil date
@@ -327,7 +322,7 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (day, host, app)
     );
     """,
-    # v14 — news provider (IDEAS §20). Kagi Kite (kite.kagi.com/kite.json)
+    # v14 — news provider. Kagi Kite (kite.kagi.com/kite.json)
     # is truth; table is derived/droppable. day = day_key of the *fetch*,
     # not an article date — Kite has no per-day historical API, it just
     # serves whatever its current daily edition is (refreshes ~12:00 UTC),
@@ -351,8 +346,8 @@ MIGRATIONS: list[str] = [
     # liabilities. Plaid is truth; both derived/droppable, re-synced by
     # finance.refresh() alongside the existing transactions cursor sync.
     # fin_recurring.predicted_next_date is Plaid's own prediction, taken
-    # as-is rather than reimplemented from last_day+frequency (the plan's
-    # original sketch) — Plaid already handles weekday/month-end drift,
+    # as-is rather than reimplemented from last_day+frequency — Plaid
+    # already handles weekday/month-end drift,
     # so recomputing it would just be a second, worse implementation.
     # fin_liabilities.kind is Plaid's own bucket (credit | student |
     # mortgage); field names vary a lot by kind upstream, normalized here
@@ -387,14 +382,13 @@ MIGRATIONS: list[str] = [
         refreshed_at TEXT NOT NULL
     );
     """,
-    # v16 — Spotify provider (IDEAS §8). Day is **day_key** (4am rollover),
-    # a behavioral source like §7/§9/§10. Unlike other providers' caches,
+    # v16 — Spotify provider. Day is **day_key** (4am rollover), a behavioral
+    # source like messages and location. Unlike other providers' caches,
     # `plays` is NOT purely derived: Spotify's recently-played endpoint only
     # returns the last 50 tracks, so this table is the only record of
     # anything older than the polling window — losing it loses history, not
-    # just cache freshness (the planned GDPR-export importer backfills into
-    # this same table, one time, once the export arrives). artist_genres
-    # *is* a genuine cache (droppable, re-fetched from /artists).
+    # just cache freshness (the GDPR-export importer writes here too).
+    # artist_genres was a cache; v35 drops it.
     """
     CREATE TABLE plays (
         played_at TEXT PRIMARY KEY,            -- ISO instant, Spotify's played_at
@@ -534,12 +528,9 @@ MIGRATIONS: list[str] = [
     ALTER TABLE emails ADD COLUMN to_addr TEXT;
     """,
     # v20 — location provider (archive/ROUND34_PLAN.md §10). OwnTracks (iOS)
-    # posts fixes to a separate listener process (app/location_listener.py —
-    # NOT this FastAPI app; it is the only port Tailscale Funnel exposes, so
-    # the main backend never is). The `--` comments below still name Overland's
-    # fields, which is what wrote every row before 2026-08-14: migration text
-    # is fingerprinted, so editing them makes v20 re-run and fail. Read the
-    # units off app/location_listener.py instead. Like Spotify's
+    # fixes arrive through the location relay (providers/location_relay.py).
+    # The `--` comments below still name Overland's fields, the app that
+    # wrote the oldest rows; read the units off location_relay.py. Like Spotify's
     # `plays` and the messages/email_extract tables, `location_points` is
     # NOT a derived cache — it's the only record of raw location history
     # this app keeps, so a drop loses data, not just freshness.
@@ -596,7 +587,7 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE people ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0;
     """,
-    # v23 — transaction enrichment (BUG_CHECKS pass; archive/ROUND34_PLAN.md).
+    # v23 — transaction enrichment.
     # Plaid also exposes a brand logo_url and an in-store location; surface
     # both when present. Both are derived cache like fin_transactions — the
     # cursor sync only fills them on newly added/modified rows, so existing
@@ -607,10 +598,9 @@ MIGRATIONS: list[str] = [
     ALTER TABLE fin_transactions ADD COLUMN logo_url TEXT;
     ALTER TABLE fin_transactions ADD COLUMN location TEXT;
     """,
-    # v24 — chat metadata cache for the conversations view (BUG_CHECKS pass;
-    # archive/ROUND34_PLAN.md). The `messages` cache has no room for a chat's
-    # *own* attributes (custom
-    # group name, group flag) — those live once per chat_guid, not per message.
+    # v24 — chat metadata cache for the conversations view. The `messages`
+    # cache has no room for a chat's *own* attributes (custom group name,
+    # group flag) — those live once per chat_guid, not per message.
     # This table caches chat.db's `chat` rows so the conversations view can show
     # a real group name ("Family 👨‍👩‍👧") instead of a participant list. Derived
     # cache like `messages`: full-replace each sync, droppable, no watermark.
@@ -622,10 +612,9 @@ MIGRATIONS: list[str] = [
         refreshed_at TEXT NOT NULL
     );
     """,
-    # v25 — contact identity clusters (BUG_CHECKS pass; archive/ROUND34_PLAN.md).
-    # A person owns many identifiers (two numbers + a couple emails); `people`
-    # rows and
-    # messages/emails each key off ONE, so the same human fragments across
+    # v25 — contact identity clusters. A person owns many identifiers (two
+    # numbers + a couple emails); `people` rows and messages/emails each key
+    # off ONE, so the same human fragments across
     # tables. This maps every normalized identifier to a stable cluster_key,
     # built from macOS Contacts' OWN record grouping (providers/messages.py
     # sync_identities) — the authoritative "same person" signal. Merges follow
@@ -698,7 +687,7 @@ MIGRATIONS: list[str] = [
     # Exercise habit). Auto check-ins never overwrite a person's row (INSERT ...
     # DO NOTHING), and an un-check now leaves a value=0 tombstone instead of
     # deleting, so an auto pass can't resurrect a day the user deliberately
-    # cleared — the habit analog of §16's dropped-auto-task-not-recreated rule.
+    # cleared — the habit analog of travel's dropped-auto-task-not-recreated rule.
     # value=0 rows read as "not done" everywhere (streak filters value>0).
     """
     ALTER TABLE habit_checkins ADD COLUMN source TEXT NOT NULL DEFAULT 'ui';
@@ -780,20 +769,15 @@ MIGRATIONS: list[str] = [
 
     # v35 — artist identity that survives the import seam. `plays.artist_id`
     # holds Spotify's real id on rows the poller captured and a synthetic
-    # "sha:"+sha1(name) on the ~266k rows the GDPR importer wrote (neither
-    # export carries an artist id). Grouping on it therefore splits every
-    # artist in two at 2026-07-14, which pinned `novelty` at ~1.0 for twelve
-    # days — a six-year favourite read as brand-new the first time the poller
-    # saw it. artist_key is the honest join key: the artist *name*, normalized
+    # "sha:"+sha1(name) on the rows the GDPR importer wrote (neither export
+    # carries an artist id), so grouping on it splits every artist in two.
+    # artist_key is the honest join key: the artist *name*, normalized
     # in Python (str.casefold — SQLite's lower() is ASCII-only and mangles
     # e.g. "Vîęzë Ãsbæk"), so both sides agree. Backfilled and kept current by
     # spotify._ensure_artist_keys(); nullable so the DDL stays pure SQL.
     #
-    # artist_genres goes at the same time: it has never held a row. It was fed
-    # by the batch GET /artists?ids= endpoint, which 403s for this app (only
-    # single-resource GETs are permitted), and Spotify has since stopped
-    # returning the `genres` field on the artist object at all — the response
-    # is now id/name/images/urls. Genres come from Last.fm instead, keyed on
+    # artist_genres goes at the same time; it never held a row, because Spotify
+    # no longer returns genres. Genres come from Last.fm instead, keyed on
     # artist_key rather than any Spotify id, in artist_tags.
     """
     ALTER TABLE plays ADD COLUMN artist_key TEXT;
@@ -823,20 +807,10 @@ MIGRATIONS: list[str] = [
     ALTER TABLE artist_tags ADD COLUMN raw TEXT;   -- JSON: toptags.tag verbatim
     """,
 
-    # v37 — screen sync markers, so a day AW saw nothing on can say nothing.
-    # screen.py used `active_min`'s row presence to mean "this day was
-    # fetched", which forced it to write active_min=0.0 even on days AW had
-    # no events at all (asleep, aw-server down, not yet installed) — a false
-    # zero that features.py passed straight into the correlation matrix.
-    # screen_sync carries that meaning instead (health_days/health_sync's
-    # arrangement), freeing every metric to be absent on an uncovered day.
-    # Backfill marks every day already in the cache as synced (nothing
-    # re-pulls) and drops the historical false zeros: a day with no
-    # screen_apps rows had no active window events, so its active_min /
-    # doomscroll_min zeros were never observations. The same rows are
-    # deleted from `features`, which already copied them — it backfills
-    # per day, not per feature, so a day computed once would keep its zeros
-    # forever otherwise.
+    # v37 — screen sync markers (health_days/health_sync's arrangement), so a
+    # day AW saw nothing on can say nothing instead of a false zero. Backfill
+    # marks every cached day as synced and deletes the false zeros from
+    # screen_days and from `features`, which had already copied them.
     """
     CREATE TABLE screen_sync (
         day TEXT PRIMARY KEY,                  -- day_key, YYYY-MM-DD
@@ -968,9 +942,9 @@ MIGRATIONS: list[str] = [
     # use. So a day's window is [04:00, 04:00) local, which is what _sync asks
     # Arctic Shift for in epoch seconds.
     #
-    # score/num_comments are NULLABLE and that is the point. A post pulled from
-    # the .rss fallback (removed 11-22) had no score at all, and the archive
-    # omits counts on removed posts; storing 0 for "not known yet"
+    # score/num_comments are NULLABLE and that is the point. A post from the
+    # old .rss fallback has no score at all, and the archive omits counts on
+    # removed posts; storing 0 for "not known yet"
     # is how the screen provider got its historical false zeros (see v37) — the
     # number is indistinguishable from a real one once it's in the table. NULL
     # sorts last in the `top` metric and reads back as null, not as unpopular.
@@ -1001,12 +975,8 @@ MIGRATIONS: list[str] = [
         refreshed_at TEXT NOT NULL
     );
     """,
-    # v41 — the shopping list generalizes. v39 gave `shopping_items` its own
-    # table because the vault had exactly one buy-list; the second list wanted
-    # (packing for college, a party) would have arrived as either a second
-    # near-identical table or a `kind` column nobody could keep straight. So
-    # the list itself becomes a row: `lists` holds the names, `list_items`
-    # holds what used to be shopping_items, one list_id deeper.
+    # v41 — the shopping list generalizes: `lists` holds the names,
+    # `list_items` holds what used to be shopping_items, one list_id deeper.
     #
     # shopping_items is DROPPED here rather than left behind, and its rows are
     # carried over ids-and-all into the seeded 'Shopping' list. Ids survive
@@ -1051,10 +1021,8 @@ MIGRATIONS: list[str] = [
     DROP INDEX shopping_open;
     DROP TABLE shopping_items;
     """,
-    # v42 — §21 alarms. What the dashboard has never had is a way to reach the
-    # user when the laptop is shut, and the fix isn't a notifier: it's writing a
-    # *future-dated* alarm to a surface the phone syncs, while the lid is open.
-    # The machine computes; the phone delivers.
+    # v42 — alarms: future-dated alarms written to Reminders, which the phone
+    # syncs, so they fire with the laptop shut.
     #
     # NOT derived, despite looking it. Every other cache table here can be
     # dropped and rebuilt from its source, but `external_id` is the only record
@@ -1068,7 +1036,7 @@ MIGRATIONS: list[str] = [
     #
     # `fire_at` is offset-aware ISO, not wall clock. An alarm is a promise about
     # an instant, and this row can outlive a move across TIMELINE — a bare
-    # '09:00' would silently mean a different moment after 8/17.
+    # '09:00' would silently mean a different moment after a move.
     """
     CREATE TABLE alarms (
         key         TEXT PRIMARY KEY,          -- 'kind:...', built by _alarm_key
@@ -1084,7 +1052,7 @@ MIGRATIONS: list[str] = [
     CREATE INDEX alarms_kind ON alarms (kind);
     CREATE INDEX alarms_fire ON alarms (fire_at);
     """,
-    # v43 — §21 step 4, the at-desk channel. The alarms table above is for
+    # v43 — the at-desk channel. The alarms table above is for
     # alerts with a known future time, which the phone can be handed hours in
     # advance. This one is for the fact that just became true and matters within
     # minutes (a flight slipped, a package is out for delivery): there is no
@@ -1150,11 +1118,8 @@ MIGRATIONS: list[str] = [
     CREATE INDEX failures_recent ON failures (last_at DESC);
     """,
 
-    # v45 — usage. The desk ranks itself (`lib/salience.js`) and nothing has
-    # ever checked whether the ranking is right, or whether a card still earns
-    # its slot. Seventeen cards render every morning and some of them have not
-    # been worth reading since the week they shipped; from inside the app they
-    # are indistinguishable from the ones you live in.
+    # v45 — usage: which cards get read, so the desk's ranking
+    # (`lib/salience.js`) and each card's slot can be checked.
     #
     # Counted per **day**, not as a running total, because the question is
     # "still used?" and a total cannot tell fifty opens last March from five a
@@ -1187,21 +1152,10 @@ MIGRATIONS: list[str] = [
     CREATE INDEX usage_kind ON usage (kind, label);
     """,
 
-    # v46 — drop §7. The screen-time provider measured the laptop only, and the
-    # laptop is not where the time goes: the honest reading of a card showing
-    # 4h of Mac use next to an unmeasured phone is that it answers the wrong
-    # question, however well it answers it. The phone half has no route to
-    # build — Apple ships no Screen Time API, and knowledgeC.db is
-    # undocumented, needs Full Disk Access the app bundle doesn't have, and
-    # gets its schema reshuffled between releases. Removed 2026-09-13 by
-    # decision, not by defect.
-    #
-    # The 332 days collected since 2026-01-01 are dumped to
-    # backend/data/backups/screen-tables-*.sql before this runs, which is the
-    # only copy — these three tables were the source of truth for §7, not a
-    # cache of something upstream (aw-server keeps its own peewee db, but the
-    # LaunchAgent goes too). DROP is therefore genuinely destructive here in a
-    # way dropping a provider cache table normally is not.
+    # v46 — drop the screen-time provider (DESIGN.md, Screen time — REMOVED).
+    # These tables were its source of truth, not a cache, so DROP is
+    # destructive here; the only copy is the dump in
+    # backend/data/backups/screen-tables-*.sql.
     #
     # IF EXISTS on all three: a fresh app.db built after this migration never
     # created them, and a plain DROP would make first boot fail.
@@ -1219,8 +1173,7 @@ MIGRATIONS: list[str] = [
     # v47 — debts remember being chased. An open IOU is not one fact but two:
     # the money, and whether you've said anything about it lately. Without the
     # second the card could only ever sit in HAS — "someone owes you $106" is
-    # true every day and actionable on none of them, which is how it took 44
-    # impressions and 3 opens.
+    # true every day and actionable on none of them.
     #
     # `reminded_at` is the whole mechanism: NULL means never asked (act now),
     # recent means asked and it's their turn (stay quiet), and older than
@@ -1237,17 +1190,9 @@ MIGRATIONS: list[str] = [
     ALTER TABLE debts ADD COLUMN reminded_count INTEGER NOT NULL DEFAULT 0;
     """,
 
-    # v48 — proposed office-hours amendments, waiting on you.
-    #
-    # A Piazza post saying "no office hours Thursday" is the one piece of
-    # course data that arrives by mail and goes stale in the vault, and the
-    # answer to it is already built (courses.set_exception writes a dated
-    # override). What was missing is the gap between reading the mail and
-    # trusting it: an extractor confident enough to rewrite Thursday's hours
-    # on its own can also send you across campus to a cancelled session, and
-    # the failure is silent — you find out by standing outside a locked door.
-    #
-    # So this table is the waiting room. Nothing here has touched the vault;
+    # v48 — proposed office-hours amendments read off email, waiting on you.
+    # An extractor wrong about hours fails silently, so this table is the
+    # waiting room. Nothing here has touched the vault;
     # approving is what calls set_exception, and the vault stays the only
     # source of truth for what the hours *are*.
     #
@@ -1284,15 +1229,9 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX oh_proposals_pending ON oh_proposals (status, day);
     """,
-    # v49 — one night and one day, drawn instead of summed (IDEAS, 09-13).
-    #
-    # `health_days` has always held per-night stage *totals*, which is enough
-    # to say "5.2h, of which 66m deep" and not enough to draw the night: when
-    # you fell asleep, how the stages interleaved, where the 3am wake sits. The
-    # segments were never missing from the API — the `sleep` dataPoint that
-    # health.py already fetches carries a full `sleep.stages` array at 30-second
-    # resolution, and the provider read `summary.stagesSummary` off that same
-    # point and dropped the rest. This table stops dropping it.
+    # v49 — one night and one day, drawn instead of summed: the sleep stage
+    # segments the `sleep` dataPoint already carries (30-second resolution),
+    # beside health_days' per-night totals.
     #
     # Keyed on the wake-up civil date exactly like the sleep_* metrics in
     # health_days, so a night joins to its own totals. Naps land on the same day
@@ -1301,18 +1240,17 @@ MIGRATIONS: list[str] = [
     # day's sleep, not a session's.
     #
     # Timestamps are stored as local ISO8601 *with offset* rather than UTC. The
-    # hypnogram is read against the clock you slept by, and the terrain sheet
-    # (09-05) is the cautionary tale: converting stored UTC with the browser's
-    # current zone silently moved six years of evenings into the small hours
-    # after the desk changed coasts. The offset travels with the row.
+    # hypnogram is read against the clock you slept by, and converting stored
+    # UTC with the browser's current zone moves past evenings into the small
+    # hours once the desk changes coasts. The offset travels with the row.
     #
     # Derived and droppable like health_days: health.py refills from the API.
     #
     # The two marks on health_sync are here for the same reason
     # `health_sync.refreshed_at` exists: an empty read has to be able to mean
     # "asked, and there was nothing" instead of "never asked". Both drill-downs
-    # fill on demand (a night from July was synced long before this table
-    # existed), and without a mark a night you genuinely didn't wear the watch
+    # fill on demand (older nights were synced before this table existed),
+    # and without a mark a night you genuinely didn't wear the watch
     # for would re-hit the API on every open, forever. They're two columns
     # because they're two pulls: segments ride the daily sleep fetch, hourly
     # steps are their own rollUp call.
@@ -1379,7 +1317,7 @@ MIGRATIONS: list[str] = [
 
     # v52 — which kind of evidence you actually accept.
     #
-    # §24's suggester ranks name candidates with fixed per-source weights, and
+    # The place-name suggester ranks name candidates with fixed per-source weights, and
     # fixed is the wrong shape for a number nobody can know in advance: whether
     # the calendar beats OpenStreetMap depends on whose calendar and whose
     # streets. Every shortlist you act on is a labelled example — one candidate
@@ -1390,7 +1328,7 @@ MIGRATIONS: list[str] = [
     # quantity the ranking needs: given a candidate from this kind of evidence,
     # how often is it the one you take.
     #
-    # NOT a derived cache, unlike every other table §24 added. A rejection
+    # NOT a derived cache, unlike every other places table. A rejection
     # exists nowhere else — the vault records the names you chose and is silent
     # about the ones you turned down — so dropping this loses real information
     # and the weights fall back to their priors.
@@ -1411,19 +1349,10 @@ MIGRATIONS: list[str] = [
 
     # v53 — which place, on which visit.
     #
-    # §24 assumed a cluster is a place. At campus density it is not: the
-    # busiest unnamed cluster here spans 168m and contains Leavey Library,
-    # McCarthy Quad, Everybody's Kitchen, Birnkrant and the SSCI building, and
-    # which one a given visit was is a different answer each time.
-    #
-    # Nothing automatic can separate them, and all three routes were measured
-    # before this table was added rather than after:
-    #   * coordinates — p50 17m / p90 47m of error against ~15m of separation,
-    #     the measurement app/places.py was founded on;
-    #   * time of day — no modes; visits run 08:00 to 02:00;
-    #   * the calendar — of 71 visit/event overlaps, 8 were spatially usable.
-    #     48% geocode to the campus centroid and 41% merely coincide in time.
-    # So the label comes from the person, and this is where it lands.
+    # At campus density one cluster holds several places, and nothing
+    # automatic separates them (coordinates, time of day and the calendar
+    # were all measured: DESIGN.md, Schema history). So the label comes from
+    # the person, and this is where it lands.
     #
     # In app.db and not the vault because this is not a note: it is one
     # assertion per visit, hundreds of them, keyed by an instant — the same
@@ -1447,11 +1376,8 @@ MIGRATIONS: list[str] = [
 
     # v54 — what a sentence was read off.
     #
-    # The console restates detail that came from somewhere: an address out of
-    # an email, a room change out of an event, a number someone texted. The
-    # sentence keeps the fact and drops the source, and checking it meant
-    # searching Gmail for whatever you half-remembered the subject was. This
-    # table is the handle that gets the source back.
+    # The handle that gets a restated fact's source back (an email, an event,
+    # a text).
     #
     # `ref` is derived, not assigned: sha1(kind + target), truncated. That
     # matters more than it looks. A counter would need session state at the
@@ -1480,19 +1406,13 @@ MIGRATIONS: list[str] = [
     );
     CREATE UNIQUE INDEX cite_refs_target ON cite_refs (kind, target);
     """,
-    # --- v-next: what you actually do with email (IDEAS §5 learner) ---
+    # --- v-next: what you actually do with email (the sender prior) ---
     #
-    # The recommender was worse than a constant: 28.9% agreement over 875
-    # decisions, against 78.3% for always saying "archive". It recommended
-    # `keep` 331 times and the mailbox owner kept 8. The fix is not a better
-    # prompt, it is a prior taken from the record instead of from the model's
-    # idea of a person.
-    #
-    # Nothing here is a source of truth. Every row is an aggregate of
-    # email_triage.user_action, which is the real record, so this table can be
-    # dropped and rebuilt by rebuild() at any time. It exists because the
-    # aggregate is read on every queue render and recomputing it from 875+
-    # rows each time is work we can do once per action instead.
+    # Review's recommendation takes a prior from your record of decisions
+    # rather than from the model alone. Nothing here is a source of truth:
+    # every row is an aggregate of email_triage.user_action, the real record,
+    # so this table can be dropped and rebuilt by rebuild() at any time. It
+    # exists because the aggregate is read on every queue render.
     """
     CREATE TABLE email_sender_stats (
         scope      TEXT NOT NULL,       -- 'addr' | 'domain'
@@ -1535,18 +1455,8 @@ MIGRATIONS: list[str] = [
     """,
     # --- v-next: the calendar list, instead of a name copied onto every event ---
     #
-    # `events.calendar_name` was the only record of what a calendar is called,
-    # which made the name a property of each cached event rather than of the
-    # calendar. Renaming "Gym/Sports" to "Gym/Workouts" in Google therefore
-    # only reached the rows inside refresh()'s [today-7, today+35] window on
-    # the next sync; every colder row kept the old name forever, and
-    # `calendar_ids` — a SELECT DISTINCT over those rows — listed both names
-    # against one id.
-    #
-    # Same shape of bug in the other direction: a calendar with no events in
-    # the cache had no row to be distinct over, so it was invisible to
-    # `calendar_ids` and nothing could be filed onto it.
-    #
+    # A name copied onto each cached event goes stale on cold rows after a
+    # rename, and a calendar with no cached events can't be listed at all.
     # One row per calendar fixes both. Derived and droppable like every other
     # provider cache — `_sync` rewrites it from calendarList on each pull, and
     # backfills the denormalized copy on `events` from it.
@@ -1559,13 +1469,8 @@ MIGRATIONS: list[str] = [
     """,
     # --- v-next: what an event says, not just when it is ---
     #
-    # The approval card for a delete could only show what the cache held —
-    # title, time, place — so "delete this" was answered without the notes
-    # that say which event it actually is (the Zoom link, the agenda, "bring
-    # the reader"). The API already returns `description` on every event the
-    # sync pulls; it was being dropped on the floor by _normalize.
-    #
-    # Truncation is the reader's job, not the cache's: the column holds what
+    # The approval card for a delete shows the notes that say which event it
+    # is (the Zoom link, the agenda). Truncation is the reader's job, not the cache's: the column holds what
     # Google holds, and console_preview cuts it to a card's worth.
     """
     ALTER TABLE events ADD COLUMN description TEXT;
@@ -1598,7 +1503,7 @@ MIGRATIONS: list[str] = [
                MAX(d.refreshed_at)
         FROM location_days d GROUP BY d.day;
     """,
-    # --- v-next: review files every message, so it can be found again (§5) ---
+    # --- v-next: review files every message, so it can be found again ---
     #
     # Review collapses to archive / unsubscribe / keep, and every one of them
     # files the message under a label from a fixed set (email_triage.TAXONOMY),
@@ -1808,11 +1713,10 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE brain_facts ADD COLUMN source_label TEXT;
     """,
-    # --- §22: proposals can add a weekly block, not just override one date ---
+    # --- office hours: proposals can add a weekly block, not just override one date ---
     #
-    # A TA posting "starting next week, OH Thursdays 12-2 in GCS" (the 10-02
-    # CSCI 103 digest) was read, judged a standing schedule, and dropped:
-    # `oh_proposals` could only say cancel/change on a date. action='add' is
+    # A TA posting "starting next week, OH Thursdays 12-2 in GCS" is a
+    # standing schedule, which cancel/change on a date can't say. action='add' is
     # the third shape — `when_str` holds the weekly rule ("Thu 12:00-14:00"),
     # `day` the first date it applies, and approval calls courses.set_hours.
     #
@@ -1924,7 +1828,7 @@ MIGRATIONS: list[str] = [
         opened_at  TEXT NOT NULL            -- last time it was attached
     );
     """,
-    # §25 food tracker (FOOD_PLAN.md). foods/food_log/food_profile/
+    # Food tracker (FOOD_PLAN.md). foods/food_log/food_profile/
     # food_targets/food_days/weigh_ins are truth; food_venues, usc_menu_items,
     # usc_menu_days and food_estimates are the usc_dining provider's derived
     # cache — droppable, refetched. A food's nutrients are a JSON object per
@@ -2045,8 +1949,8 @@ MIGRATIONS: list[str] = [
     #
     # Word files used to be filed `unsupported`, and that verdict is cached:
     # extract() never retries a row, so without this the files already tried
-    # (four dietitian handouts on 10-16) would stay unreadable after support
-    # landed. attachment_text is a derived cache, so dropping rows is safe.
+    # would stay unreadable after support landed. attachment_text is a
+    # derived cache, so dropping rows is safe.
     """
     DELETE FROM attachment_text
      WHERE status = 'unsupported'
@@ -2172,7 +2076,7 @@ MIGRATIONS: list[str] = [
         updated_at TEXT NOT NULL
     );
     """,
-    # --- Food accuracy (§25, app/food.py) ---
+    # --- Food accuracy (app/food.py) ---
     #
     # portion_conf: how sure the *amount* of one entry is, apart from how sure
     # the food's numbers are (foods.confidence). NULL = the amount was stated
@@ -3227,8 +3131,8 @@ def update_debt(debt_id: int, **fields) -> dict | None:
 
     This exists so that correcting or merging a debt doesn't have to go
     through settling it. Settling stamps settled_at, which reads as "they
-    paid". On 2026-10-11, merging nine split rows into one per person that
-    way left nine payments on record that never happened."""
+    paid", so merging split rows by settling them records payments that
+    never happened."""
     sets: dict = {}
     if fields.get("person") is not None:
         if not str(fields["person"]).strip():

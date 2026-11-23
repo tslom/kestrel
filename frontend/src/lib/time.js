@@ -39,7 +39,7 @@ export function dayKeyLabel(day, isToday) {
 // A day-key (YYYY-MM-DD) as a local Date, at noon. Never midnight: where DST
 // springs forward at 00:00 (Santiago, Beirut, ...) that local time doesn't
 // exist on the transition day. Current V8 and JavaScriptCore both nudge it to
-// 01:00 the same day (checked 2026-09-22), but what a nonexistent time parses
+// 01:00 the same day, but what a nonexistent time parses
 // to is the engine's call, and noon is a time every zone has on every day.
 export function dayDate(key) {
   return new Date(`${key}T12:00:00`);
@@ -141,8 +141,6 @@ export function clockRange(startMin, endMin) {
   if (startMin == null) return pair("", null);
   return pair(fmtClock(startMin), endMin == null ? null : fmtClock(endMin), false);
 }
-
-// ---------- countdowns ----------
 
 // How far off a deadline is, as the shortest phrase that still says it: "23m",
 // "4h", "4h 20m", "2d". Minutes are dropped past six hours, where they stop

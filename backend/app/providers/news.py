@@ -1,4 +1,4 @@
-"""News provider (IDEAS §20) — Kagi Kite, no key/auth required.
+"""News provider — Kagi Kite, no key/auth required.
 
 Kite (kite.kagi.com/kite.json -> per-category JSON, e.g. world.json) is
 truth; `news_items` in app.db is a derived cache (safe to drop and

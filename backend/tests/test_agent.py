@@ -138,7 +138,6 @@ def test_a_real_crash_is_not_dressed_up_as_a_model_error(transcript):
         ask()
 
 
-# ---------- the breaker ----------
 #
 # After a 429 every caller retries on its own clock — triage each poller
 # cycle, the brain's catch-up, a re-asked brief — and each retry spawned a

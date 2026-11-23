@@ -1,4 +1,4 @@
-"""providers/features — the cross-provider day matrix (§11). It's pure SQL/
+"""providers/features — the cross-provider day matrix. It's pure SQL/
 python over the other providers' cache tables, so the tests seed those tables
 directly and assert the derivation. The contract that matters: passthrough
 tables are renamed straight through, raw-event tables aggregate the same way
@@ -366,8 +366,8 @@ def test_covered_location_day_passes_through(dbfile):
 
 def test_a_burst_of_fixes_never_reaches_the_matrix(dbfile):
     """The matrix has to refuse a burst for the same reason the card does, and
-    it matters more here: location cleared CORR_MIN_N on 2026-08-30, so these
-    days now land in pairs that Patterns shows rather than in an empty row."""
+    it matters more here: location clears CORR_MIN_N, so these days land in
+    pairs that Patterns shows rather than in an empty row."""
     con = db.connect()
     _seed_location_days(con, DAY)
     # Four times the fixes a covering day needs, one minute apart.
@@ -395,7 +395,7 @@ def test_late_source_reaches_an_already_computed_day(dbfile):
     """get()'s backfill test is per day, so a day that had *any* feature row
     was never revisited and a later-arriving source stayed invisible — as a
     gap, i.e. as the source having no data, which is the reading the data was
-    supposed to correct. §10's location backfill hit exactly this."""
+    supposed to correct. The location backfill hit exactly this."""
     con = db.connect()
     _seed(con)          # health/messages/tasks, but no location
     feats = _matrix(con)

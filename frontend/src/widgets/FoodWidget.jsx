@@ -8,7 +8,7 @@ import WidgetError from "../ui/WidgetError.jsx";
 import Icon from "../ui/icons.jsx";
 import { dragPin } from "../lib/drag.js";
 
-// §25 food tracker (FOOD_PLAN.md). The card answers three things at a glance —
+// The food tracker (FOOD_PLAN.md). The card answers three things at a glance —
 // where today stands against a lean bulk's targets, what to eat next on
 // campus, and whether the day is closed — and takes a log in one field. The
 // sheet owns everything else (menus, the week, setup).

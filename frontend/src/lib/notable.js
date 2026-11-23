@@ -39,8 +39,8 @@ const MAD_TO_SIGMA = 1.4826;   // makes MAD comparable to stdev on normal data
 // thing as unusual and the card says nothing. Deliberately not 2 or 3: with a
 // handful of points the median is one of the points, MAD is often 0, and every
 // reading looks significant. A card that starts making claims on day three of
-// a new sensor is how §7 and §10 both got caught calling dead-source gaps a
-// behaviour change.
+// a new sensor is how screen time and location both got caught calling
+// dead-source gaps a behaviour change.
 const MIN_BASELINE = 8;
 
 // How far outside the metric's own spread a reading has to sit. Calibrated by

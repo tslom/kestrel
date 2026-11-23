@@ -205,7 +205,7 @@ def test_the_pipe_reader_posts_each_line_and_survives_a_bad_one():
 
 def test_the_backend_starts_without_uvicorns_reloader(monkeypatch):
     """--reload restarts the instant a file changes — under a dev tab whose
-    turn is running inside this server (10-29). `Backend` reloads instead."""
+    turn is running inside this server. `Backend` reloads instead."""
     seen = _spawned(monkeypatch)
     assert seen["cmd"][1:4] == ["-m", "uvicorn", "app.main:app"]
     assert "--reload" not in seen["cmd"]

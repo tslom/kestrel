@@ -4,9 +4,8 @@ import { fetchJSON, postJSON } from "../lib/api";
 import { broadcastRefresh } from "../lib/refresh";
 
 // Every few hours while Kestrel is open, a card asks which of today's habits
-// are done (New Features #68, 11-17). It used to take opening the habits card
-// to log anything, so a day's routine went unlogged unless you happened to
-// look. Only habits not yet checked in today are asked about, and a day with
+// are done (New Features #68). Without it, logging anything takes opening the
+// habits card, so a day's routine goes unlogged unless you happen to look. Only habits not yet checked in today are asked about, and a day with
 // none left asks nothing.
 //
 // The timing, in one place:

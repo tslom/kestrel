@@ -124,11 +124,11 @@ app.include_router(spotify_routes.router)  # PKCE connect; listening data stays 
 app.include_router(spotify_routes.data_router)  # /api/spotify/summary for the MusicWidget
 app.include_router(extract_routes.router)  # deliveries + travel; extraction runs inside email.refresh()
 app.include_router(people.router)  # CRM-lite: merged emails/messages/events view; PeopleWidget/PeopleExpand dashboard
-app.include_router(leave.router)  # §14 time-to-leave: live traffic-aware leave_by per located event
+app.include_router(leave.router)  # time-to-leave: live traffic-aware leave_by per located event
 app.include_router(lists.router)  # debts / user lists / watchlist — app.db is truth, not the old markdown
 app.include_router(expenses.router)  # claims to Dad: mark, export an .xlsx, see the wire land
 app.include_router(status_routes.router)  # /api/status: auth + last refresh + freshness per source
-app.include_router(food_routes.router)  # §25 food tracker: log, targets, USC menus, suggestions
+app.include_router(food_routes.router)  # food tracker: log, targets, USC menus, suggestions
 app.include_router(study_routes.router)  # quiz/card answers posted by StudyBlock; coverage reads them
 app.include_router(tiles.router)  # basemap PNGs, fetched once and cached; the map sheet's only image source
 app.include_router(places_routes.router)  # naming a cluster the map drew; writes a vault note, which stays the truth
@@ -139,7 +139,7 @@ app.include_router(files.router)  # paths a reply names: resolve under ~, view i
 app.include_router(providers_api.router)
 
 
-# /api/health belongs to the health provider (§3); the liveness probe is
+# /api/health belongs to the health provider; the liveness probe is
 # the conventional /api/healthz.
 @app.get("/api/healthz")
 def healthz(db_check: bool = Query(False, alias="db")):

@@ -2,12 +2,12 @@
    the console reads as ink (the agent). The seam between them is the
    identity of the app.
 
-   Round 2 of the redesign (11-13, docs/ui-overhaul.md has the research and
-   sources): the desk moved from Flexoki to a near-neutral grey generated in
-   OKLCH, the one loud colour moved from orange to blue (the user's look-lab
-   vote for Cupertino's colours), the UI face moved from mono to the system
-   sans, and every size, corner, gap and shadow now comes from the scales
-   below. The old look is `looks/flexoki.css`, one flip away in the lab.
+   Since round 2 of the redesign (docs/ui-overhaul.md has the research and
+   sources) the desk is a near-neutral grey generated in OKLCH rather than
+   Flexoki, the one loud colour is blue rather than orange, the UI face is
+   the system sans rather than mono, and every size, corner, gap and shadow
+   comes from the scales below. The old look is `looks/flexoki.css`, one flip
+   away in the lab.
 
    The accent still means what orange meant. As a fill it means exactly one
    thing — context flowing to the agent (pins, pills, your messages, pending
@@ -218,8 +218,8 @@ code, pre, kbd, samp { font-family: var(--code); }
 
 /* ------------------------------------------------------------------ icons */
 
-/* One stroke-drawn set (src/icons.jsx) stands in for every emoji and
-   typographic character the UI used to draw with. The rule that makes them
+/* One stroke-drawn set (ui/icons.jsx) stands in for every emoji and
+   typographic character the UI would otherwise draw with. The rule that makes them
    part of the design instead of decoration: they render in `currentColor`, so
    an icon takes the color, hover, disabled and accent state of whatever it
    sits in — which is exactly what emoji couldn't do. They arrived pre-colored
@@ -439,7 +439,7 @@ code, pre, kbd, samp { font-family: var(--code); }
    say "this text isn't quite what it appears to be" and neither is a problem
    to solve; the reason is on hover, and the status dot escalates if it lasts.
    flex: none so it can't be squeezed out of a crowded header. */
-/* .thin-badge went with the screen card on 2026-09-13 — it meant "the sensor
+/* .thin-badge went with the screen card — it meant "the sensor
    barely watched the day these numbers describe". Kept in this selector
    because location computes the same coverage floor server-side and has no
    badge for it yet; if that badge never arrives, drop the second name. */
@@ -534,7 +534,7 @@ code, pre, kbd, samp { font-family: var(--code); }
    the cards, so it drops the card's border and fill and keeps only its text. */
 .widget.brief { border: none; background: none; padding: 0 8px 2px; }
 
-/* food (§25) — nutrient bars are the rank-bars shape with a target: the bar
+/* food — nutrient bars are the rank-bars shape with a target: the bar
    is the share of the target, the number is the fact. Met minimums go green,
    a cap gone over goes red; ranges (energy, fat, carbs) are only "met" near
    the target and "over" well past it. */
@@ -1001,8 +1001,8 @@ li:hover > .pin-mini, .email-card:hover .pin-mini,
   padding: 0; transition: background var(--t), border-color var(--t), color var(--t);
 }
 .habit-toggle:hover { border-color: var(--accent); }
-/* Done is green, like every other done on this row. The toggle used to fill
-   with the accent, which put the same fact — "Sleep, logged today" — in two
+/* Done is green, like every other done on this row. An accent fill on the
+   toggle would put the same fact — "Sleep, logged today" — in two
    colours six inches apart: orange in the circle, green in the strip's last
    cell. Accent stays on hover, where it means "this click does something",
    not on the settled state. */
@@ -1082,7 +1082,7 @@ li:hover > .pin-mini, .email-card:hover .pin-mini,
 .habit-add input:focus { border-color: var(--accent); }
 .habit-add input::placeholder { color: var(--paper-faint); }
 
-/* §22 office-hours amendments read out of mail, awaiting approval. Framed
+/* Office-hours amendments read out of mail, awaiting approval. Framed
    rather than listed: it is not one of the card's rows, it is a claim that the
    rows below it are wrong, and the accent edge is what says so before the
    text is read. */
@@ -1863,8 +1863,8 @@ li:hover > .pin-mini, .email-card:hover .pin-mini,
 .seg-unread { fill: var(--accent); }
 .seg-read { fill: var(--paper-line-2); }
 
-/* location sheet: distance is data (round 2: the accent is reserved for
-   what wants you) */
+/* location sheet: distance is data (the accent is reserved for what wants
+   you) */
 .seg-place { fill: var(--data); }
 
 /* music sheet: minutes and plays share the data blue the music card already
@@ -1951,9 +1951,9 @@ li:hover > .pin-mini, .email-card:hover .pin-mini,
   transition: border-color var(--t), color var(--t), background var(--t);
 }
 .email-act:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-/* The triage model's pick, emphasized by contrast rather than hue. It used to
-   fill with the accent, which is the one color this app reserves for context
-   flowing to the agent (see the header) — and eight orange buttons down a
+/* The triage model's pick, emphasized by contrast rather than hue. Not an
+   accent fill: that is the one color this app reserves for context
+   flowing to the agent (see the header) — and eight accent buttons down a
    queue read like eight pins. Ink fill says "this is the one you'll press"
    without borrowing a meaning that isn't its. */
 .email-act.recommended { background: var(--paper-ink); border-color: var(--paper-ink); color: var(--paper-raise); }
@@ -2470,8 +2470,8 @@ li:hover > .pin-mini, .email-card:hover .pin-mini,
 
    One centred column, capped at --measure. The cap is about reading, not
    width: mono at 13px past ~90 characters is hard to track back to the next
-   line. Capping alone used to leave the whole surplus as dead margin on the
-   right, which read as the pane being broken rather than the text being
+   line. Capping alone leaves the whole surplus as dead margin on the
+   right, which reads as the pane being broken rather than the text being
    measured — so the column centres instead, and everything in the log shares
    the same edges: turns, permission cards, bare status lines, the composer.
    `justify-content: center` on the grid keeps the scrollbar on the pane. */
@@ -2947,7 +2947,7 @@ li.md-task { list-style: none; margin-left: -16px; }
 .md-math { overflow-x: auto; overflow-y: hidden; padding: 8px 0; }
 .md-math .katex-display { margin: 0; }
 /* KaTeX's thin serif reads smaller than the mono around it at the same em, so
-   it runs a size up — 1.08em left subscripts and exponents near 9px (10-27).
+   it runs a size up — 1.08em leaves subscripts and exponents near 9px.
    A display formula gets a step more, being the thing the turn is about. */
 .katex { font-size: 1.3em; }
 .md-math .katex { font-size: 1.45em; }
@@ -3855,7 +3855,7 @@ textarea:focus { border-color: var(--ink-line-2); }
 .course-lms { margin-left: auto; color: var(--paper-faint); }
 .course-lms:hover { color: var(--accent); }
 
-/* ── Desk usage (§ usage.py) ───────────────────────────────────────────────
+/* ── Desk usage (usage.py) ─────────────────────────────────────────────────
    A table that has to argue against its own obvious reading. The touch count
    is the eye-catching column, but the cards that work best here are read at a
    glance and never touched — so the notes around the table carry as much
@@ -3911,9 +3911,9 @@ textarea:focus { border-color: var(--ink-line-2); }
 /* minmax(0, 1fr), not the implicit auto column: an auto track sizes to its
    items' min-content, and while it does, .plan-main's min(520px, 42%) side
    track has no width to take 42% of, so it falls back to auto too. Then one
-   unbroken nowrap string in the side column (a long list note, a bare URL) set
-   the whole page's width: New Features made the window 1882px wide at 1417
-   (#76, #78). */
+   unbroken nowrap string in the side column (a long list note, a bare URL) sets
+   the whole page's width: a 1417px window laid out 1882px wide (New Features
+   #76, #78). */
 .plan {
   height: 100%;
   display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 8px;
@@ -4628,6 +4628,16 @@ body.email-reading .prompt-bar { position: relative; z-index: 51; }
 .dp-frow.on { background: rgba(255, 255, 255, 0.08); }
 .dp-patch { flex: 1; min-width: 0; overflow: auto; }
 .dp-note { padding: 6px 12px; color: var(--ink-mid); font-style: italic; }
+/* The branch view's two parts: the commits a merge lands, then what's only
+   in the worktree. The second is dashed and dimmed: real work, not landing. */
+.dp-part {
+  padding: 8px 8px 2px; font-size: var(--text-xs); color: var(--ink-faint);
+  letter-spacing: 0.02em;
+}
+.dp-part.loose { margin-top: 6px; border-top: 1px dashed var(--ink-line-2); color: var(--ink-mid); }
+.dp-frow.loose .df-name { color: var(--ink-mid); }
+.dp-frow.loose .df-st { opacity: 0.7; }
+.dp-loose { border-bottom: 1px dashed var(--ink-line-2); }
 .dp-lines { border-collapse: collapse; width: 100%; font: var(--text-sm)/1.5 var(--code); }
 .dl td { padding: 0 8px; white-space: pre; vertical-align: top; }
 .dl-o, .dl-n { width: 1%; text-align: right; color: var(--ink-mid); opacity: 0.6; user-select: none; }

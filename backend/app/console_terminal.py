@@ -1,7 +1,7 @@
 """Computer use for a normal tab: a real `claude` on a pseudo-terminal, as a job.
 
 Claude Code's computer-use server only exists interactively: 0 tools in an SDK
-session even with it enabled, 24 on a pty (measured 11-04). A console tab can't
+session even with it enabled, 24 on a pty (measured). A console tab can't
 have it, so its `use_computer` tool hands the task to a `claude` Kestrel runs
 itself and reports the answer back. You stay in your conversation, and only one
 job runs at a time because the CLI holds a single computer-use lock.
@@ -139,8 +139,8 @@ class TranscriptEvents:
                         "desc": sessions.tool_desc(tool_input), "raw": json.dumps(tool_input)})
         # A message is logged a block at a time, each line carrying the final
         # stop_reason, so a thinking block says end_turn seconds before the
-        # answer exists. Ending there returned the last progress note as the
-        # result and killed the job before it said anything else (11-04).
+        # answer exists. Ending there returns the last progress note as the
+        # result and kills the job before it says anything else.
         said = any(isinstance(b, dict) and b.get("type") == "text" for b in content)
         if said and message.get("stop_reason") == "end_turn":
             self._end(out)

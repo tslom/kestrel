@@ -43,8 +43,6 @@ def one(tool, **args):
     return pv.describe(tool, [args])[0]
 
 
-# ---------- the event a delete is about ----------
-
 def test_a_delete_card_names_the_event_not_the_id(dbfile):
     _event(description="bring the reader")
     card = one("mcp__vault__event_delete", event_id="ev1", calendar_id="gym@g")
@@ -150,8 +148,6 @@ def test_the_connector_tools_resolve_through_the_same_cache(dbfile):
     assert card["title"] == "Lift"
 
 
-# ---------- mail ----------
-
 def _email(msg_id="m1", thread_id="t1", subject="Rent due", day="2026-09-20"):
     with db.session() as con, con:
         con.execute(
@@ -183,8 +179,6 @@ def test_sending_shows_the_recipient_and_that_it_leaves(dbfile):
     assert card["note"] == "Paid on the 1st."
     assert "leaves for the recipient" in card["warn"]
 
-
-# ---------- shell and everything else ----------
 
 def test_a_command_is_shown_whole(dbfile):
     card = one("Bash", command="rm -rf /Users/x/vault/06-Generated/note.md")

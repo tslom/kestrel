@@ -1,4 +1,4 @@
-"""Email summarizer (IDEAS §5) — batch messages through a cheap model and
+"""Email summarizer — batch messages through a cheap model and
 cache {summary, filing label, search terms, action guess} per message id in
 email_triage, so nothing is ever summarized twice.
 
@@ -303,9 +303,9 @@ def _is_css_soup(text: str) -> bool:
 
 
 # Mailchimp-style senders duplicate last term's campaign and edit only the
-# HTML, so the text/plain part can be a different email entirely (CASA's Oct
-# 2026 newsletter carried a Nov 2024 plain part). Gmail shows the HTML, so the
-# HTML is what was sent. Measured on 69 two-part messages (2026-10-13): real
+# HTML, so the text/plain part can be a different email entirely (one
+# newsletter carried a plain part two years old). Gmail shows the HTML, so the
+# HTML is what was sent. Measured on 69 two-part messages: real
 # alternates share >=0.75 of their words; stale/raw-markup ones <=0.48.
 _URLISH = re.compile(r"\S*(?:https?://|www\.)\S*|\S+@\S+")
 _PLAIN_MIN_WORDS = 8                 # fewer than this is too little to judge

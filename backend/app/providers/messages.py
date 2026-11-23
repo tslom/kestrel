@@ -1,4 +1,4 @@
-"""Messages provider (archive/ROUND34_PLAN.md §9) + self-chat task capture (§19a).
+"""Messages provider + self-chat task capture.
 
 chat.db is truth; `messages` in app.db is a genuine cache here (unlike
 Spotify's `plays` — chat.db keeps full local history, so a cache drop only
@@ -821,7 +821,7 @@ def reply_latency_by_day(con, start_key: str, end_key: str) -> dict[str, float]:
     """Median minutes you took to answer, per day — `{day: minutes}`.
 
     Shared by `get('reply_latency')` and features.py's extractor on purpose:
-    §8's novelty bug was a second copy of the math in features.py drifting
+    Spotify's novelty bug was a second copy of the math in features.py drifting
     from the provider's, so there is exactly one implementation here.
 
     Each inbound message opens a debt in its 1:1 chat; your next outbound

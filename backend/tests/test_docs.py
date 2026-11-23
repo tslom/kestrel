@@ -64,8 +64,6 @@ def api(dbfile, docs_dir):
     return TestClient(app)
 
 
-# ---------- the worker ----------
-
 def test_the_worker_keeps_every_page_in_its_slot():
     """A blank page keeps its place: dropping it would make every later
     citation one page early, which the highlight would then fail to find."""
@@ -87,8 +85,6 @@ def test_a_long_document_does_not_wedge_the_pipe():
     assert len(out["pages"]) == 60
     assert out["pages"][59].startswith("page 59")
 
-
-# ---------- the drop ----------
 
 def test_a_dropped_pdf_is_kept_and_gets_a_ref(api, docs_dir):
     data = make_pdf(["Lecture 4: caches", "Direct-mapped caches index by low bits"])
@@ -131,8 +127,6 @@ def test_a_text_file_is_still_not_kept(api, docs_dir):
     assert "doc" not in body
     assert not docs_dir.exists()
 
-
-# ---------- the pill and the read ----------
 
 def test_the_pill_cuts_on_a_page_and_says_how_to_read_the_rest():
     pages = ["x" * 7000 for _ in range(5)]
@@ -185,7 +179,7 @@ def test_doc_pages_restates_the_ref_outside_the_fence(dbfile, docs_dir):
 
 def test_doc_pages_opens_a_pdf_on_disk_by_path(dbfile, docs_dir, tmp_path, monkeypatch):
     """Handouts read with pdftotext had no ref, so the reply couldn't show a
-    page (11-07). By path, the file is kept like a drop — same ref as
+    page. By path, the file is kept like a drop — same ref as
     dropping the same bytes — and the result is citable."""
     import asyncio
     from app import console_tools as ct
@@ -216,8 +210,6 @@ def test_doc_pages_opens_a_pdf_on_disk_by_path(dbfile, docs_dir, tmp_path, monke
     assert asyncio.run(ct.doc_pages.handler({})).get("is_error")
 
 
-# ---------- the prompt ----------
-
 def test_the_ref_rides_outside_the_fence():
     """The ref is ours; the page text is the file's. A document that prints
     `ref="d…"` in its own text is still inside the untrusted fence."""
@@ -235,8 +227,6 @@ def test_a_malformed_doc_ref_is_dropped():
         "doc": {"ref": 'd1" onload="x', "pages": 1}}]})
     assert "<document" not in prompt and "<untrusted_attachment" in prompt
 
-
-# ---------- the markers ----------
 
 def test_refs_in_reads_a_document_citation():
     text = 'Caches index by low bits [cite:d3f9a1#p12 "index by the low bits"].'

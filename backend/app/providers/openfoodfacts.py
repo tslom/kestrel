@@ -1,4 +1,4 @@
-"""Open Food Facts — barcode → label nutrition for packaged food (§25). Keyless.
+"""Open Food Facts — barcode → label nutrition for packaged food. Keyless.
 
 Not a provider in REGISTRY: nothing to poll and no days to read, same shape as
 venues.py. One call per barcode, the first time it's looked up; the result

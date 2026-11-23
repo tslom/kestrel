@@ -8,10 +8,9 @@ import { fmtTime, shortDay } from "../lib/time";
 import { dragPin } from "../lib/drag.js";
 import Folded from "../ui/Folded.jsx";
 
-// Deliveries (§15) + travel (§16) on the desk. Both endpoints have existed
-// since the extractors shipped and both already feed the brief — but with no
-// card, a package arriving today was visible only if that morning's brief
-// happened to mention it, and a flight only in prose.
+// Deliveries + travel on the desk. Both endpoints also feed the brief, but
+// without a card a package arriving today is visible only if that morning's
+// brief happens to mention it, and a flight only in prose.
 //
 // The two live on one card on purpose: each is empty most days, and two
 // separate cards that are both usually blank is exactly the "everything

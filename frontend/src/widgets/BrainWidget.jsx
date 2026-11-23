@@ -11,8 +11,8 @@ import { holdDelete, useHeld } from "../lib/undo.js";
 
 // The Brain (DESIGN.md → The Brain): what Kestrel knows about you. Facts are
 // rows in app.db; this card is where you rule on them. A fact read off a
-// text, an email or a note waits here as "unconfirmed" until you ✓ it (the
-// user's call, 09-28: everything needs a ✓) — Kestrel already uses it, just
+// text, an email or a note waits here as "unconfirmed" until you ✓ it
+// (everything needs a ✓) — Kestrel already uses it, just
 // hedged. ✗ turns it into a tombstone ingest will never relearn.
 //
 // Review goes a page at a time, not a fact at a time: the backfill brings
@@ -38,8 +38,6 @@ export function useBrainCard() {
 
   return { data, error, reload, refreshing: busy, level, summary, pages, pending };
 }
-
-// ------------------------------------------------------------ shared rows
 
 async function rule(ids, verdict) {
   return postJSON("/api/brain/verdict", { ids, verdict });
@@ -114,8 +112,6 @@ function usePage(slug) {
   return { ...got, page: got.data && got.data.slug === slug ? got.data : null };
 }
 
-// ------------------------------------------------------------ the card
-
 export default function BrainWidget({ card, onPin, onExpand }) {
   const { data, error, reload, refreshing, pages, pending } = card;
   // The page the queue is on: the first one with something to confirm.
@@ -178,8 +174,6 @@ export default function BrainWidget({ card, onPin, onExpand }) {
     </section>
   );
 }
-
-// ------------------------------------------------------------ the sheet
 
 export function BrainSheet() {
   const { data, reload } = useWidgetData("/api/brain", TOPIC);

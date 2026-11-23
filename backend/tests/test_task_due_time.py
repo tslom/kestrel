@@ -17,8 +17,6 @@ def _day(offset=0):
     return (date.fromisoformat(db.day_key()) + timedelta(days=offset)).isoformat()
 
 
-# ---------- parsing ----------
-
 def test_split_due_accepts_a_bare_date():
     assert db.split_due("2026-09-21") == ("2026-09-21", None)
 
@@ -43,8 +41,6 @@ def test_split_due_rejects_junk(bad):
         db.split_due(bad)
 
 
-# ---------- the rollover ----------
-
 def test_day_instant_inverts_day_key():
     # An evening time is that calendar day.
     assert db.day_instant("2026-09-21", "17:00") == datetime(2026, 9, 21, 17, 0)
@@ -57,8 +53,6 @@ def test_day_instant_inverts_day_key():
 def test_day_instant_round_trips_through_day_key(hhmm):
     assert db.day_key(db.day_instant("2026-09-21", hhmm)) == "2026-09-21"
 
-
-# ---------- storage ----------
 
 def test_create_stores_the_hour(dbfile):
     t = db.create_task("call the bank", due="2026-09-21", due_time="09:00")
@@ -111,8 +105,6 @@ def test_bad_hour_is_rejected(dbfile):
     with pytest.raises(ValueError):
         db.update_task(t["id"], due_time="half five")
 
-
-# ---------- triage ----------
 
 def test_today_with_a_past_hour_is_overdue(dbfile, monkeypatch):
     """The point of the feature: a 9am deadline must not sit in "due today" all
@@ -174,8 +166,6 @@ def test_subtasks_carry_the_instant_too(dbfile):
             for s in t["subtasks"]:
                 assert "due_at" in s
 
-
-# ---------- API + generated view ----------
 
 def test_api_round_trips_the_hour(client, dbfile):
     made = client.post("/api/tasks", json={"title": "deploy", "due": "2026-09-21",

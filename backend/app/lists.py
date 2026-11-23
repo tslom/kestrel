@@ -34,8 +34,6 @@ def _drop(table: str, row_id: int, missing: str):
     return {"ok": True}
 
 
-# ---------- debts ----------
-
 class DebtIn(BaseModel):
     person: str
     amount: float
@@ -83,8 +81,7 @@ def delete_debt(debt_id: int):
     return _drop("debts", debt_id, "no such debt")
 
 
-# ---------- beers ----------
-# Rides on the debts card but is its own table: a beer has no dollar value,
+# Beers ride on the debts card but is its own table: a beer has no dollar value,
 # so it stays out of the owed-to-you total and out of the nudges.
 
 class BeerIn(BaseModel):
@@ -125,8 +122,6 @@ def post_beer_settle(body: BeerSettleIn):
 def delete_beer(beer_id: int):
     return _drop("beers", beer_id, "no such beer")
 
-
-# ---------- user lists ----------
 
 class ListIn(BaseModel):
     name: str
@@ -194,8 +189,6 @@ def post_item_done(item_id: int, body: DoneIn):
 def delete_list_item(item_id: int):
     return _drop("list_items", item_id, "no such item")
 
-
-# ---------- watchlist ----------
 
 class WatchIn(BaseModel):
     title: str

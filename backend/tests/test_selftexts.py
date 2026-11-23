@@ -208,8 +208,8 @@ def _photo(guid, status):
 
 
 def test_a_failed_photo_read_is_retried_not_trusted(me, monkeypatch):
-    """11-05: one dropped vision call cached "error", and a lunch photo was
-    filed as "couldn't be read" an hour later without another try."""
+    """One dropped vision call caches "error"; the photo must not be filed as
+    "couldn't be read" an hour later without another try."""
     from app.providers import attachments
     aid = _photo(text("(photo)"), "error")
     calls = []

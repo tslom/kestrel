@@ -163,15 +163,15 @@ def _cli_snapshot() -> tuple[list[dict], float | None] | None:
 # The file above is somebody else's cache, and it goes quiet exactly when you
 # want it most: the moment you stop using the interactive UI. A local proxy
 # used to poll the endpoint on its own timer and give us a second, fresher
-# reading, but that was removed on 2026-09-22 and the CLI's cache alone is
-# routinely hours or days stale — so this fetch is now the only way the
+# reading, but it is gone and the CLI's cache alone is
+# routinely hours or days stale — so this fetch is the only way the
 # console sees a live number.
 #
 # Which credential to ask with. This used to be "the environment and nowhere
 # else", on the principle that a dashboard has no business lifting the CLI's
 # login out of the system keystore. That principle cost the feature outright,
-# so it was overturned deliberately on 2026-09-22 — the reasoning, because the
-# comment it replaces argued the opposite:
+# so it was overturned deliberately — the reasoning, because it is easy to
+# argue the opposite:
 #
 # A `claude setup-token` token does not work here and never did. It lacks the
 # one scope the endpoint demands, which the endpoint states plainly:
@@ -181,8 +181,8 @@ def _cli_snapshot() -> tuple[list[dict], float | None] | None:
 #
 # setup-token has no flag to ask for more (`--help` offers only -h), there is
 # no `claude usage` subcommand, and `claude auth status` reports login but no
-# usage. The CLI's own ~/.claude.json cache is not a fallback either: it froze
-# on 2026-09-14 and does not resume — not from `-p`, not from `--bg`, and not
+# usage. The CLI's own ~/.claude.json cache is not a fallback either: it freezes
+# and does not resume — not from `-p`, not from `--bg`, and not
 # from a real interactive TUI launched on a pty (all three tried). So the login
 # keychain is not the convenient option, it is the only one.
 #
@@ -216,7 +216,7 @@ USAGE_API_BETA = "oauth-2025-04-20"
 
 # How often a plain poll may ask. This was five minutes, copying the CLI's own
 # throttle, and with the console polling every minute the chips ran up to six
-# minutes behind a turn (New Features, 11-10). A minute is still one request
+# minutes behind a turn. A minute is still one request
 # per minute however many tabs poll, and a 429 below backs it off on its own.
 USAGE_FETCH_INTERVAL = 60
 # A turn just finished, which is the moment the number moved: the console asks

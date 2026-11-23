@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { fetchJSON } from "../lib/api";
 import { fmtDur, shortDay } from "../lib/time";
 
-// The two place panels under the map (IDEAS, 09-13): which place each visit
+// The two place panels under the map: which place each visit
 // was, and naming a cluster the map drew. Split out of MapSheet.jsx so the map
 // engine and the labelling UI read apart; the map still owns the picked place
 // and hands it down.

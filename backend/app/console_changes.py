@@ -147,7 +147,7 @@ _VAULT: dict[str, tuple[str, str, str | None]] = {
     "brain_note": ("created", "brain fact", None),
     "brain_verdict": ("edited", "brain fact", None),
     "brain_page": ("edited", "brain page", None),
-    # §25 food: all app.db, all editable or deletable from the food sheet.
+    # Food: all app.db, all editable or deletable from the food sheet.
     "food_log": ("created", "food entry", None),
     "food_entry": ("edited", "food entry", None),
     "food_create": ("created", "food", None),
@@ -433,7 +433,7 @@ def _http_writes(seg: list[str]) -> bool:
 # Deleting build leftovers, killing a stuck dev server, `gh` and pushing
 # (CLAUDE.md: commit and push once verified) are the work there, not
 # exceptions to it — a dev tab that cards each one is a tab you have to sit
-# and watch, which is what picking auto was meant to avoid (10-29). Mail,
+# and watch, which is what picking auto is meant to avoid. Mail,
 # AppleScript, other machines, sudo, launchctl and history rewrites still stop.
 _DEV_WAIVED_SHELL = frozenset({"rm", "rmdir", "gh", "pkill", "killall"})
 _DEV_WAIVED_GIT = frozenset({"push"})

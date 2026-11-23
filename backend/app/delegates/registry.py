@@ -58,8 +58,6 @@ class Provider:
     signed_in: Callable[[], tuple[bool, str]] | None = field(default=None, repr=False)
 
 
-# ---------- gemini ----------
-
 def _gemini_argv(brief: str, scratch: Path, model: str | None) -> list[str]:
     # yolo: it may write in its scratch directory without asking; the seatbelt
     # is what bounds it. The MCP name is one no server has, so whatever
@@ -104,8 +102,6 @@ def _gemini_signed_in() -> tuple[bool, str]:
         pass
     return False, "not signed in"
 
-
-# ---------- codex ----------
 
 def _codex_argv(brief: str, scratch: Path, model: str | None) -> list[str]:
     # Its own sandbox is off because seatbelt doesn't nest and ours is already

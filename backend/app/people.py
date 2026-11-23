@@ -1,4 +1,4 @@
-"""People / CRM-lite (archive/ROUND34_PLAN.md §17). Not a provider: no range/metric
+"""People / CRM-lite. Not a provider: no range/metric
 axis, no refresh() — `people` holds the only real facts (birthday,
 watch_cadence_days, notes) and is NOT droppable (see db.py's v19 migration
 comment). Everything else here is a live merge over emails/messages/events,
@@ -372,7 +372,7 @@ def post_remind(body: Reminder):
     """Turn a dangling thread into a task — the other half of dismissing one.
 
     Dismiss says "this needs nothing"; this says "it needs something, but not
-    right now". Nothing here auto-creates: §17 settled that the waiting feed
+    right now". Nothing here auto-creates: the waiting feed
     only ever suggests, so a task exists because it was asked for.
 
     `source_ref` carries the message's own timestamp, exactly like a
@@ -462,7 +462,7 @@ def get_signals():
 # ---------- conversations (group-chat / per-chat rollup) ----------
 #
 # The People views above are keyed per-handle (one person). This is the other
-# axis the dashboard was missing (BUG_CHECKS pass; archive/ROUND34_PLAN.md):
+# axis:
 # every chat_guid as its own conversation, so group chats — which fan a
 # single thread across many
 # handles — finally show up as one row instead of dissolving into their
@@ -735,7 +735,7 @@ def post_open_messages(person_key: str):
     """Open this person's thread in Messages.app.
 
     The dashboard's message history is read-only (sending would need
-    AppleScript — IDEAS §19), so replying means handing off to the real app.
+    AppleScript), so replying means handing off to the real app.
     Done backend-side via `open` rather than an <a href="imessage://"> so the
     behaviour doesn't depend on how the webview treats a non-http scheme:
     the same code then works in the pywebview window and a browser tab."""

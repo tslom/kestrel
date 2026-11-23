@@ -1,6 +1,6 @@
-"""§25 food tracker — app/food.py, the usc_dining provider, the estimator, the
+"""Food tracker — app/food.py, the usc_dining provider, the estimator, the
 console tools and the routes. Network and model calls are stubbed; menus and
-the location listing come from fixtures captured 2026-10-14."""
+the location listing come from captured fixtures."""
 
 import asyncio
 import json
@@ -516,9 +516,9 @@ def test_an_estimate_never_overwrites_a_correction(dbfile):
 
 
 def test_a_kcal_correction_keeps_the_macros_consistent(dbfile):
-    """The BBQ chicken of 10-15: kcal fixed to 230 left 24 g fat and 17 g
-    carbs beside it (400 kcal of macros). The unstated macros now share what
-    the stated ones leave, and the history is kept."""
+    """BBQ chicken with kcal fixed to 230 must not keep 24 g fat and 17 g
+    carbs beside it (400 kcal of macros). The unstated macros share what the
+    stated ones leave, and the history is kept."""
     f = food.create_custom("BBQ chicken", {"kcal": 400, "protein": 32, "fat": 23.8,
                                            "carbs": 16.5, "sat_fat": 9, "sugar": 13,
                                            "sodium": 800})

@@ -1,6 +1,6 @@
 """Named places — where you are, by name rather than by coordinate.
 
-The vault stays the source of truth, the same arrangement §22 courses use: one
+The vault stays the source of truth, the same arrangement course notes use: one
 note per place with `type: place` frontmatter, no table and no migration,
 because index.db already stores frontmatter as JSON. A place you add or edit in
 Obsidian shows up on the next reindex.
@@ -25,7 +25,7 @@ left to handle only the ones you haven't named.
 
 **Home is just a place with `kind: home`, and that is the point.** It used to be
 one fixed coordinate in config, which silently assumes you never move. This
-vault's owner moved 2026-08-17, and every day before that was scored against the
+vault's owner moved cross-country, and every day before the move was scored against the
 new coordinate 3,561km away — so `time_at_home_min` read a flat 0.0 for a month
 of days on which they were, in fact, home. A dated place fixes that class of
 error rather than that instance of it: `from`/`until` bound when an entry is
@@ -198,7 +198,7 @@ def _config_home() -> Place:
 
 def home_now(places: list[Place] | None = None) -> Place:
     """Home as of today, for the callers that mean "now" rather than a past day
-    (weather's origin, §14's leave-by origin). Always answers: those callers
+    (weather's origin, leave.py's leave-by origin). Always answers: those callers
     need somewhere to start from, and the config constant is a better guess
     than nothing."""
     from . import db

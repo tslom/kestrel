@@ -8,8 +8,8 @@ import { CheckList, CheckRow, AddInput } from "../ui/CheckList.jsx";
 import { dragPin } from "../lib/drag.js";
 import { holdDelete, useHeld } from "../lib/undo.js";
 
-// The card that was Shopping. It still opens on the buy list — that's the one
-// seeded, and the first chip — but the list is now a row the user makes, so
+// The lists card. It opens on the buy list — that's the one seeded, and the
+// first chip — but a list is a row the user makes, so
 // packing for college or a party each get their own instead of being filed as
 // categories on a list that isn't theirs.
 //
@@ -33,14 +33,11 @@ export function useListsCard() {
   const open = lists.reduce((n, l) => n + l.open, 0);
   const busy = lists.filter((l) => l.open > 0);
 
-  // HAS on any open item (decided 2026-09-25, with the plan view). It was
-  // NEEDS from 2026-09-13, after 44 impressions over 9 days with zero opens
-  // while it sat in HAS on the rail desk. The plan view narrows "needs you" to
-  // a blocked turn, a clock, a broken source, or a person or decision waiting
-  // — "today, unless it's like a task that needs to be done that day" — and a
-  // shopping list isn't due. Its "today" line is always visible now (the rail
-  // folded it away), which is what the 09-13 change was reaching for; if the
-  // usage sheet shows it back at zero opens, that's the evidence to revisit.
+  // HAS on any open item. "Needs you" is only a blocked turn, a clock, a
+  // broken source, or a person or decision waiting, and a shopping list isn't
+  // due. Folded away as HAS on the old rail desk it drew zero opens; its
+  // "today" line is always visible now, and if the usage sheet shows it back
+  // at zero opens, that's the evidence to revisit.
   const level = !data ? null : open === 0 ? QUIET : HAS;
   const summary = !data ? ""
     : open === 0 ? (lists.length ? "nothing on the lists" : "no lists yet")

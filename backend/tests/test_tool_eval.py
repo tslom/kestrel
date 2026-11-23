@@ -8,18 +8,11 @@ from app import console_tools as ct
 
 CASES = json.loads((Path(__file__).parents[1] / "evals/tool_choice/cases.json").read_text())
 
-# Every session carries all of these. They were 30k until 11-06, when the eval
-# showed 19.5k routes just as well. Raising this is fine, with a fresh eval run.
-# 11-17: +1.8k for run_script, whose description is the bridged functions'
-# signature list (console_code.signature). +300 for trip_delete and
-# email_archive, with an eval run. 11-18: +1.1k for run_script's table
-# summary and "return the answer" rule (code_mode eval, --repeat 3).
-# 11-18: +200 for message_tab (a parent's follow-up to its child tab), with
-# an eval run.
-# +700 for delegate, fan_out and shortlist (other models on errands), with
-# an eval run.
-# +800 for theme_set (colour roles; a third of it is the role names), with
-# an eval run.
+# Every session carries all of these. The eval showed 19.5k routes as well as
+# 30k did; what sits above that (run_script's signature list and table
+# summary, trip_delete, email_archive, message_tab, delegate, fan_out,
+# shortlist, theme_set) each came with an eval run. Raising this is fine, with
+# a fresh eval run.
 DESCRIPTION_BUDGET = 25_500
 
 

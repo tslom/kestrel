@@ -9,7 +9,7 @@ a new tab rather than reshaping this one.
 
 - **general** — the vault console as it always was.
 - **study** — the same vault and tools, prompted to tutor: work it through
-  with the user rather than hand over the answer. Builds on §22's course tools.
+  with the user rather than hand over the answer. Builds on the course tools.
 - **dev** — Claude Code on a repo under `DEV_PROJECT_ROOTS`: cwd at the repo,
   so its CLAUDE.md, settings, skills and auto-memory load the way they do in a
   terminal; the stock prompt plus a short note (no vault rules); subagents on;
@@ -37,8 +37,7 @@ _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 PROFILES = ("general", "study", "dev")
 
 # What a profile starts in before you pick one for it (the browser remembers
-# your pick per profile). Dev runs never ask since 11-03, the user's call: a
-# Claude Code session on a repo you opened on purpose doesn't stop for clicks,
+# your pick per profile). Dev runs never ask: a Claude Code session on a repo you opened on purpose doesn't stop for clicks,
 # and the turn's diff is the review. That includes a tab another tab opened,
 # which sat on a card nobody was watching while it was held to ask. General
 # and study stay on auto: they hold the mail and calendar tools, and auto still

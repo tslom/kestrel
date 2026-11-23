@@ -4,7 +4,7 @@ from their D2L calendar feed (BRIGHTSPACE_ICS_URL, a token URL in .env).
 Why it exists: "how many WPs do I have left", "how many AWAs are there",
 "when is each essay due" had no source — the syllabus text gives policy, not
 the dated list — and a calendar entry for an ENGR pitch sat a day early while
-Brightspace had the real deadline (10-14 11:59pm). The feed is what Brightspace
+Brightspace had the real deadline. The feed is what Brightspace
 itself shows on its calendar: assignment due dates (" - Due"), content release
 dates (" - Available"), and items some instructors post with neither suffix.
 

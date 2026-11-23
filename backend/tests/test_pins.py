@@ -74,8 +74,6 @@ def test_unserializable_pill_does_not_break_the_turn():
     assert "<weird>" in out
 
 
-# ---------- the files half ----------
-
 def add_file(con, *, source, ref, filename, mime="application/pdf"):
     con.execute(
         "INSERT INTO attachments (source, source_ref, ord, day, filename, mime,"
@@ -126,8 +124,6 @@ def test_email_attachment_with_no_mime_still_lists(dbfile):
     finally:
         con.close()
 
-
-# ---------- dropped files ----------
 
 def test_a_dropped_file_lands_in_an_untrusted_fence():
     """A pinned widget is the user's own data; a dropped file is a PDF someone

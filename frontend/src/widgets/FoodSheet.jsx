@@ -10,7 +10,7 @@ import {
   foodChanged, kcalText, logFood,
 } from "./FoodWidget.jsx";
 
-// §25 food sheet. Four tabs: Today (the log and every nutrient), Menus (the
+// The food sheet. Four tabs: Today (the log and every nutrient), Menus (the
 // three dining halls, tap to log), Week (the trend a lean bulk is judged on),
 // Setup (the inputs targets are computed from).
 const TABS = ["today", "menus", "week", "setup"];

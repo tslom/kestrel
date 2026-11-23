@@ -384,8 +384,7 @@ def test_tools_refuse_a_missing_course_and_a_wrong_argument(vault):
 
 
 def test_review_add_takes_a_batch_with_a_shared_code(vault):
-    """58 of 58 course_review_add calls in the 14 days to 11-17 came in runs
-    of 3+: `items` makes a run one call, and a bad item doesn't sink the rest."""
+    """course_review_add calls come in runs of 3+: `items` makes a run one call, and a bad item doesn't sink the rest."""
     vault("CSCI 170", syllabus=CS170_SYLLABUS)
     text, err = _served("course_review_add", code="CSCI 170", items=[
         {"concept": "power set", "mistake": "2|A|", "correct": "2^|A|"},

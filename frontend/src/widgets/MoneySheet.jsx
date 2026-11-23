@@ -12,7 +12,7 @@ import { fetchJSON, postJSON } from "../lib/api";
 import { useWidgetData, broadcastRefresh } from "../lib/refresh";
 
 // The Money sheet — the first expansion written for its subject rather than
-// for the provider behind it (IDEAS §1).
+// for the provider behind it.
 //
 // What it replaces: `finance` used to render through the generic provider
 // panel, which meant a chip row of metric names (`networth`, `bills_due`,

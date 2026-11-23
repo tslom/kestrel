@@ -168,8 +168,8 @@ def _messages(con, burst_id: int, extract: bool = False) -> list[dict]:
         for f in m["attachments"]:
             # A failed read is retried, not trusted: extract() caches "error"
             # forever, and the usual cause is the vision call dropping (API
-            # unreachable), so one bad minute made a lunch photo unreadable
-            # for good (11-05).
+            # unreachable), so one bad minute would make a photo unreadable
+            # for good.
             if extract and f["status"] in ("not-extracted", *RETRY_STATUSES):
                 try:
                     attachments.extract(f["id"], force=f["status"] != "not-extracted")

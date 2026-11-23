@@ -43,7 +43,7 @@ DATA_DIR = Path(os.environ.get("DASHBOARD_DATA_DIR", Path(__file__).resolve().pa
 INDEX_DB = DATA_DIR / "index.db"
 APP_DB = DATA_DIR / "app.db"
 
-# Context providers (IDEAS §0)
+# Context providers
 PROVIDER_REFRESH_SECONDS = int(os.environ.get("PROVIDER_REFRESH_SECONDS", "300"))
 
 # Must match the uvicorn --port — it's baked into the OAuth loopback redirect
@@ -64,16 +64,16 @@ NOTIFY_FD_ENV = "KESTREL_NOTIFY_FD"
 # pipe, and write banners into whatever that fd number is in them.
 NOTIFY_FD = os.environ.pop(NOTIFY_FD_ENV, None)
 
-# Calendar provider (IDEAS §2): which token row and which calendars to pull.
+# Calendar provider: which token row and which calendars to pull.
 # None = every calendar on the account's calendarList (subscribed ones too);
 # set a list of calendar ids (e.g. ["primary"]) to narrow it.
 GOOGLE_CALENDAR_ACCOUNT = "school"
 GOOGLE_CALENDAR_IDS: list[str] | None = None
 
-# Health provider (IDEAS §3): which token row holds the Google Health grant.
+# Health provider: which token row holds the Google Health grant.
 GOOGLE_HEALTH_ACCOUNT = "personal"
 
-# Email provider (IDEAS §5): which token row (needs gmail.modify), and the
+# Email provider: which token row (needs gmail.modify), and the
 # model the review-queue summarizer runs on — via the Claude Code CLI on the
 # subscription login, same as the console (never the raw API).
 GMAIL_ACCOUNT = "school"
@@ -89,7 +89,7 @@ EMAIL_BACKFILL_PER_REFRESH = 60
 # nothing is being fed to a model here. Still never stored.
 EMAIL_BODY_FULL_CHARS = 20000
 
-# Reply drafter (IDEAS §9): candidate replies for a thread waiting on you,
+# Reply drafter: candidate replies for a thread waiting on you,
 # on demand from the People panel only — never from the poller, and it never
 # sends. Same subscription-CLI posture as email triage.
 REPLY_DRAFT_MODEL = os.environ.get("REPLY_DRAFT_MODEL", "sonnet")
@@ -104,7 +104,7 @@ AUTO_PAUSE_PCT = {
     "seven_day": float(os.environ.get("AUTO_PAUSE_7D_PCT", "85")),
 }
 
-# Daily brief (IDEAS round 2): the one-shot brief writer, via the Claude Code
+# Daily brief: the one-shot brief writer, via the Claude Code
 # CLI on the subscription login like email triage — never the raw API.
 BRIEF_MODEL = os.environ.get("BRIEF_MODEL", "sonnet")
 BRIEF_STALE_GENERATING_SECONDS = 300  # backend died mid-run -> reclaimable
@@ -115,14 +115,14 @@ BRIEF_STALE_GENERATING_SECONDS = 300  # backend died mid-run -> reclaimable
 BRAIN_INGEST_MODEL = os.environ.get("BRAIN_INGEST_MODEL", "sonnet")
 BRAIN_LINT_MODEL = os.environ.get("BRAIN_LINT_MODEL", "sonnet")
 # What a fact read off a source (not told to Kestrel) starts as. "pending"
-# is usable by the console but labelled unconfirmed until the user ✓s it;
-# the user chose "everything needs a ✓" on 2026-09-28.
+# is usable by the console but labelled unconfirmed until the user ✓s it:
+# everything read off a source needs a ✓.
 BRAIN_INFERRED_STATUS = "pending"
 # Group chats count as a source only where the user actually talks: at least
 # this many of their own messages in the backfill window. 1:1s always count.
 BRAIN_GROUP_MIN_MINE = 5
 # How far back the first ingest reaches, and how far messages are pulled in
-# from chat.db to cover it (the user's call: a year, groups and 1:1s alike).
+# from chat.db to cover it (a year, groups and 1:1s alike).
 BRAIN_BACKFILL_DAYS = 365
 
 # Auto exercise check-in: on each health refresh, a day whose Active Zone
@@ -156,17 +156,16 @@ SLEEP_HOURS_THRESHOLD = float(os.environ.get("SLEEP_HOURS_THRESHOLD", "9"))
 PLAID_COUNTRY_CODES = ["US"]
 PLAID_DAYS_REQUESTED = 730   # link-token transaction history window (Plaid max)
 
-# Weather provider (IDEAS §6): Open-Meteo, no key/auth. Home coordinate is
-# the fallback origin; once §10 (location) ships, get() prefers the latest
-# fix < 6h old over this. Defaults to the geographic centre of the contiguous
+# Weather provider: Open-Meteo, no key/auth. Home coordinate is the fallback
+# origin; get() prefers the latest location fix < 6h old over this. Defaults to the geographic centre of the contiguous
 # US, a placeholder that means "unset" — set it per-machine in .env.
 HOME_LAT = float(os.environ.get("HOME_LAT", "39.8283"))
 HOME_LON = float(os.environ.get("HOME_LON", "-98.5795"))
 
-# Time-to-leave (IDEAS §14): Google Maps Routes v2 (traffic-aware drive time)
+# Time-to-leave: Google Maps Routes v2 (traffic-aware drive time)
 # + Geocoding (event location string -> coords). Solo use stays inside the
 # free tier easily. leave_by = event start − drive − LEAVE_BUFFER_MIN. Origin
-# prefers a §10 location fix younger than LEAVE_FIX_MAX_MIN, else HOME. An
+# prefers a location fix younger than LEAVE_FIX_MAX_MIN, else HOME. An
 # empty key (or any API failure) degrades: /api/leave still lists the events,
 # just with leave_by null — never a hard failure.
 GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "")
@@ -177,16 +176,7 @@ LEAVE_FIX_MAX_MIN = 30
 # which Google resolves only with the campus attached. Empty = no retry.
 LEAVE_GEOCODE_CONTEXT = os.environ.get("LEAVE_GEOCODE_CONTEXT", "")
 
-# The screen-time provider (IDEAS §7: ActivityWatch, AW_HOSTS, DOOMSCROLL_APPS)
-# was removed on 2026-09-13. It only ever measured the laptop, and the laptop is
-# not where the time goes — so a card reporting it honestly was still answering
-# the wrong question, and the phone half has no route: Apple exposes no Screen
-# Time API, and the undocumented knowledgeC.db needs Full Disk Access the app
-# bundle doesn't have and a schema Apple reshuffles. Not a decision about the
-# code's quality; the measurement wasn't worth keeping. The 332 days it did
-# collect are dumped in backend/data/backups/screen-tables-*.sql.
-
-# Spotify provider (IDEAS §8): authorization-code + PKCE, public client (no
+# Spotify provider: authorization-code + PKCE, public client (no
 # client secret — Spotify's dev dashboard just needs the redirect URI below
 # registered exactly). Token row lives in app.db `tokens`
 # (provider='spotify', account=SPOTIFY_ACCOUNT, client_secret=''). Spotify
@@ -199,8 +189,7 @@ SPOTIFY_REDIRECT_URI = f"http://127.0.0.1:{BACKEND_PORT}/api/oauth/spotify"
 SPOTIFY_SCOPES = "user-read-recently-played user-top-read user-library-read"
 
 # Last.fm — genre/mood tags per artist, because Spotify stopped returning the
-# `genres` field on its artist object (v35 migration comment; verified live
-# 2026-07-26). Free key, no OAuth, no secret: last.fm/api/account/create.
+# `genres` field on its artist object. Free key, no OAuth, no secret: last.fm/api/account/create.
 # Unset = the provider reports "off" and never calls out.
 # Enrichment is a trickle: PER_CYCLE artists per poll, most-played first, so
 # ~9.8k artists fill in over a day or so without hammering a free API. Raise it
@@ -210,7 +199,7 @@ LASTFM_ENRICH_PER_CYCLE = int(os.environ.get("LASTFM_ENRICH_PER_CYCLE", "25"))
 LASTFM_MIN_TAG_WEIGHT = 10   # 0-100, relative to the artist's own top tag
 LASTFM_MAX_TAGS = 8
 
-# Messages provider (archive/ROUND34_PLAN.md §9; capture = §19a): chat.db is truth;
+# Messages provider (archive/ROUND34_PLAN.md §9): chat.db is truth;
 # unlike Spotify's `plays`, app.db's `messages` IS a genuine cache — chat.db
 # keeps full local history, so a cache drop only costs a re-sync. No OAuth:
 # reading chat.db needs Full Disk Access granted to whichever process runs
@@ -240,7 +229,7 @@ TAB_TITLE_MODEL = os.environ.get("TAB_TITLE_MODEL", "haiku")
 # these hints), never the whole inbox. LIKE matching is case-insensitive.
 EXTRACT_MODEL = os.environ.get("EXTRACT_MODEL", "haiku")
 EXTRACT_BATCH = 20
-# §25: dining-hall dishes → ingredients + grams, then a pick among SR28 matches
+# Food: dining-hall dishes → ingredients + grams, then a pick among SR28 matches
 # (app/food_estimate.py). Once per distinct item name, so a cold start is a few
 # batches and a normal day is single digits.
 FOOD_ESTIMATE_MODEL = os.environ.get("FOOD_ESTIMATE_MODEL", "haiku")
@@ -250,7 +239,7 @@ PACKAGE_SENDER_HINTS: list[str] = [
 ]
 TRIP_SENDER_DOMAINS: list[str] = ["aa.com"]   # aa.com first — the live account
 
-# Office-hours amendments arriving by mail (§22). Matched against sender OR
+# Office-hours amendments arriving by mail. Matched against sender OR
 # subject, same as the package hints. Course mail is the case where a *subject*
 # hint carries most of the weight: a TA emailing from a personal address about
 # "OH moved to Friday" has nothing recognisable in the from line, while the
@@ -280,10 +269,9 @@ OFFICE_HOURS_SENDER_HINTS: list[str] = [
 #
 # Read this number together with attachments._RSS_POLL_S: the real ceiling is
 # this cap PLUS whatever the child can allocate in one poll gap, because a
-# sample can only catch what has already happened. This comment used to claim
-# the kill landed "long before" a swap while the gap was 0.15s, which measured
-# out at ~0.84 GB of headroom the cap wasn't accounting for — the interval is
-# now 30ms so the stated cap and the effective one are within ~17%.
+# sample can only catch what has already happened. A 0.15s gap measured
+# ~0.84 GB past the cap; at 30ms the stated cap and the effective one are
+# within ~17%.
 #
 # The vision cap is the API's, not ours: base64 inflates by 4/3 and the request
 # limit is 5MB, so ~3.5MB of raw bytes is the real ceiling.
@@ -296,7 +284,7 @@ ATTACHMENT_VISION_MAX_BYTES = 3_500_000
 ATTACHMENT_EXTRACT_TIMEOUT_S = 30
 ATTACHMENT_VISION_MODEL = os.environ.get("ATTACHMENT_VISION_MODEL", "haiku")
 
-# §16 live flight status: FlightAware AeroAPI (aeroapi.flightaware.com,
+# Live flight status: FlightAware AeroAPI (aeroapi.flightaware.com,
 # Personal tier). Optional — trip extraction from email works without a
 # key; only poll_flight_status() (live status/gate, the T-24h check-in
 # task, delay/gate-change desktop notifications) needs it. Poll cost
@@ -310,16 +298,11 @@ FLIGHT_POLL_INTERVAL_HOURS = 1
 FLIGHT_POLL_CLOSE_HOURS = 6
 FLIGHT_CHECKIN_LEAD_HOURS = 24
 
-# §21 alarms. Dry-run was the default through steps 1-5 and is now off: the
-# reconciler computed and persisted its plan for weeks without writing a thing
-# to Reminders, which is the rehearsal APP_DB's hardcoded path makes the only
-# safe one — there is no copy of the database to point it at. That rehearsal is
-# what it was for, and a channel that never fires is indistinguishable from one
-# that works, so leaving it on indefinitely tests nothing. Set to 1 to go quiet.
+# Alarms. Dry-run is off: a channel that never fires is indistinguishable from
+# one that works, so leaving it on tests nothing. Set to 1 to go quiet.
 ALARMS_DRY_RUN = os.environ.get("ALARMS_DRY_RUN", "0") != "0"
 # How far ahead to bother writing alarms. A horizon exists so the Reminders
-# list stays readable and a far-future flight (Thanksgiving, currently 3 months
-# out) doesn't sit there for a season collecting rewrites.
+# list stays readable and a far-future flight doesn't sit there for a season collecting rewrites.
 ALARM_HORIZON_DAYS = int(os.environ.get("ALARM_HORIZON_DAYS", "14"))
 # Delivery target. A dedicated list, never an existing one: everything in it is
 # written and deleted by the reconciler, so pointing this at a list with real
@@ -345,16 +328,12 @@ PACKAGE_ALARM_HOUR = int(os.environ.get("PACKAGE_ALARM_HOUR", "9"))
 LEAVE_ALARM_TOLERANCE_MIN = int(
     os.environ.get("LEAVE_ALARM_TOLERANCE_MIN", "3"))
 
-# §21 step 4 — the at-desk channel (app/notify.py). Deliberately NOT mirroring
-# ALARMS_DRY_RUN's default-off. A dry run earned that default because the alarm
-# writer reaches the user's phone and cannot be un-reached; a local banner has
-# no comparable blast radius, and this step exists precisely because a channel
-# that never fires (email_extract's `_notify`, dead since §16) is indistinguishable
-# from a quiet week. Off is available; off is not the default.
+# The at-desk channel (app/notify.py). On by default: a local banner has no
+# blast radius worth a dry run, and a channel that never fires is
+# indistinguishable from a quiet week. Off is available; off is not the default.
 NOTIFY_ENABLED = os.environ.get("NOTIFY_ENABLED", "1") != "0"
 # How long since the last keypress or mouse move still counts as "at the desk".
-# Three minutes is what aw-watcher-afk used for the same judgement, kept after
-# §7's removal because the number was never the aw dependency — it's the
+# Three minutes is aw-watcher-afk's number for the same judgement: the
 # threshold where "still here" stops being true.
 NOTIFY_IDLE_MAX_SEC = int(os.environ.get("NOTIFY_IDLE_MAX_SEC", "180"))
 # A notification means *now*. Held past this, it stops being news and starts
@@ -368,12 +347,12 @@ NOTIFY_STALE_MIN = int(os.environ.get("NOTIFY_STALE_MIN", "45"))
 # the news beats none of it. The rest keep their turn next cycle.
 NOTIFY_MAX_PER_CYCLE = int(os.environ.get("NOTIFY_MAX_PER_CYCLE", "5"))
 
-# §21 step 5 — the scheduled wake (app/wake.py). Steps 1-4 hand the phone an
-# alarm hours in advance; what none of them can do is keep that alarm *true*
+# The scheduled wake (app/wake.py). The alarm writer hands the phone an
+# alarm hours in advance; what it can't do is keep that alarm *true*
 # across a night of sleep, because the reconciler only runs while the lid is
 # open. An OS-level wake shortly before each alarm buys one more cycle.
-# Dry-run is off now that scheduling has a way to reach root (a sudoers
-# drop-in scoped to `/usr/bin/pmset schedule`; see wake.py). Until that file is
+# Dry-run is off: scheduling reaches root through a sudoers
+# drop-in scoped to `/usr/bin/pmset schedule` (see wake.py). Until that file is
 # installed the two write verbs fail on `sudo -n` and apply() logs and retries,
 # which is the same soft failure as any other pmset error — a missed wake costs
 # freshness, never the alert. Set to 1 to plan without touching the schedule.
@@ -425,15 +404,14 @@ LOCATION_RELAY_TOKEN = os.environ.get("LOCATION_RELAY_TOKEN")
 # within 20m of the boundary and made at_home flicker across one building.
 HOME_RADIUS_M = 250
 
-# News provider (IDEAS §20): Kagi Kite (kite.kagi.com/kite.json), no key.
+# News provider: Kagi Kite (kite.kagi.com/kite.json), no key.
 # Slugs must match a "file" entry in the index (minus .json) — CLI --list
 # on the index if unsure. refresh() fetches once per day_key.
 NEWS_CATEGORIES: list[str] = ["world", "usa", "tech"]
 NEWS_HEADLINES_PER_CATEGORY = 5
 
-# Athletics provider: Sidearm's public iCal feed of every USC sport (no key;
-# 267 games across the year as of 2026-10-13). Kickoff times the console spent
-# ~15 web searches hunting for live here.
+# Athletics provider: Sidearm's public iCal feed of every USC sport (no key),
+# so kickoff times come from here rather than from web searches.
 ATHLETICS_ICS_URL = os.environ.get(
     "ATHLETICS_ICS_URL",
     "https://usctrojans.com/calendar.ashx/calendar.ics?sport_id=0")
@@ -446,8 +424,7 @@ BRIGHTSPACE_ICS_URL = os.environ.get("BRIGHTSPACE_ICS_URL", "")
 # Reddit provider: Arctic Shift (arctic-shift.photon-reddit.com), no key —
 # Pushshift's successor, and the only anonymous route left. Reddit's own
 # `.json` endpoints answer 403 to any script regardless of User-Agent, and
-# old.reddit redirects to a login (verified 2026-08-12); its `.rss` feeds,
-# once a today-only fallback, have answered 404 since 11-18 (all of them 11-22).
+# old.reddit redirects to a login; its `.rss` feeds all answer 404.
 REDDIT_SUBREDDITS: list[str] = ["onebag"]
 REDDIT_TOP_PER_DAY = 5
 # Selftext is stored whole but trimmed on the way out, so a range read stays
@@ -456,7 +433,7 @@ REDDIT_TOP_PER_DAY = 5
 # and for anything that reads the table directly.
 REDDIT_SELFTEXT_CHARS = 600
 # Arctic Shift ingests a post at creation and revisits it later, so a post's
-# score is worth ~nothing for its first day: measured 2026-08-12, every post
+# score is worth ~nothing for its first day: measured, every post
 # from the previous day still read score=1, while day-2 and older carried real
 # values (52, 465, 214). Days inside this window are re-synced on every refresh
 # and reported `provisional: true` — never charted as final.
@@ -472,7 +449,7 @@ REDDIT_MAX_PAGES = 20
 # account so `python -m app.providers.oauth authorize --account school` needs
 # no flags. Tokens live in app.db — localhost-only, never in frontend code.
 GOOGLE_ACCOUNT_SCOPES: dict[str, list[str]] = {
-    # school Workspace account — calendar widget (§2) + gmail review queue (§5)
+    # school Workspace account — calendar widget + gmail review queue
     # calendar.readonly is what lists the calendars themselves; calendar.events
     # is read/write on their contents, and is what routes/calendar.py needs to
     # create, move, cancel and RSVP. Neither one can create or delete a whole
@@ -482,7 +459,7 @@ GOOGLE_ACCOUNT_SCOPES: dict[str, list[str]] = {
         "https://www.googleapis.com/auth/calendar.events",
         "https://www.googleapis.com/auth/gmail.modify",
     ],
-    # personal account — Google Health / Fitbit Air (§3). Restricted-tier
+    # personal account — Google Health / Fitbit Air. Restricted-tier
     # scopes: expect scary consent screens on your own External/Testing app.
     "personal": [
         "https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly",
@@ -493,12 +470,11 @@ GOOGLE_ACCOUNT_SCOPES: dict[str, list[str]] = {
 
 # Console / Claude Agent SDK
 #
-# `auto` (console.AUTO_MODE), not the SDK's `acceptEdits`, which this was until
-# 2026-09-17 and which the picker no longer offers. acceptEdits reads as the
-# cautious middle option and isn't one: the CLI settles Bash writes inside the
-# workspace under it without consulting the backend, so `rm <vault>/…` ran with
-# no card while `task_create` stopped for one. `auto` inverts both halves of
-# that — the writes it runs unattended are the reversible ones, and what can't
+# `auto` (console.AUTO_MODE), not the SDK's `acceptEdits`, which the picker no
+# longer offers. acceptEdits reads as the cautious middle option and isn't one:
+# the CLI settles Bash writes inside the workspace under it without consulting
+# the backend, so `rm <vault>/…` runs with no card while `task_create` stops
+# for one. `auto` inverts both halves of that — the writes it runs unattended are the reversible ones, and what can't
 # be taken back still asks. Set CONSOLE_PERMISSION_MODE to `default` for a
 # console that asks about everything.
 PERMISSION_MODE = os.environ.get("CONSOLE_PERMISSION_MODE", "auto")
@@ -621,7 +597,7 @@ CONSOLE_BUILTIN_TOOLS = [
 # are the point there, not leakage.
 # The task list is TaskCreate/TaskUpdate/TaskList/TaskGet: TodoWrite is gone
 # from the CLI (2.1.312 drops it from the tool list silently — the model went
-# looking for it with ToolSearch and found nothing, 10-28).
+# looking for it with ToolSearch and found nothing).
 TASK_TOOLS = ["TaskCreate", "TaskUpdate", "TaskList", "TaskGet"]
 DEV_BUILTIN_TOOLS = CONSOLE_BUILTIN_TOOLS + ["Agent", "NotebookEdit", "Skill"] + TASK_TOOLS
 
@@ -634,7 +610,7 @@ EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
 DEV_PROJECT_ROOTS = [Path(os.path.expanduser(p)) for p in os.environ.get(
     "DEV_PROJECT_ROOTS", "~/Projects").split(":") if p]
 
-# Voice (IDEAS "Voice — four stops, local"): both transducers are ours, and
+# Voice: both transducers are ours, and
 # both run on this machine. Audio never leaves the box — only the transcript
 # does, and only along the path a typed message already takes.
 #
@@ -693,9 +669,8 @@ VOICE_WAKE_TIMEOUT_S = float(os.environ.get("VOICE_WAKE_TIMEOUT_S", "12"))
 # the trigger, which meant a room with any noise in it re-opened the mic at the
 # end of every answer.
 
-# Speech out: macOS `say`, which is free, offline and already installed.
-# Swapping in Kokoro-82M later is a change to voice.synthesize() and nothing
-# else.
+# The `say` voice (the fallback engine below): free, offline and already
+# installed.
 #
 # "auto" walks VOICE_TTS_VOICE_PREFS and takes the first voice installed;
 # naming one outright pins it; empty means the system default. The list is in

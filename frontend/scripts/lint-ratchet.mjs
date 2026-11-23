@@ -5,8 +5,7 @@
 // sync with something outside React still has to be argued for. Any
 // warnings are printed as counts. When the count drops, lower the baseline
 // in the same commit so it can't creep back.
-// (setTimeout was ratcheted here too, from 34 on 11-22, until it reached 0
-// the same day; it's an ESLint error now, eslint.config.js.)
+// (setTimeout isn't counted here: it's an ESLint error, eslint.config.js.)
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, relative } from "node:path";

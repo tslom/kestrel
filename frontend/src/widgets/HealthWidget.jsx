@@ -7,18 +7,17 @@ import RefreshButton from "../ui/RefreshButton.jsx";
 import Icon from "../ui/icons.jsx";
 import { dragPin } from "../lib/drag.js";
 
-// Health card (IDEAS §3), rebuilt on the lede form.
+// Health card, on the lede form.
 //
-// It used to print four metrics in a grid every day, from four calls to
-// /api/health?range=today. The numbers were real and the card was useless:
-// nothing on it said whether 71 bpm was your ordinary 71 or the start of
-// something, so reading it meant remembering last week — which is exactly the
+// Four metrics in a grid every day are real numbers on a useless card:
+// nothing on it says whether 71 bpm is your ordinary 71 or the start of
+// something, so reading it means remembering last week — which is exactly the
 // work a dashboard is supposed to have already done.
 //
-// Now one call to /api/health/summary brings today plus the 28 days to read it
+// So one call to /api/health/summary brings today plus the 28 days to read it
 // against, `lib/notable.js` decides whether any of it is unusual, and the card
 // leads with that or says nothing. Ranges, sleep stages, the nightly wellness
-// trio and every other metric stay in the sheet (§1), which is where you go
+// trio and every other metric stay in the sheet, which is where you go
 // when you want to look rather than be told.
 //
 // `floor` is the honest half of the notability rule and it has to be declared
@@ -52,9 +51,9 @@ export function useHealthCard() {
   const hit = sum ? lead(readings) : null;
   const rest = restLine(readings);
 
-  // HAS is now *earned*, not granted for having a pulse. The old rule — any
-  // metric non-null — was true every day the watch synced, so the card sat in
-  // the "today" band 365 days a year and meant nothing by being there. A body
+  // HAS is *earned*, not granted for having a pulse. "Any metric non-null"
+  // is true every day the watch syncs, so the card would sit in the "today"
+  // band 365 days a year and mean nothing by being there. A body
   // doing what it always does is the definition of QUIET, and the fold line
   // still carries the numbers for the morning you want them anyway.
   const level = !sum ? null : hit ? HAS : QUIET;

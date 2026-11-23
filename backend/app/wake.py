@@ -1,4 +1,4 @@
-"""§21 step 5 — the scheduled wake, so the prediction is still true when it fires.
+"""The scheduled wake, so the prediction is still true when it fires.
 
 Steps 1-4 built a channel that reaches a shut laptop: the reconciler writes a
 future-dated alarm to a surface iCloud syncs, and the phone fires it hours later
@@ -23,7 +23,7 @@ leave hundreds of duplicate events by morning, so the desired set is diffed
 against what is actually scheduled — the same shape as alarms.py, arrived at from
 a different direction.
 
-**The OS is the source of truth, not a table.** This is the one place §21 does
+**The OS is the source of truth, not a table.** This is the one place alarm delivery does
 *not* persist its own record, and the contrast is the point. alarms.py must keep
 `external_id`, because a Reminders item is invisible from here and losing the
 handle strands an alarm on the phone forever. A scheduled wake has no such

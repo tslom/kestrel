@@ -3,7 +3,7 @@
 Exists because Spotify stopped supplying them. The v16 `artist_genres` table
 was fed by GET /artists?ids=, which 403s for this app (only single-resource
 GETs are permitted), and the artist object no longer carries a `genres` field
-at all — the response is down to id/name/images/urls. Verified live 2026-07-26;
+at all — the response is down to id/name/images/urls. Verified live;
 the community reads it as a deliberate taxonomy change, not an outage. See the
 v35 migration comment.
 

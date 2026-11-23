@@ -1,7 +1,7 @@
 // How much each widget has to say today — the brief's "sections are earned"
-// rule (brief.py's SYSTEM) applied to the desk. Until now every widget was
-// always visible, in a fixed order, at equal weight, so a day with nothing in
-// it looked exactly as busy as a day with everything in it.
+// rule (brief.py's SYSTEM) applied to the desk. With every widget always
+// visible, in a fixed order, at equal weight, a day with nothing in it looks
+// exactly as busy as a day with everything in it.
 //
 // Levels, not a boolean: a card holding real content still shouldn't outrank
 // one that wants something from you.

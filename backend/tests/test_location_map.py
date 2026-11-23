@@ -125,8 +125,6 @@ def test_home_travels_with_the_payload(dbfile):
     assert got["home"]["radius_m"] == HOME_RADIUS_M
 
 
-# ---------------------------------------------------------------- basemap
-
 def test_a_tile_is_fetched_once_and_then_served_from_the_cache(dbfile, monkeypatch):
     calls = []
     monkeypatch.setattr(tiles, "_fetch", lambda z, x, y: calls.append((z, x, y)) or b"PNG")

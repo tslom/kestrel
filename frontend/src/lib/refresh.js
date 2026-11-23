@@ -120,8 +120,6 @@ export function useWidgetData(source, topic) {
   return { data, setData, error, setError, reload, busy };
 }
 
-// ---------------------------------------------------------------- day watch
-
 // The window can sit open across a rollover (laptop shut at 1am, opened at
 // 9am): every cache is keyed by day_key, so the page would keep showing
 // yesterday until something forced a fetch. Ask the server for its day_key —
@@ -142,8 +140,6 @@ async function checkDay() {
     return rolled;
   } catch { return false; /* offline: try again on the next wake */ }
 }
-
-// ------------------------------------------------------- refresh on return
 
 // Come back after lunch and the desk is still showing what was true when you
 // left. This is the shape of refresh-on-hover that survived review: one fire

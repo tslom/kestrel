@@ -1,9 +1,9 @@
 // The document beside the chat: the handout the reply is talking about, open
 // at the page it's talking about.
 //
-// Built for a study tab running full screen (11-07). The reply said "the
-// handout's recursive definition of factorial…" and the handout was in
-// another window, so following along meant switching away or printing it.
+// Built for a study tab running full screen: a reply says "the handout's
+// recursive definition of factorial…", and with the handout in another
+// window, following along means switching away or printing it.
 // Inline `[page:]` embeds show the one slide an answer chose; this is the
 // whole document, scrollable, and every citation in the reply moves it.
 //

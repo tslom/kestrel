@@ -28,13 +28,13 @@
 // what will happen while there is still time to not do it.
 export const PIN_MIME = "application/x-vault-pin";
 
-// Dragging is armed by holding ⌘ or ⌥ (New Features, 11-10). A draggable
+// Dragging is armed by holding ⌘ or ⌥. A draggable
 // element takes the mouse-down for a drag, so with every card, row and heading
-// a drag source, text on the desk couldn't be highlighted at all. Now sources
+// a drag source, text on the desk couldn't be highlighted at all. So sources
 // carry `data-pin-drag` and only become `draggable` while a modifier is down;
 // the rest of the time a press-and-drag selects text like anywhere else.
 //
-// Not Control, which was the first ask: on macOS Control-click is the
+// Not Control: on macOS Control-click is the
 // right-click, and WebKit opens the context menu instead of starting a drag.
 // Nothing in the app reads ⌘ or ⌥ on a click, so neither collides; ⌘ is the
 // one the user reached for. A ⌘K or ⌥1 arms for the moment the key is held,

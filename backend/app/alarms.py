@@ -1,4 +1,4 @@
-"""§21 alarms — alerts that survive a closed laptop.
+"""Alarms — alerts that survive a closed laptop.
 
 The dashboard computes plenty that is only useful *before* it happens (a flight
 check-in opening, a package arriving, a time to leave) and has had no way to say
@@ -15,7 +15,7 @@ diffs it against what was written, and applies the difference.
 
 The hazard that shape creates is deletion. A source that fails to read produces
 no alarms, an empty desired set withdraws everything, and one unreadable table
-silently cancels a real 6am alarm. That is `_RETENTION_GATES` (IDEAS, 08-05) one
+silently cancels a real 6am alarm. That is features.py's `_RETENTION_GATES` one
 store over: absence of data from a source that has stopped *covering* is not
 evidence of absence. So a source reports one of three things and never two —
 alarms, a confident nothing, or `unknown` — and `unknown` holds its existing
@@ -136,7 +136,7 @@ def flight_alarms(con, *, now: datetime, horizon: datetime) -> SourceResult:
     """One alarm per upcoming flight, firing when online check-in opens.
 
     `dep_local` is local to the *departure airport*, not to the user — so it is
-    read through `tz.airport_zone()` and not `tz.zone_on()`. On 2026-08-17 those
+    read through `tz.airport_zone()` and not `tz.zone_on()`. On a cross-country moving day those
     disagree by three hours (see tz.AIRPORT_ZONES), and this is the flight that
     matters most.
 
@@ -236,7 +236,7 @@ def package_alarms(con, *, now: datetime, horizon: datetime) -> SourceResult:
 def leave_alarms(con, *, now: datetime, horizon: datetime) -> SourceResult:
     """One alarm per located event still ahead today, firing at its leave_by.
 
-    Unlike the other two this reads no table — §14 computes leaves live from
+    Unlike the other two this reads no table — leave.py computes leaves live from
     the calendar and a traffic-aware route, so the source is a call into
     `leave.compute_leaves()` and inherits its failure modes:
 

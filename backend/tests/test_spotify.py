@@ -1,4 +1,4 @@
-"""providers/spotify.summary — the MusicWidget's compact one-call payload (§8).
+"""providers/spotify.summary — the MusicWidget's compact one-call payload.
 It reads only the `plays` cache: today's minutes/plays/top-track/last-play +
 novelty, plus a rolling-7-day sparkline and week top artist. Tests seed `plays`
 directly and pin `day_key` so "today" is deterministic; novelty is checked to

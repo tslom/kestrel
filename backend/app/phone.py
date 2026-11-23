@@ -1,4 +1,4 @@
-"""The phone door: answer a waiting card from the phone (New Features #97).
+"""The phone door: answer a waiting card from the phone.
 
 The one exception to localhost-only, and built so it stays small. DESIGN.md →
 Security posture → "The phone door" has the reasoning; the shape is:

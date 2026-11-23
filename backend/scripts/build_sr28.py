@@ -1,7 +1,7 @@
 """Build backend/app/food/sr28.json.gz from the USDA SR28 ASCII release.
 
 SR28 (2015, re-published by USDA as "SR Legacy") is the food database behind
-§25's food tracker: ~8.8k generic foods with full micronutrients and household
+the food tracker: ~8.8k generic foods with full micronutrients and household
 portions. The file it produces is checked in, so this runs only to rebuild it:
 
     python scripts/build_sr28.py /path/to/sr28/dir

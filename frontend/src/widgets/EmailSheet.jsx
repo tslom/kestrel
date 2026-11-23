@@ -14,7 +14,7 @@ import { useGoogleAddresses } from "../lib/googleLinks";
 import { fmtAgo, fmtDay, fmtTime, shortDay } from "../lib/time";
 import { dragPin } from "../lib/drag.js";
 
-// Email sheet — what arrived, not what to do about it (IDEAS §1, §5).
+// Email sheet — what arrived, not what to do about it.
 //
 // The review queue is the sheet that *acts*: it archives, bins and
 // unsubscribes, one card at a time, and it only ever holds the inbox. This

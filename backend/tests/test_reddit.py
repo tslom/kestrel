@@ -259,10 +259,10 @@ def test_a_partial_outage_still_serves_what_answered(dbfile, today, monkeypatch)
 
 def test_an_empty_today_makes_no_reddit_request(dbfile, today, subs,
                                                 monkeypatch):
-    """The .rss fallback for a today the archive hadn't ingested was removed
-    on 11-22, when every Reddit feed was answering 404: it only ever added a
-    failure to each sync's errors. An empty archive reply for today is now
-    just that, marked synced and error-free, with nothing sent to reddit.com."""
+    """There is no .rss fallback for a today the archive hasn't ingested:
+    every Reddit feed answers 404, so it only ever added a failure to each
+    sync's errors. An empty archive reply for today is just that, marked
+    synced and error-free, with nothing sent to reddit.com."""
     urls: list[str] = []
 
     def fake(req, timeout=None):
@@ -383,7 +383,7 @@ def test_search_is_live_and_writes_nothing(dbfile, today, monkeypatch):
 
 
 def _down_search(monkeypatch, posts, calls):
-    """The archive as it was on 11-17/18: every `query=` search refused, the
+    """The archive with its search down: every `query=` search refused, the
     newest-first listing (paged on `before`) still answering."""
     def fake(path, params):
         calls.append(params)
@@ -397,8 +397,8 @@ def _down_search(monkeypatch, posts, calls):
 
 
 def test_a_refused_search_matches_the_phrase_in_the_newest_posts(today, monkeypatch):
-    """30 of 54 console searches 422'd on 11-17. The listing still answered,
-    so the phrase is matched here instead; a word-by-word match would take
+    """When searches 422 the listing still answers, so the phrase is matched
+    here instead; a word-by-word match would take
     "rain ... cover" too (55 false hits for "code mode" in r/ClaudeCode)."""
     calls: list = []
     _down_search(monkeypatch, [

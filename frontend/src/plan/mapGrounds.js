@@ -1,5 +1,5 @@
 // The map's grounds other than contours (round 4 of the look lab, New
-// Features #28/#46: "map is kinda cool" but the terrain look has to change).
+// Features #28/#46).
 //
 // Each one paints the same thing MapTerrain computes: a height field where
 // every card raises a hill as tall as it needs you, ripples run out from a

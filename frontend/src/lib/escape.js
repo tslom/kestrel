@@ -57,7 +57,7 @@ export function useStackEscape(onEscape, enabled = true) {
       if (e.key !== "Escape") return;
       if (e.target.closest?.(".console-pane, .prompt-bar")) return;
       // A field you've typed into: the first Escape leaves the field, the
-      // next one closes. Leaving a room on it threw the draft away (11-22).
+      // next one closes. Leaving a room on it would throw the draft away.
       const t = e.target;
       if (t?.matches?.("input:not([type=checkbox]):not([type=radio]), textarea, [contenteditable=true]")
           && (t.value || t.textContent)) { t.blur(); return; }

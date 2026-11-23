@@ -333,8 +333,8 @@ def _docx(path: str) -> tuple[str, str, list[dict]]:
     per line with its cells joined by " | " — a nutrition table's row is the
     unit that means something. Each embedded picture becomes an "[image N]"
     marker where it sits, and its raw bytes come back in `images` for the
-    parent to read; a handout that is all labels (three of the four a USC
-    dietitian sent on 10-16) is otherwise five item names and nothing else."""
+    parent to read; a handout that is all labels (most of what a USC
+    dietitian sends) is otherwise five item names and nothing else."""
     import base64
     import zipfile
 

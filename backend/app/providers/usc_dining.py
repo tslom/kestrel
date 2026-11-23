@@ -1,10 +1,10 @@
-"""USC dining provider (§25) — the three residential dining halls' menus and
+"""USC dining provider — the three residential dining halls' menus and
 the campus venue list, for the food tracker. No key.
 
 Menus: the endpoint the hospitality site's own menu page calls,
 `/wp-json/hsp-api/v1/get-res-dining-menus/<hall>?y=&m=&d=`, one hall-day per
 call → meals → stations → items with allergen and diet tags. **No calories,
-macros or portions** — checked 10-14 — so nutrition is estimated downstream
+macros or portions** — so nutrition is estimated downstream
 (app/food_estimate.py), once per item name.
 
 Venues: the location listing pages (UPC + HSC), each tile a slug, a type and

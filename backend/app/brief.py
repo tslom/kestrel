@@ -1,4 +1,4 @@
-"""Daily brief (IDEAS round 2): one short morning brief per day_key,
+"""Daily brief: one short morning brief per day_key,
 generated lazily on the first GET of the day and cached in app.db
 (`daily_brief`). DB-only — never written into the vault. The row is also the
 generation lock: an atomic upsert claims it by flipping status to
@@ -126,7 +126,7 @@ def _event_weather(events: list[dict], day: str) -> list[dict]:
     ones that name no physical place, don't geocode, or whose forecast fails —
     degrade, never fail.
 
-    The is_virtual() guard is §14's, reused rather than recopied: geocoders
+    The is_virtual() guard is leave.py's, reused rather than recopied: geocoders
     resolve a junk location confidently, so a "TBD" event was quoting the
     forecast at (2.77, -77.67) — open Pacific off Colombia, where the day is
     always a thunderstorm at 100% — and a Zoom URL was quoting the campus
@@ -164,7 +164,7 @@ def _gather(day: str) -> dict:
          lambda: {k: email_routes.get_queue()[k] for k in ("count", "unread")}),
         ("spend_yesterday",
          lambda: providers.get("finance", "yesterday", "spend")["data"]),
-        # §25: yesterday's food vs targets, one line; None when nothing was logged
+        # None when nothing was logged
         ("food_yesterday", lambda: food.brief_context(day)),
         ("packages_arriving", lambda: email_extract.packages_for_brief(day)),
         ("trips_soon", lambda: email_extract.upcoming_trips()),

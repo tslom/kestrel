@@ -2,7 +2,7 @@
 
 Exit 2 hands stderr back to the model inside the same turn, so a banned
 `date.today()` or a raw `fetch()` is fixed by the tab that wrote it, before
-any commit (11-17, the "All Code Is Slop" report). Per-repo on purpose, in
+any commit. Per-repo on purpose, in
 .claude/settings.json: a global hook would reach every Kestrel session, and
 console sessions load the global settings.
 

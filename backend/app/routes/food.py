@@ -1,4 +1,4 @@
-"""§25 food tracker routes — /api/food/*. Writes go through app/food.py; the
+"""Food tracker routes — /api/food/*. Writes go through app/food.py; the
 menus read pulls the usc_dining provider's cache and kicks the estimator for
 anything it hasn't seen."""
 

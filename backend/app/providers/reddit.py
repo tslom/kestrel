@@ -1,12 +1,12 @@
 """Reddit provider — Arctic Shift, the one anonymous route left.
 
-Reddit closed the anonymous JSON door. Verified from this machine 2026-08-12:
+Reddit closed the anonymous JSON door. Verified from this machine:
 `www.reddit.com/*.json` and `api.reddit.com` answer 403 with *any* User-Agent
 (default, custom, full browser), and `old.reddit.com/*.json` 302s to a login.
 It is not a header problem and there is nothing to tune. Its `.rss` feeds
-were a today-only fallback here until they closed too: search.rss has
-answered 404 since about 11-18, and on 11-22 every feed did (subreddit,
-/new, thread), with any User-Agent. So the fallback was removed rather than
+were a today-only fallback here until they closed too: every feed
+(search, subreddit, /new, thread) answers 404, with any User-Agent. So the
+fallback was removed rather than
 left failing quietly into every sync's error list. What is left:
 
   * **Arctic Shift** (arctic-shift.photon-reddit.com) — Pushshift's successor,
@@ -84,7 +84,7 @@ def _api(path: str, params: dict) -> list[dict]:
     a real answer, and swallowing it would leave the cache quietly empty.
 
     It is retried once, though, because the archive's busy answer is a *422*
-    carrying "Timeout. Maybe slow down a bit" — measured 2026-08-12, and it is
+    carrying "Timeout. Maybe slow down a bit" — measured, and it is
     load, not the query: `cover` in r/onebag failed twice a few seconds apart
     and succeeded on the same terms a minute later, while `rain` never failed.
     A 400 is the query being wrong and is not retried.
@@ -222,7 +222,7 @@ def _sync(con, start_day: str, end_day: str) -> dict:
     written = _write(con, rows, now) if rows else 0
 
     # No fallback for a today the archive hasn't ingested yet: Reddit's .rss
-    # was one until its feeds started answering 404 (11-18; all of them 11-22).
+    # was one until its feeds started answering 404.
     if not errors:
         with con:
             con.executemany(
@@ -398,10 +398,9 @@ def _scan(subreddit: str, query: str, after: int,
           limit: int) -> tuple[list[dict], dict]:
     """search()'s fallback: the newest posts, with the phrase matched here.
 
-    The archive's full-text search goes down on its own. On the evening of
-    11-17, 30 of the console's 54 searches came back 422 after the retry; the
-    next morning every `query=` call did, in under a second, r/onebag's "rain
-    cover" included, while a newest-first listing of the same subreddits
+    The archive's full-text search goes down on its own. One evening 30 of
+    the console's 54 searches came back 422 after the retry; the next morning
+    every `query=` call did, in under a second, while a newest-first listing of the same subreddits
     answered in 2s. That listing is what this reads, so it covers the newest
     SCAN_PAGES pages rather than the window asked for: weeks of a small
     subreddit, a day or two of a big one. `scan` says how far back it got, so

@@ -64,7 +64,7 @@ export function useFinanceCard() {
   const [reload, refreshing] = useLoad(load);
 
   const items = status?.items || [];
-  // needs_consent = §18: item works fine but was linked before liabilities
+  // needs_consent: item works fine but was linked before liabilities
   // was added — same Link update-mode reconnect fixes both cases.
   const reconnect = items.find(
     (it) => it.status === "login_required" || it.status === "needs_consent");
@@ -270,10 +270,9 @@ export default function FinanceWidget({ card, onPin }) {
               ))}
             </ul>
           )}
-          {/* Was a bare "spent this week $X" footer — a number with nothing
-              to read it against, which is the whole complaint this rebuild
-              answers. Now the card says whether today's outflow is unusual
-              for you, and stays silent when it isn't. */}
+          {/* Not a bare "spent this week $X" footer — a number with nothing
+              to read it against. The card says whether today's outflow is
+              unusual for you, and stays silent when it isn't. */}
           {spendToday != null && balances?.length > 0 && (
             // The week total rides the quiet line rather than sitting under it
             // in its own paragraph: on an ordinary day the card said "spent

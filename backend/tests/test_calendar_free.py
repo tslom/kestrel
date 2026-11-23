@@ -100,7 +100,7 @@ def test_an_all_day_event_does_not_block_the_day(cal):
 
 def test_a_timed_event_over_a_day_is_a_banner_not_busy(cal):
     """A mis-dated 1h appointment (end a week later) took every waking hour
-    of its days, and inflated the Load chart to 696h a week (11-14). Over a
+    of its days, and inflated the Load chart to 696h a week. Over a
     day long, a timed event frames the day like an all-day one."""
     cal([("Wrist appt", "2026-08-18T15:30:00-04:00", "2026-08-25T16:30:00-04:00", 0),
          ("Lecture", "2026-08-20T10:00:00-04:00", "2026-08-20T11:00:00-04:00", 0)])
@@ -150,8 +150,6 @@ def test_times_are_in_the_zone_of_the_day_not_the_machine(cal, monkeypatch):
     # nothing out of the day.
     assert slots() == [("09:00", "21:00")]
 
-
-# ---------- the console tool ----------
 
 def _call(**args):
     import asyncio

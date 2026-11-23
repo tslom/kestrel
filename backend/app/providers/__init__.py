@@ -1,4 +1,4 @@
-"""Context providers (IDEAS §0) — one module per external source, one shared
+"""Context providers — one module per external source, one shared
 interface, exposed three ways over the same code:
 
   1. REST  GET /api/{source}?range=this-week&metric=bpm   (providers/api.py)

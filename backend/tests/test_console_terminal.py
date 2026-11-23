@@ -69,9 +69,9 @@ def test_a_job_is_given_its_task_and_never_touches_the_global_model():
 
 
 def test_a_thinking_block_marked_end_turn_is_not_the_end():
-    """The real order on 11-04: the final message's thinking arrives first, with
+    """The real order: the final message's thinking arrives first, with
     end_turn already on it, and the answer two seconds later. Ending on the
-    first returned "Clicking the 7 button." as the result of the whole task."""
+    first returns "Clicking the 7 button." as the result of the whole task."""
     events = term.TranscriptEvents()
     events.feed(_line("user", "go"))
     events.feed(_line("assistant", [{"type": "text", "text": "Clicking the 7 button."}],

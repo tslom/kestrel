@@ -1,4 +1,4 @@
-"""Study mode (§22): where a course is right now, and what the user got wrong.
+"""Study mode: where a course is right now, and what the user got wrong.
 
 Tutoring is the console's heaviest use — proofs for CSCI 170, C++ for 103,
 exam review — and it had two blind spots. It didn't know where in the term the

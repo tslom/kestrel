@@ -106,8 +106,6 @@ def test_range_keys():
     assert r.end_key == "2026-01-03"
 
 
-# ---------- aliases ----------
-
 def test_tomorrow_is_next_day():
     """A console asked "what's on my calendar tomorrow?" at 02:30 found no
     `tomorrow` token, computed the date off the wall clock, and queried two

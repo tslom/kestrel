@@ -7,7 +7,7 @@ import { useSheetData } from "../lib/sheet.js";
 import { fmtAgo, fmtDur, shortDay } from "../lib/time";
 import { fmtKm } from "../lib/units.js";
 
-// Location sheet — where the days went (IDEAS §1, §10).
+// Location sheet — where the days went.
 //
 // The one thing this sheet has to keep saying, because every number on it is
 // shaped by it: **OwnTracks reports movement, not presence.** A phone that

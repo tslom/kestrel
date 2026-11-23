@@ -8,7 +8,7 @@ from app import db
 from app.providers import athletics, get as provider_get
 from app.providers.ranges import parse_range
 
-# Shapes copied from the real feed (2026-10-13), including a folded line.
+# Shapes copied from the real feed, including a folded line.
 FEED = "\r\n".join([
     "BEGIN:VCALENDAR",
     "BEGIN:VEVENT",
@@ -62,7 +62,7 @@ def _rows(token):
 
 
 def test_the_water_polo_game_the_console_could_not_find(feed):
-    """10-12: 'I couldn't find the 2026 schedule online.' It was in the feed."""
+    """The console said it couldn't find the schedule online; it was in the feed."""
     r = _rows("2026-10-17")["vcal_1-admin.usctrojans.com"]
     assert r["start"] == "2026-10-17T13:00" and not r["time_tba"]   # 20:00Z = 1pm PDT
     assert (r["sport"], r["opponent"], r["side"], r["note"]) == (

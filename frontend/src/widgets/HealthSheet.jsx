@@ -6,7 +6,7 @@ import YearHeat from "../ui/CalendarHeat.jsx";
 import { useSheetData } from "../lib/sheet.js";
 import { fmtAgo, fmtDay, fmtHM, shortDay } from "../lib/time";
 
-// The Health sheet — a body, not fourteen columns (IDEAS §1).
+// The Health sheet — a body, not fourteen columns.
 //
 // Fitbit exposes fourteen metrics and the generic panel showed them one chip
 // at a time, which is how `sleep_deep_min` ends up on screen as a word. They

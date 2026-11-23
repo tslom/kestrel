@@ -1,7 +1,7 @@
 // TeX for the console. Homework questions arrive as a screenshot of a
 // textbook and come back as $…$ and $$…$$, which the markdown pass had no
 // case for — the answer to a distance-to-a-line proof rendered as literal
-// \frac{|ax_1 + by_1 + c|}{\sqrt{a^2 + b^2}} (09-03).
+// \frac{|ax_1 + by_1 + c|}{\sqrt{a^2 + b^2}}.
 //
 // KaTeX from npm, not a CDN, for the reason the fonts are: the desk renders
 // the same with the network down.
@@ -41,8 +41,8 @@ function html(tex, display) {
 
 // Inline: sits in the text run. Set in \displaystyle, not TeX's default text
 // style — that shrinks an inline \frac to script size (~8px next to 13px mono)
-// and crams \sum limits beside the sigma, which is where homework math lives
-// (10-27). The taller line box is the price; a readable fraction is worth it.
+// and crams \sum limits beside the sigma, which is where homework math lives.
+// The taller line box is the price; a readable fraction is worth it.
 export function MathInline({ tex }) {
   // The prefix is ours, not the formula's, so it stays out of the <annotation>
   // or every copied inline formula would paste with it.

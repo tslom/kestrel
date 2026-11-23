@@ -11,7 +11,7 @@ named fields:
 
 - `GET /api/console/account` — `claude auth status`, plus how a sign-in is going.
 - `POST /api/console/account/login` — `claude auth login`, which opens the
-  browser and waits on a localhost callback (seen 11-04 in a throwaway config
+  browser and waits on a localhost callback (seen in a throwaway config
   dir). One at a time, and it gives up after LOGIN_LIMIT_S. Not established:
   what a cancelled sign-in leaves behind when one was already signed in, which
   only a real switch can show.

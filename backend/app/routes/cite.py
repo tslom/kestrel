@@ -18,7 +18,7 @@ alike on screen.
 
 Bodies never come through here. An email citation resolves to its metadata and
 its snippet; the body is `/api/email/{id}/body`, which fetches live from Gmail
-and stores nothing (§5), and the pill only asks for it when it is opened.
+and stores nothing, and the pill only asks for it when it is opened.
 """
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse

@@ -1,4 +1,4 @@
-"""§25: nutrition for USC dining-hall items, which the menu API names but
+"""Nutrition for USC dining-hall items, which the menu API names but
 never quantifies.
 
 Once per distinct item name (menus repeat — "Scrambled Eggs" is on every

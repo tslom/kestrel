@@ -4,7 +4,7 @@ Both read the transcript through `sessions.session_transcript`, the same
 replay the console's back-scroll uses, so what's summarised is what you'd
 see scrolling back.
 
-The digest is extractive on purpose (New Features #94): what you asked, in
+The digest is extractive on purpose: what you asked, in
 order, the files it changed and the last thing it said, cut to a budget. A
 model-written summary would be a claim about the session, costs a call on
 every attach, and is one more thing to be wrong; this is a record, and the

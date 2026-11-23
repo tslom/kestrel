@@ -185,8 +185,6 @@ export function createVoice({ onEvent }) {
     send({ type: "ptt", down: false });
   }
 
-  // ---- speech out ----
-
   // The backend uses this to know a wake hit is an interruption rather than a
   // fresh summons — it keeps spotting the phrase either way, and echo
   // cancellation is what stops a synthesizer that reads the wake word aloud

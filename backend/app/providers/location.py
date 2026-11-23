@@ -1,4 +1,4 @@
-"""Location provider (archive/ROUND34_PLAN.md §10). OwnTracks (iOS) posts fixes to
+"""Location provider. OwnTracks (iOS) posts fixes to
 the location relay (relay/, a Cloudflare Worker); refresh() pulls them into
 `location_points` through location_relay.py — this module never talks to the
 phone itself. `location_points` is the raw
@@ -53,7 +53,7 @@ MAX_GAP_SECONDS = MAX_GAP_MIN * 60
 # A grid cell only counts as a "place" if its dwell exceeds this. Without it,
 # a driving day inflates `places`: every ~110m cell the car passes through
 # gets its ~1min gap-to-next-fix booked as dwell, so transit reads as dozens
-# of "places". The 2026-07-24 walk test (a ~100km driving day) showed the
+# of "places". A walk test on a ~100km driving day showed the
 # transit tail sits at <=~2min/cell while genuine stops were >=~4min, so 3min
 # cleanly separates them (42 raw clusters -> 15 real places). entropy stays
 # over all clusters (already dwell-weighted, so transit barely moves it).
@@ -113,11 +113,11 @@ PLACE_SPAN_MAX_M = 175
 # A place needs to have been *observed* twice. Dwell is booked as the gap to
 # the next fix (capped at MAX_GAP_MIN), so a lone fix followed by silence books
 # up to 20 minutes on the strength of one observation — which is a sighting,
-# not a stay. On a sparse travel day that inflated everything: 2026-08-17, the
-# cross-country move, reported **43 places from 58 fixes**, nearly all of them
-# single fixes 20 minutes apart. Requiring two drops that day to 7, the daily
-# mean from 10.8 to 5.4, and the `places ~ coverage_min` correlation that
-# IDEAS flags as a known bias from +0.73 to +0.63. Three would be tighter
+# not a stay. On a sparse travel day that inflated everything: the
+# cross-country move day reported **43 places from 58 fixes**, nearly all of
+# them single fixes 20 minutes apart. Requiring two drops that day to 7, the
+# daily mean from 10.8 to 5.4, and the `places ~ coverage_min` correlation (a
+# known bias) from +0.73 to +0.63. Three would be tighter
 # still and is wrong: it zeroes that travel day outright, discarding stops that
 # genuinely happened.
 PLACE_MIN_FIXES = 2
@@ -302,7 +302,7 @@ def _minutes_since(dt: datetime, start: datetime) -> float:
 
 
 def latest_fix() -> dict | None:
-    """Most recent point ever ingested, for weather's origin / §14 — not
+    """Most recent point ever ingested, for weather's origin / leave.py — not
     day-scoped. None if no points have arrived yet."""
     with db.session() as con:
         row = con.execute(
@@ -578,19 +578,18 @@ SUMMARY_DAYS = DESK_BASELINE_DAYS
 # truth. Such a day is a gap in the trend, and never the day the card centers
 # on.
 #
-# This gated on fix *count* until 2026-08-30, which measured the wrong axis.
+# The gate is on coverage, not fix *count*, which measures the wrong axis.
 # Every metric here (km_traveled, places, time_at_home_min, entropy) is a
 # whole-day quantity, so what makes them trustworthy is how much of the day
 # was watched, not how many rows arrived — and the two come apart in both
-# directions on real data. 2026-07-29 has the highest fix count in the whole
-# series (121) inside 2.4h of coverage, a dense burst on one drive that the
-# count gate waved through; 2026-08-23 (4 fixes, 49 min) was refused while
-# 2026-07-28 (7 fixes, 25 min) passed, so the old gate ordered days wrong,
-# not merely loosely. Coverage subsumes the old floor rather than sitting
-# beside it: with gaps capped at MAX_GAP_MIN, clearing 180 min takes at least
+# directions on real data. The day with the highest fix count in the whole
+# series (121) has only 2.4h of coverage, a dense burst on one drive that a
+# count gate waves through; a count gate refuses 4 fixes over 49 min while
+# passing 7 fixes over 25 min, so it orders days wrong, not merely loosely.
+# Coverage subsumes a count floor rather than sitting beside it: with gaps capped at MAX_GAP_MIN, clearing 180 min takes at least
 # 9 fixes, so there is one gate again, on the axis that means something.
 #
-# An absolute floor, like screen's, and for a different reason: 24h is never
+# An absolute floor, not a fraction of the day: 24h is never
 # in reach because a stationary phone on wifi stops reporting, so a fraction
 # of the day would refuse every honest day spent at home. 180 min is where
 # the observed days separate — everything below it in 35 days of history is a
@@ -685,9 +684,8 @@ def _day_shape(con, day: str) -> dict:
     actually *seen*.
 
     first_leave is the first fix that was away from home — a real departure
-    only if a fix at home came before it. On 2026-08-03 the phone's first fix
-    of any kind was 2:50 PM and away, so the stored first_leave of 2:57 PM
-    would render as "left home at 2:57 PM" for a day whose morning simply
+    only if a fix at home came before it. When the phone's first fix of any
+    kind is 2:50 PM and away, a stored first_leave of 2:57 PM would render as "left home at 2:57 PM" for a day whose morning simply
     wasn't recorded. Likewise last_return is the last fix seen at home, which
     is a homecoming only if the day's last fix is that one; otherwise the day
     ended out and the number is just when they were last spotted in.
@@ -793,7 +791,7 @@ def recompute_history() -> int:
     Run after changing COVERAGE_FLOOR_MIN, because a threshold move reaches
     nothing on its own. features._stale_days triggers on a *source* writing
     after a day's features were computed, and a constant changing writes
-    nothing — so the 8 days the 2026-08-30 move to a coverage gate should have
+    nothing — so the 8 days the move to a coverage gate should have
     dropped would have kept their location features indefinitely, which is the
     same confidently-wrong reading the gate was built to stop, arrived at by
     doing nothing. Re-stamping location_days makes those days stale, and the
@@ -825,8 +823,8 @@ def recompute_history() -> int:
 # cell, the same 3-minute dwell floor — rather than a second, prettier one. A
 # map that drew its own idea of where you stopped would disagree with the
 # number on the card, and then there would be two answers to one question.
-# The known bias travels with it (`places` correlates with coverage at +0.76;
-# see IDEAS), which is why a place carries `minutes` and `visits` rather than
+# The known bias travels with it (`places` correlates with coverage at +0.76),
+# which is why a place carries `minutes` and `visits` rather than
 # any claim about importance.
 
 MAP_MAX_POINTS = 6000          # ~4 months of ordinary fixes; a cap, not a target

@@ -1,4 +1,4 @@
-"""OAuth helper — localhost redirect flow + token refresh (IDEAS §0).
+"""OAuth helper — localhost redirect flow + token refresh.
 
 One token row per (provider, account) in app.db `tokens`. Two Google
 accounts are expected: 'school' (Workspace — calendar/gmail) and 'personal'

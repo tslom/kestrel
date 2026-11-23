@@ -1,4 +1,4 @@
-"""Deliveries (§15) + travel (§16) routes — the typed face of
+"""Deliveries + travel routes — the typed face of
 providers/email_extract.py. Extraction/refresh happens implicitly inside
 email.refresh()'s cadence, so the GETs are read-only like every provider GET.
 

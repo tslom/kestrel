@@ -176,7 +176,7 @@ def rewind_point(session_id: str, message_uuid: str,
     messages: that message's parent in the transcript.
 
     `--resume-session-at X` keeps everything up to *and including* X
-    (checked 10-28: resumed at a prompt's own uuid, the model still knew
+    (checked: resumed at a prompt's own uuid, the model still knew
     what that prompt said), so the cut goes one record earlier. A message
     with no parent was the first, and "before it" is a new session —
     `at` None. `found` False: no such message in this session."""

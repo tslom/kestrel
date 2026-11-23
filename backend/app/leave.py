@@ -1,12 +1,12 @@
-"""Time-to-leave (IDEAS §14).
+"""Time-to-leave.
 
 Not a provider — there's no range/metric axis and nothing for the poller to
 cache; this is a live join of today's remaining located events × a real
 traffic-aware route, computed on demand (precedent: brief.py). For each timed
 event today that still lies in the future and carries a location:
 
-    origin      = §10's latest fix if younger than LEAVE_FIX_MAX_MIN, else HOME
-    destination = event location geocoded (Google, falling back to §6's
+    origin      = the latest location fix if younger than LEAVE_FIX_MAX_MIN, else HOME
+    destination = event location geocoded (Google, falling back to weather's
                   Open-Meteo geocode, then to one retry with
                   LEAVE_GEOCODE_CONTEXT appended for bare room codes)
     leave_by    = event start − drive_with_traffic − LEAVE_BUFFER_MIN
@@ -74,7 +74,7 @@ def _http_json(url: str, *, data: bytes | None = None, headers: dict) -> dict | 
 # A location field that names no physical place. Google geocodes these
 # anyway, and confidently: a bare "TBD" comes back as (2.77, -77.67), a spot
 # in the Pacific off Colombia, and a `usc.zoom.us` URL comes back as the USC
-# campus centroid — so a video call was producing a real drive time and a §21
+# campus centroid — so a video call was producing a real drive time and an
 # alarm telling the user to leave for it. Matching a URL anywhere, but the
 # word markers only as a prefix, so a real venue that merely contains one
 # ("The Virtual Reality Lab") still geocodes.
@@ -123,7 +123,7 @@ def geocode(loc: str) -> tuple[float, float] | None:
         return None
     coords = _google_geocode(loc)
     if coords is None:
-        coords = weather.geocode(loc)  # §6 fallback (also caches in geo_cache)
+        coords = weather.geocode(loc)  # also caches in geo_cache
     if coords is None and LEAVE_GEOCODE_CONTEXT and \
             LEAVE_GEOCODE_CONTEXT.lower() not in loc.lower():
         coords = _google_geocode(f"{loc}, {LEAVE_GEOCODE_CONTEXT}")
@@ -166,7 +166,7 @@ def _drive_minutes(origin: tuple[float, float],
 
 
 def _origin() -> tuple[tuple[float, float], str]:
-    """(coords, source). §10 fix younger than LEAVE_FIX_MAX_MIN, else HOME."""
+    """(coords, source). Location fix younger than LEAVE_FIX_MAX_MIN, else HOME."""
     fix = location.latest_fix()
     if fix and fix.get("age_min", 1e9) < LEAVE_FIX_MAX_MIN:
         return (fix["lat"], fix["lon"]), "fix"
@@ -182,7 +182,7 @@ def compute_leaves(day: str | None = None, *, strict: bool = False) -> list[dict
     `strict` turns a failed calendar read back into an exception. A card that
     can't reach the calendar should render empty, which is what the default
     does — but an empty list means "nothing to leave for" to a caller that
-    can't see the difference, and §21's reconciler withdraws alarms on exactly
+    can't see the difference, and the alarm reconciler withdraws alarms on exactly
     that reading. For it, a calendar outage has to stay distinguishable from a
     clear afternoon.
     """
@@ -212,7 +212,7 @@ def compute_leaves(day: str | None = None, *, strict: bool = False) -> list[dict
             continue  # already started — nothing to leave for
         row = {
             "event": ev.get("summary"),
-            # Carried for §21: an alarm keyed on summary+start loses its
+            # Carried for alarms: an alarm keyed on summary+start loses its
             # identity (withdraw + recreate on the phone) every time an event
             # is renamed or moved, and the id survives both.
             "event_id": ev.get("id"),

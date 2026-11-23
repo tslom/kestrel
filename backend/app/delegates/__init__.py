@@ -1,4 +1,4 @@
-"""Other models, sent on errands (New Features #86).
+"""Other models, sent on errands.
 
 Claude is the orchestrator and the only model that sees anything personal:
 the vault, the Brain, texts, email, money, contacts. Gemini and ChatGPT are

@@ -157,8 +157,8 @@ export default function HabitsExpand({ onPin }) {
       </table>
     )}
     {/* Outside both branches on purpose: the empty state is exactly when
-        adding matters most, and until now "No habits yet." was a dead end —
-        creating one meant asking the console. */}
+        adding matters most, and otherwise "No habits yet." is a dead end —
+        creating one means asking the console. */}
     {data && (
       <form className="habit-add" onSubmit={add}>
         <input value={newName} placeholder="Add a habit…" aria-label="New habit"

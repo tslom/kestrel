@@ -191,8 +191,6 @@ def test_a_tapback_does_not_shadow_the_message_before_it(dbfile, chat_con):
         ("ill put u on to hella ABGs", 0), ('Loved "see you then"', 1)]
 
 
-# ---------- read receipts ----------
-
 def _read(con, rowid, *, mins_ago):
     """What chat.db does when the other side opens a message: stamps the
     existing row in place. No new row, so ROWID never moves."""

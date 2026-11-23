@@ -24,8 +24,6 @@ def test_a_look_name_is_a_slug_and_a_verdict_is_minus_one_to_one(router_client):
     assert c.post("/api/looks/votes", json={"look": "a", "verdict": 3}).status_code == 422
 
 
-# ---------- themes: colour roles only ----------
-
 import asyncio
 import re
 from pathlib import Path
@@ -94,8 +92,6 @@ def test_light_roles_are_checked_against_the_light_baseline(dbfile):
     with pytest.raises(looks.ThemeError, match="light: accent #3293FC on surface #FFFFFF"):
         looks.save_theme("Both", WARM, light={"accent": "#3293FC"})
 
-
-# ---------- the tool ----------
 
 def _set(args):
     return asyncio.run(ct.theme_set.handler(args))

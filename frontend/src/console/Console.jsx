@@ -81,10 +81,10 @@ const WS_URL = `${location.protocol === "https:" ? "wss" : "ws"}://${location.ho
 // name and not in kind: it is the only one where a send or a delete can
 // happen without you.
 //
-// `acceptEdits` used to head this list as "auto-edit" and was removed on
-// 2026-09-17. It read as the cautious middle and wasn't: the CLI settles
-// in-workspace Bash writes under it without consulting the backend, so `rm`
-// inside the vault ran cardless while adding a task stopped for a click.
+// `acceptEdits` ("auto-edit") is left out on purpose. It reads as the
+// cautious middle and isn't: the CLI settles in-workspace Bash writes under
+// it without consulting the backend, so `rm` inside the vault runs cardless
+// while adding a task stops for a click.
 // `auto` is that trade made deliberately and the right way round. Sessions
 // that stored it are migrated by readMode().
 const HISTORY_MAX = 200;      // prompts kept per folder for Up and Ctrl+R
@@ -115,7 +115,7 @@ const MODE_DEFAULT = { general: "auto", study: "auto", dev: "bypass" };
 // CLI's own default.
 const styleKey = (profile) => `console_output_style:${profile}`;
 
-// Dev's default became never ask on 2026-11-03. A pick is remembered per
+// Dev's default is never ask, and used to be auto. A pick is remembered per
 // profile, so an "auto" stored under the old default would keep every new dev
 // tab there regardless — cleared once, so the new default reaches them.
 const DEV_BYPASS_MIGRATED = "console_mode:dev:bypass-default";
@@ -808,8 +808,8 @@ export default function Console({ tabId = "main", active = true, onTitle,
     };
     const handle = (msg) => {
       // Output means the turn is on disk, so a tab's first turn can be resumed
-      // even if it never finishes. Waiting for its result lost a whole long
-      // first turn to a restart: the tab came back as a blank session (11-06).
+      // even if it never finishes. Waiting for its result loses a whole long
+      // first turn to a restart: the tab comes back as a blank session.
       if (msg.type === "text_delta" || msg.type === "phase") {
         if (announcedRef.current && !localStorage.getItem(sessionKey))
           localStorage.setItem(sessionKey, announcedRef.current);
@@ -1206,9 +1206,9 @@ export default function Console({ tabId = "main", active = true, onTitle,
             questions: msg.questions || [], resolved: null,
           }];
         if (msg.type === "status") {
-          // The resume after a restart nobody asked for (11-17: the line
-          // landed after every dev turn that edited the backend, reading as
-          // if the tab had restarted itself). A warning in it still shows.
+          // The resume after a restart nobody asked for: it lands after every
+          // dev turn that edits the backend, and would read as if the tab had
+          // restarted itself. A warning in it still shows.
           if (quiet && !msg.text.includes("⚠")) return prev;
           return [...prev, { kind: "status", text: msg.text }];
         }
@@ -2793,9 +2793,9 @@ export default function Console({ tabId = "main", active = true, onTitle,
             if (bare) return renderNotes(g.items, gi);
             return (
               // `g`: a lone card is keyed by its entry index, and a bare gi
-              // collided with it (the card at entry 3, the turn after it at
-              // group 3) — React then left stale copies of the card behind,
-              // one more with every message (11-17).
+              // collides with it (the card at entry 3, the turn after it at
+              // group 3) — React then leaves stale copies of the card behind,
+              // one more with every message.
               <div key={`g${gi}`} className={`turn${g.closed ? " settled" : ""}`}>
                 {coalesce(g.items).map((r) => (
                   r.agent
@@ -3002,7 +3002,6 @@ export default function Console({ tabId = "main", active = true, onTitle,
     );
   }
 
-  // hoisted render helpers — same cases as before, just grouped into blocks
   function drawEntry(e, i) {
     // A `!` you ran is headed by its shell block; the line would only repeat it.
     if (e.kind === "user" && entries[i + 1]?.kind === "shell") return null;
@@ -3403,8 +3402,8 @@ export default function Console({ tabId = "main", active = true, onTitle,
               }
               if (ctrl && e.key === "Enter") { e.preventDefault(); sendNow(); return; }
               if (e.metaKey && !e.ctrlKey && e.key === "Enter") { e.preventDefault(); sendElsewhere(); return; }
-              // Shift+Tab switches the permission mode only on an empty composer
-              // (the user, 11-22); with something typed it's plain Shift+Tab, focus
+              // Shift+Tab switches the permission mode only on an empty composer;
+              // with something typed it's plain Shift+Tab, focus
               // moving back, which every other control in the app now gets.
               // ⌥⇧Tab is always WebKit's move-focus-back.
               if (e.key === "Tab" && e.shiftKey && (input || e.altKey)) return;

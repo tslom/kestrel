@@ -7,7 +7,7 @@ import ErrorBoundary from "../ui/ErrorBoundary.jsx";
 import { fmtTime } from "../lib/time";
 import Icon from "../ui/icons.jsx";
 
-// The desk (New Features #46, the look lab's round 5, picked 11-22): a
+// The desk (New Features #46, the look lab's round 5): a
 // sidebar of rooms, a page per room, Today as the home page, under a floating
 // glass bar that reads as a sentence (TodaySentence) and carries the one most
 // urgent ask (FocusLine.jsx). The console is a centred ask bar over the page
@@ -183,8 +183,8 @@ export function TodaySentence({ cards, loading }) {
 // branches left unmerged) belong to no room, so Today puts them first.
 const consoleAsks = (asks) => asks.filter((a) => !a.card);
 
-// Today's reading order, which the focus line follows too (the user, 11-22:
-// the two disagreed about what came first). Approvals, then tabs a quit or
+// Today's reading order, which the focus line follows too, so the two agree
+// on what comes first. Approvals, then tabs a quit or
 // the limit cut off, then unmerged branches (PlanApp builds the console's
 // asks in that order), then each room's asks in sidebar order. Anything on a
 // card no room holds goes last rather than missing.

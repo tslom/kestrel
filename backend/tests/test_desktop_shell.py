@@ -12,8 +12,6 @@ import pytest
 import desktop_shell as ds
 
 
-# ------------------------------------------------------------------- frames
-
 def test_missing_file_gives_the_default(tmp_path):
     assert ds.load_frame(tmp_path / "nope.json") == ds.DEFAULT_FRAME
 
@@ -75,8 +73,6 @@ def test_track_frame_writes_what_the_events_reported(tmp_path):
     w.events.closing.fire()
     assert ds.load_frame(p) == {"width": 1440, "height": 900, "x": 12, "y": 34}
 
-
-# --------------------------------------------------------------------- menu
 
 pytestmark_appkit = pytest.mark.skipif(
     not ds.HAVE_APPKIT, reason="macOS + PyObjC only")

@@ -1,12 +1,11 @@
-"""Deliveries & travel (§15/§16), one of the two cards added by the 2026-07-29
-review.
+"""Deliveries & travel.
 
-The other was Screen (§7), and its half of this file went with the provider on
-2026-09-13 — including the cases that pinned its honesty (centering on the
+This file once held the Screen card's tests too; they went with the provider,
+including the cases that pinned its honesty (centering on the
 newest day that *has* data, keeping a day AW saw nothing on as a gap rather
 than a zero, never pulling from aw-server during a render). Those rules were
 right and are worth knowing if a screen source ever comes back from a source
-that can see the phone; they are in git, at the commit that removed §7.
+that can see the phone; they are in git, at the commit that removed screen time.
 
 What's left is the travel card, and what's worth pinning about it:
 
@@ -28,8 +27,6 @@ from app.routes import extract as extract_routes
 def today(dbfile):
     return db.day_key()
 
-
-# ---------- packages / trips routes ----------
 
 def test_packages_carry_the_backend_day_key(today):
     """eta_day is a day_key; the browser comparing it against its own

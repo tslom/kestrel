@@ -1,5 +1,5 @@
 // Not a style linter. Each rule is a correction that kept coming back, made
-// into a check (11-17, after the "All Code Is Slop" report):
+// into a check:
 // - you-might-not-need-an-effect is an error: an effect that derives state,
 //   chains setters or relays an event is the pattern the next tab copies.
 //   Derive it in render, do it in the handler, key the component, or lift the
@@ -9,7 +9,7 @@
 //   goes up (lint-baseline.json).
 // - raw fetch() outside lib/api.js is an error: fetchJSON/postJSON are where
 //   errors, JSON and the backend's {detail} get handled once.
-// - raw setTimeout/clearTimeout outside lib/timers.js is an error (11-22):
+// - raw setTimeout/clearTimeout outside lib/timers.js is an error:
 //   a delay is how an agent papers over an ordering bug, so a wait on time
 //   goes through a named helper, and a wait on anything else waits on that.
 // - rules-of-hooks and exhaustive-deps are errors; a deps list that's

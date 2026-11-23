@@ -11,8 +11,8 @@ import { AGENT_STYLES, GROUNDS, LAYOUTS, LOOKS, agentsById, groundById, layoutBy
 
 const KEY = "look";
 const PAIR = "look_pair_r6";   // a new key per round, so last round's pair doesn't hide this one's
-// A new key when the default changed (11-22, rooms over classic): the old
-// one still held whichever round-4/5 layout was last flipped to.
+// A new key when the default changed (rooms over classic): the old one
+// still held whichever round-4/5 layout was last flipped to.
 const LAYOUT = "desk_layout";
 const GROUND = "map_ground";
 const AGENTS = "look_agents";
@@ -136,7 +136,7 @@ export function applyLook() {
   setAttr("look", currentLook(), "baseline");
   document.documentElement.dataset.layout = currentLayout();
   setAttr("map", currentGround(), GROUNDS[0].id);
-  delete document.documentElement.dataset.needs;   // round 5's Needs-you takes, retired 11-22
+  delete document.documentElement.dataset.needs;   // round 5's Needs-you takes, retired
   setAttr("agents", currentAgents(), AGENT_STYLES[0].id);
   delete document.documentElement.dataset.lookApple;   // round 1 only; clears a stale attribute
 }

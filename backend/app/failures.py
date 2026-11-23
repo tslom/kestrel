@@ -261,7 +261,7 @@ def install(app) -> None:
 # from it — and frames are resolved here, when the report arrives, because
 # that is the one moment the matching map is certain to exist: builds prune
 # assets after a week (vite.config.js), and a trace kept for its hash alone is
-# unmappable forever (2026-10-04's `{} is not iterable` is). A frame whose map
+# unmappable forever. A frame whose map
 # is gone — a window running a bundle older than that — is left as it came.
 
 DIST_ASSETS = Path(__file__).resolve().parents[2] / "frontend" / "dist" / "assets"

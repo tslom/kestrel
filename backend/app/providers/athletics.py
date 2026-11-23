@@ -1,9 +1,8 @@
 """Athletics provider — USC's game schedule for every sport, from Sidearm's
 public iCal feed (ATHLETICS_ICS_URL). No key.
 
-Why it exists: across Sep–Oct the console spent ~15 web searches on kickoff
-times (Fresno State, Oregon, Washington, the season schedule) and on 10-12
-gave up on a water polo game the feed had all along (Oct 17, 1pm, Uytengsu).
+Why it exists: over two months the console spent ~15 web searches on kickoff
+times and once gave up on a water polo game the feed had all along.
 Search results for a schedule are a week stale or a different season; the
 athletics department's own calendar is the source those pages copy.
 

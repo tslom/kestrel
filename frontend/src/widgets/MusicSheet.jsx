@@ -10,7 +10,7 @@ import { capRows } from "../lib/pin.js";
 import { fmtAgo, fmtDay, fmtDur, fmtTime, shortDay } from "../lib/time";
 import { dragPin } from "../lib/drag.js";
 
-// Music sheet — a listening habit, not a metric picker (IDEAS §1).
+// Music sheet — a listening habit, not a metric picker.
 //
 // Spotify's six metrics are all answers to two questions: *how much* and
 // *what*. The generic panel made you pick one at a time and then read

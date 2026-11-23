@@ -4,7 +4,7 @@ become day spans. Anchored on db.day_key() (local time, 4am rollover), so
 
 Weeks are ISO (Mon–Sun). All spans are inclusive [start, end] day-keys.
 
-Besides the named tokens, explicit dates parse here too (IDEAS §0.5):
+Besides the named tokens, explicit dates parse here too:
 a single day `2026-06-15` or an inclusive span `2026-06-01..2026-06-15`
 (double-dot keeps the token one shell-safe word). Spans cap at 366 days.
 """

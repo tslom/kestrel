@@ -1,4 +1,4 @@
-"""Email review queue — the WRITE face of the email provider (IDEAS §5).
+"""Email review queue — the WRITE face of the email provider.
 
 The provider (providers/email.py) only reads; every mailbox mutation is an
 explicit action here, against Gmail itself.
@@ -108,8 +108,8 @@ def _unsub_capability(row) -> str:
 
 # urllib's default "Python-urllib/3.x" is on Cloudflare's banned-signature
 # list: loops.so (and anything else fronted that way) answers 403 "error code:
-# 1010" before the request reaches the sender's app. That was every one-click
-# failure from 10-26 on. Any honest non-default agent gets through.
+# 1010" before the request reaches the sender's app, so every one-click
+# unsubscribe through it fails. Any honest non-default agent gets through.
 _UNSUB_UA = "Mozilla/5.0 (compatible; Kestrel/1.0; RFC 8058 one-click unsubscribe)"
 
 
@@ -306,7 +306,7 @@ def get_body(msg_id: str, chars: int | None = None, html: bool = False):
     """The message itself, so a card can be read without leaving for Gmail.
 
     Read-through, not cached: the body comes from Gmail on each request and
-    `emails` stays metadata-only (§5). `body` is always text — text/plain, or
+    `emails` stays metadata-only. `body` is always text — text/plain, or
     the HTML part with its tags stripped. `?html=true` adds the HTML part too
     (defanged, see email_triage.fetch_html), which only the reader modal asks
     for: it renders it in a script-less sandboxed iframe whose CSP blocks

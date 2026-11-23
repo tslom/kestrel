@@ -1,6 +1,6 @@
-"""§25: campus café menus the tracker knows before you've eaten there.
+"""Campus café menus the tracker knows before you've eaten there.
 
-USC publishes no café menus or nutrition (checked 10-14), so this loads what
+USC publishes no café menus or nutrition, so this loads what
 can be had, each row labeled with where its numbers came from:
 
   * food_data/coffee_bean.json — Coffee Bean & Tea Leaf's own nutrition PDF
@@ -10,7 +10,7 @@ can be had, each row labeled with where its numbers came from:
     minerals, so fill_micros() estimates only those, from an SR28
     decomposition of each dish, and says so on the row (detail.micros).
   * food_data/usc_dietitian.json — label numbers USC Hospitality's dietitian
-    emailed on 10-16 (Taco Taco, C&G smoothies and açaí, Katora curry
+    emailed (Taco Taco, C&G smoothies and açaí, Katora curry
     bowls). Exact: confidence 1.
   * food_data/campus_menus.json "published" — numbers with a stated origin,
     for any other venue that gets them.

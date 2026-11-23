@@ -51,10 +51,10 @@ export const DESK = [
 export const DESK_IDS = DESK.map(([id]) => id);
 export const CARD_NAME = Object.fromEntries(DESK);
 
-// Every card's data, fetched once at the top of the app (IDEAS: plan view).
-// A widget used to fetch its own data and report its own salience from inside
-// its render, which meant nothing could know what a card held without drawing
-// it. Each widget file now exports a `useXCard()` — the fetch, the refresh
+// Every card's data, fetched once at the top of the app.
+// A widget that fetches its own data and reports its own salience from inside
+// its render means nothing can know what a card holds without drawing
+// it. So each widget file exports a `useXCard()` — the fetch, the refresh
 // subscription, the level and the fold line — and its component is a view
 // over what that hook returns, so the desk can rank, summarise and later list
 // a card's asks without mounting it, and opening a card never refetches.
@@ -87,12 +87,12 @@ const HOOKS = {
 // Throws already reported, so a card that fails on every render posts once.
 const reported = new Set();
 
-// A hook runs in the app's render now, outside any card's ErrorBoundary, so a
+// A hook runs in the app's render, outside any card's ErrorBoundary, so a
 // payload it can't read would blank the whole page — console included. Each
 // hook therefore makes all of its React hook calls first and derives after;
 // a throw can only come from the derivation, by which point the hook order is
 // already complete, and catching it here keeps the rest of the app alive. The
-// card then renders as an error, which is what the boundary used to show.
+// card then renders as an error, as a boundary would show it.
 // (`cardHook`, not `use`: rules-of-hooks reads a bare `use()` as React's own.)
 function guard(id, cardHook) {
   let card;

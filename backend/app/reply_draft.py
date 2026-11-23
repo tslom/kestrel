@@ -1,4 +1,4 @@
-"""Reply drafter (IDEAS §9 tail) — candidate replies for a thread that's
+"""Reply drafter — candidate replies for a thread that's
 waiting on you.
 
 Not a provider: no range or metric axis, nothing cached, no refresh (the
@@ -13,8 +13,7 @@ login, like email triage and the brief; never the raw Anthropic API
 **It never sends anything.** The output is text handed back to the panel to
 copy; sending stays a human action in Messages/Gmail. That's deliberate: an
 auto-sent reply in someone's real conversation is the one mistake here that
-can't be taken back, and §17 already settled that this feed suggests rather
-than acts.
+can't be taken back, so this feed suggests rather than acts.
 """
 
 import asyncio

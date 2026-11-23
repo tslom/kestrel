@@ -1,10 +1,10 @@
-"""Gmail provider (IDEAS §5) — the read face of the email review queue.
+"""Gmail provider — the read face of the email review queue.
 
 Gmail is truth; `emails` + `email_days` in app.db are derived cache (metadata
 only — bodies are fetched transiently for summarization, never stored).
 refresh() syncs the inbox plus a recent-days window and hands new inbox
 messages to the summarizer (email_triage.py); get() serves messages by
-received date, so /daily-brief and the §1 expansion work like any provider.
+received date, so /daily-brief and the card expansion work like any provider.
 
 Write actions (archive / trash / label / unsubscribe) are explicit and live
 in app/routes/email.py — the provider itself never mutates the mailbox.
@@ -252,8 +252,8 @@ def _sync_days(con, token: str, start: date, end: date, now: str) -> int:
         _set_flag(con, "unread", unread_ids, "day BETWEEN ? AND ?",
                   (start.isoformat(), end.isoformat()))
         # Never mark a day that hasn't happened: its (empty) result is not an
-        # answer, and a marked day is never backfilled. A this-year read on
-        # 08-13 once marked Sep–Dec, so a day the recent-days refresh then
+        # answer, and a marked day is never backfilled. A this-year read would
+        # mark the months still ahead, so a day the recent-days refresh then
         # missed (app closed) would have stayed empty for good.
         d, last = start, min(end, _today())
         while d <= last:
@@ -382,7 +382,7 @@ def refresh() -> dict:
 
 def body(msg_id: str, limit: int | None = None, html: bool = False) -> dict:
     """One message read whole — headers from the cache, body from Gmail and
-    thrown away after (the `emails` table stays metadata-only, §5).
+    thrown away after (the `emails` table stays metadata-only).
 
     Over `limit` the quoted reply chain is dropped before truncating: a
     forwarded invite keeps its link at the bottom, so a blind cut is the one

@@ -7,9 +7,9 @@ import RefreshButton from "../ui/RefreshButton.jsx";
 import Icon from "../ui/icons.jsx";
 import { dragPin } from "../lib/drag.js";
 
-// Compact email card (IDEAS §5): how big the review queue is, and who's in it.
+// Compact email card: how big the review queue is, and who's in it.
 // The queue is worked in EmailReview.jsx ("Review N"); the pane's Full view is
-// the generic §1 range expansion over GET /api/email.
+// the generic range expansion over GET /api/email.
 export function useEmailCard() {
   // Topic "email": the review queue broadcasts it after every action, so the
   // count here follows along as mail is sorted instead of waiting for a sync.

@@ -7,7 +7,7 @@ import Icon from "../ui/icons.jsx";
 import { dragPin } from "../lib/drag.js";
 import { renderInline } from "../ui/markdown.jsx";
 
-// Daily brief (IDEAS round 2): generated lazily on the first dashboard open
+// Daily brief: generated lazily on the first dashboard open
 // of each day_key, cached in app.db — GET /api/brief kicks generation off
 // server-side and we poll while it writes. DB-only; never touches the vault.
 

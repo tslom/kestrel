@@ -1,8 +1,7 @@
 """Energy is computed from `health_days`; the provider read only tops it up.
 
-A lapsed Google login used to 502 the whole series for as long as the account
-stayed disconnected (18 times, 10-17 to 11-02), with the days it needed sitting
-in the cache.
+A lapsed Google login must not 502 the whole series for as long as the account
+stays disconnected, with the days it needs sitting in the cache.
 """
 
 from app import db, trends

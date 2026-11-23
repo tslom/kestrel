@@ -105,8 +105,6 @@ def remember(kind: str, target: str, label: str, day: str | None,
         return _work(c)
 
 
-# ---------- resolution ----------
-
 def _email(con, target: str) -> dict[str, Any] | None:
     r = con.execute(
         "SELECT msg_id, thread_id, day, received_at, from_name, from_addr,"

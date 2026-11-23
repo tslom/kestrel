@@ -1,12 +1,11 @@
-"""Weather provider (IDEAS §6) — Open-Meteo, no key/auth required. Open-Meteo
+"""Weather provider — Open-Meteo, no key/auth required. Open-Meteo
 is truth; `weather_days` + `geo_cache` in app.db are derived cache (safe to
 drop and re-pull). One row per (day, metric); day is Open-Meteo's own civil
 date for the queried lat/lon (timezone=auto) — same camp as calendar/health,
 not day_key.
 
-Origin: HOME_LAT/HOME_LON by default; once §10 (location) ships, prefer the
-latest location fix < 6h old instead. The import is guarded so this module
-works standalone before providers/location.py exists.
+Origin: the latest location fix < 6h old, else HOME_LAT/HOME_LON. The
+location import is guarded so this module works standalone.
 
 This is a forecast (ALLOW_FUTURE=True) — unlike calendar/health there's no
 separate sync marker table: every fetched day carries at least its core
@@ -82,9 +81,9 @@ def _minutes_since_midnight(iso_dt: str) -> float:
 
 
 def _origin() -> tuple[float, float]:
-    """Latest location fix < 6h old if §10 exists and has one, else home."""
+    """Latest location fix < 6h old if there is one, else home."""
     try:
-        from . import location  # guarded: may not exist yet (§10)
+        from . import location  # guarded, so this module works standalone
     except ImportError:
         location = None
     if location is not None:
@@ -164,8 +163,8 @@ def refresh() -> dict:
     served-stale reading may be at most _CURRENT_STALE_S old — so the fallback
     could only ever cover a blip that landed within an hour of a *previous*
     successful desk load, and never the first load of the day, which is
-    exactly when the chip was observed blanking (four 502s between 09-16 and
-    09-19, all mid-desk-burst, after the retry-and-fall-back fix had shipped).
+    exactly when the chip was observed blanking (502s mid-desk-burst, even
+    with the retry-and-fall-back in place).
     Refreshing here puts the last good reading at most one poller cycle behind
     instead, which is well inside the window.
 
@@ -228,9 +227,9 @@ CURRENT_FIELDS = "temperature_2m,weather_code,is_day"
 
 
 # Last successful current() payload, kept in memory so a flaky upstream costs
-# a stale reading rather than an empty chip. Open-Meteo returned a 502 on four
-# separate days between 2026-09-05 and 2026-09-13 (the `failures` table's
-# longest-running row), each one blanking the glance strip for a page load.
+# a stale reading rather than an empty chip. Open-Meteo has returned a 502 on
+# four separate days in one week (the `failures` table's longest-running
+# row), each one blanking the glance strip for a page load.
 #
 # In memory and not app.db on purpose: this is a right-now reading, so its
 # value decays in minutes and surviving a backend restart would be a
@@ -243,7 +242,7 @@ _current_origin: tuple[float, float] | None = None   # where _current_cache was 
 _CURRENT_STALE_S = 3600
 _CURRENT_RETRY_WAIT_S = 0.8
 # How young a reading the page-load route takes instead of asking. The call
-# is ~0.8s of pure upstream latency (measured 09-27, every time, no failures)
+# is ~0.8s of pure upstream latency (measured: every time, no failures)
 # and Open-Meteo's `current` block only moves in 15-minute steps, so asking
 # again on every page load paid that for an identical answer — and the poller
 # cycle's refresh() has usually just taken the reading anyway.

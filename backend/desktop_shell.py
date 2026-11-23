@@ -317,11 +317,10 @@ def _install_menu_now(handlers: dict[str, Callable[[], None]]) -> None:
 
 # UNUserNotificationCenter, so banners are Kestrel's own: its name and icon,
 # its own row in System Settings › Notifications, and a click that comes back
-# here. app/notify.py used to post with `display notification`, which macOS
-# attributes to Script Editor — a click opened Script Editor and the
-# permissions lived under its name (#80).
+# here. osascript's `display notification` is attributed to Script Editor —
+# a click opens Script Editor and the permissions live under its name.
 #
-# What the center demands, found by trial on macOS 26 (11-20): the process
+# What the center demands, found by trial on macOS 26: the process
 # must run from a bundle registered with LaunchServices *and* code-signed —
 # ad-hoc is enough, unsigned gets UNErrorDomain 1 "Notifications are not
 # allowed for this application" (scripts/make-app.sh signs it). A bundle under

@@ -25,7 +25,7 @@ function meta(t) {
   return parts.join(" · ");
 }
 
-// Drill-in detail panel (BUG_CHECKS pass; archive/ROUND34_PLAN.md).
+// Drill-in detail panel.
 // Everything here is already on the task dict (list_tasks does SELECT *) —
 // this just surfaces the fields the compact row hides: the note, the
 // verbatim source_excerpt, and the

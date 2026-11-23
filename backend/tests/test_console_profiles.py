@@ -468,8 +468,8 @@ def test_open_tab_hands_the_page_a_resolved_project(roots):
 
 
 def test_open_tab_past_the_working_cap_says_queued_not_retry(roots):
-    """11-18: two briefs failed on "5 other tabs are already working" and the
-    parent had to retry by hand. The page queues them now; the tool says so."""
+    """A brief past the cap is queued by the page, not failed on "5 other tabs
+    are already working" for the parent to retry by hand; the tool says so."""
     s = _State(answer=(True, "queued #2", 2, "ab12cd"))
     tok = ct.SESSION.set(s)
     try:

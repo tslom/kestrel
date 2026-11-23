@@ -1,4 +1,4 @@
-"""Kind-prefixed keys — the identity scheme both §21 delivery channels use.
+"""Kind-prefixed keys — the identity scheme both delivery channels (alarms, notify) use.
 
 Every alarm and every notification is named by a `kind:part:part` string, and
 the scheme is load-bearing twice over. The prefix is what lets the alarm

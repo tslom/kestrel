@@ -5,7 +5,7 @@ import { Bars, SeriesRow, Stat, useChartWidth } from "../ui/charts.jsx";
 import { fetchJSON } from "../lib/api";
 import { fmtAgo, fmtDay, fmtHM } from "../lib/time";
 
-// One day, at the resolution the daily rows threw away (IDEAS, 09-13).
+// One day, at the resolution the daily rows throw away.
 //
 // Every other health surface in the app answers "how have I been" — a week of
 // bars, a 28-day baseline. This one answers "what happened on Tuesday", which

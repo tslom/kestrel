@@ -1,7 +1,7 @@
 """CLAUDE.md's rule → enforcer table names things that exist.
 
 The table is what an agent reads to learn that a rule is checked (the
-`/correct` habit from the 11-17 "All Code Is Slop" report). A row whose
+`/correct` habit). A row whose
 enforcer was renamed or deleted would claim a check that no longer runs.
 """
 

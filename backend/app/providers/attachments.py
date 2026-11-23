@@ -82,7 +82,7 @@ METRICS = None
 DEFAULT_METRIC = None
 ALLOW_FUTURE = False
 
-# Formats the API accepts as image blocks. Verified 2026-07-29 against a real
+# Formats the API accepts as image blocks. Verified against a real
 # HEIC out of chat.db: the API answers "I cannot process this image" as ordinary
 # *text*, not an error — so widening this set without transcoding would file a
 # refusal message as the photo's contents, status ok.
@@ -118,9 +118,9 @@ SUFFIX_MIMES = {".pkpass": PKPASS_MIME, ".docx": DOCX_MIME}
 
 LOCAL_MIMES = {"application/pdf", "application/json", DOCX_MIME} | PKPASS_MIMES
 
-# A photo gets a description even when something in it has text: on 11-05 a
-# lunch photo came back as only the juice bottle's label, and the salmon bowl
-# that was the whole point never reached the food router (selftexts.py).
+# A photo gets a description even when something in it has text: otherwise a
+# lunch photo comes back as only a bottle's label, and the meal that was the
+# whole point never reaches the food router (selftexts.py).
 VISION_PROMPT = (
     "If this image is a document, receipt, screenshot, or poster, transcribe "
     "its text verbatim. If it is a photo, first say in one short sentence "
@@ -285,7 +285,7 @@ def _rss_bytes(pid: int) -> int | None:
 
 # How often the parent samples the child's RSS. This is not a comfort setting:
 # the cap is only as tight as the poll gap, because a child can commit an
-# arbitrary amount between two samples. Measured on this machine 2026-09-13, a
+# arbitrary amount between two samples. Measured on this machine, a
 # page-touching alloc loop commits ~0.84 GB of real RSS in 150ms — so the old
 # 0.15s gap made a 1 GB cap behave like a ~1.8 GB one, and config.py's claim
 # that a bomb is "killed long before the machine swaps" was off by ~84%. At
@@ -683,8 +683,8 @@ def _sniff_heic(data: bytes) -> bool:
 
 def _sniff_avif(data: bytes) -> bool:
     """AVIF by its ISO-BMFF brand — what a browser's "Save image" hands over
-    for most web photos now. One arrived on 09-28 (a restaurant image) and was
-    turned back as unreadable; sips decodes it the same way it does HEIC."""
+    for most web photos now, and without this one is turned back as
+    unreadable; sips decodes it the same way it does HEIC."""
     return data[4:8] == b"ftyp" and data[8:12] in (b"avif", b"avis")
 
 
@@ -711,7 +711,7 @@ async def read_upload(filename: str, data: bytes, declared: str = "") -> dict:
     The same provenance is why an image comes back as `image` ({media, data})
     and not as text: the session looks at it itself. A description from a
     tool-free reader is what stored attachments get, and it is what reduced a
-    CAD sketch to "10.00 5.00 10.00 5.00" on 11-03.
+    CAD sketch to "10.00 5.00 10.00 5.00".
 
     Returns {kind, text, note} and never raises: an unreadable file is a normal
     outcome the console needs to be able to report.
@@ -753,8 +753,8 @@ async def read_upload(filename: str, data: bytes, declared: str = "") -> dict:
                 return {"kind": "unreadable", "text": "",
                         "note": f"{size}, could not be read as an image"}
         elif len(data) > ATTACHMENT_VISION_MAX_BYTES:
-            # A sendable format that's simply too big — a 13.5MB photo was
-            # refused outright on 09-23. These are the user's own bytes (see
+            # A sendable format that's simply too big — a 13.5MB photo is
+            # refused outright. These are the user's own bytes (see
             # the docstring), so shrinking them through the same guarded sips
             # call is no new exposure; refusing just made them resend it.
             data = _heic_to_jpeg(data) or data

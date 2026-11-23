@@ -2,11 +2,11 @@
 // opened it. Plain functions over the console log (Console.jsx's entries), so
 // node can test them (tests/handoff.test.mjs, run by pytest).
 //
-// A turn that ends is not always work that ends. On 11-17 a DNS outage ended
-// three tabs' turns at once with an API error; each reported its last line of
-// narration ("error. Now wiring it into the console…") as its outcome, was
-// listed as a finished handoff, and the summary after the user's "continue"
-// never went anywhere, because a brief reports once. So the report waits
+// A turn that ends is not always work that ends. An API error (a network
+// outage, say) ends a turn mid-work; reporting then sends its last line of
+// narration ("error. Now wiring it into the console…") as the outcome, lists
+// it as a finished handoff, and the summary after the user's "continue" goes
+// nowhere, because a brief reports once. So the report waits
 // through any turn that didn't finish the work, and fires on the first one
 // that does.
 
@@ -88,7 +88,7 @@ function breakAfter(text, at, ceil) {
 // Long text, cut from the middle at breaks, never inside a word, with a line
 // saying how much and where the whole is. The middle because a summary's ends
 // are what matter: what was done opens it, what's left to decide closes it.
-// 11-17's cut kept only the head and landed on "## For you to decide\n- **…".
+// A head-only cut lands on "## For you to decide\n- **…".
 export function clip(text, limit, where) {
   if (text.length <= limit) return text;
   const headEnd = breakBefore(text, Math.floor(limit * 0.7), Math.floor(limit * 0.5));

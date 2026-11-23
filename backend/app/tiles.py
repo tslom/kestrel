@@ -4,9 +4,7 @@ The map sheet needs something under the dots or it is a scatter plot: a route
 across campus reads as a route only if the streets are there. The frontend
 cannot fetch them itself — image hosts outside the CDN allowlist are blocked,
 and this is a localhost app besides — so the backend is the only place the
-request can come from, which is the shape IDEAS called for when it said "a
-basemap fetched backend-side and served locally; do not plan on an external
-tile server".
+request can come from.
 
 That makes us a client of somebody else's tile server, so the manners are part
 of the design rather than a nicety:
@@ -21,8 +19,8 @@ of the design rather than a nicety:
   from one viewport — no prefetching, no walking a bounding box, nothing that
   turns a pan into a download of the county.
 * **Soft on failure.** An unreachable tile server returns 204 rather than an
-  error: the map draws without a basemap, which is the vector-only fallback
-  the same IDEAS entry offered as the other option. It is a degraded map, not
+  error: the map draws without a basemap, which is the vector-only fallback.
+  It is a degraded map, not
   a broken sheet.
 """
 
@@ -41,7 +39,7 @@ router = APIRouter(prefix="/api")
 
 # openstreetmap.org's own tiles: the one basemap that still serves anonymous
 # requests. Carto's light_all was the first choice — grey cartography meant to
-# sit under data, which is this map's job — and as of 2026-09-14 it returns
+# sit under data, which is this map's job — and it now returns
 # tiles stamped "API KEY REQUIRED" instead of an error, so the map rendered
 # with a watermark across it rather than failing loudly. Checked by looking at
 # the pixels; a 200 proved nothing.

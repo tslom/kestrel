@@ -1,10 +1,10 @@
-"""Finding a message again (IDEAS §5) — the reason review files anything.
+"""Finding a message again — the reason review files anything.
 
 Two tiers. Locally, an FTS5 index (`email_fts`) over what app.db already
 holds for every cached message: subject, sender, the model's summary, its
 filing label, and `terms` — the order numbers, amounts, people and dates the
 summarizer pulled out of the body. That covers "the Lyft ride in September"
-and "order 124057035" without a body ever being stored (§5's rule). Past the
+and "order 124057035" without a body ever being stored. Past the
 cache, Gmail's own search, which does read bodies: its hits are fetched as
 metadata and written into `emails`, so the backfill summarizes them and the
 next search finds them locally.

@@ -13,8 +13,8 @@ import { dragPin } from "../lib/drag.js";
 // Same endpoints the widgets hit (all served from app.db caches); re-read on
 // mount, after a sync, and on a day-key rollover — no new data flow.
 //
-// It used to carry tasks / to-review / habits-left counts too. The plan
-// view's "needs you" list is that summary now, so the strip keeps only what
+// No tasks / to-review / habits-left counts: the plan view's "needs you"
+// list is that summary, so the strip keeps only what
 // nothing else on screen shows, and its right end is ⌘K and — on a narrow
 // window, where the list is a slide-over — the chip that brings it in.
 
@@ -38,7 +38,7 @@ export function weatherIcon({ weather_code, is_day }) {
 export default function GlanceStrip({ onExpandCalendar, onOpenStatus, onPin,
                                       needCount, onNeeds, onPalette, onSettings, onWeather }) {
   const [next, setNext] = useState(null);   // next upcoming event today
-  const [leave, setLeave] = useState(null); // soonest imminent leave_by (§14)
+  const [leave, setLeave] = useState(null); // soonest imminent leave_by
   const [weather, setWeather] = useState(null);
   const [dayKey, setDayKey] = useState(null); // server day_key (4am rollover)
   const [syncing, setSyncing] = useState(false);
@@ -93,7 +93,7 @@ export default function GlanceStrip({ onExpandCalendar, onOpenStatus, onPin,
       setNext(ev || null);
     }),
     getJson("/api/weather/current").then(setWeather),
-    // §14: surface the soonest departure only when it's < 90 min out — a
+    // Surface the soonest departure only when it's < 90 min out — a
     // nudge, not a list (the brief carries the per-event leave-by times).
     getJson("/api/leave").then((p) => {
       const now = Date.now();

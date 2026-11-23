@@ -1,6 +1,6 @@
 // The look lab's registry: UI design variants for the redesign rounds.
 //
-// The redesign is a loop, not one rewrite (user, 11-13): a round ships a few
+// The redesign is a loop, not one rewrite: a round ships a few
 // variants, you live with them and flip A/B, each verdict goes to app.db
 // (backend app/looks.py), and the next round keeps what won and tries the
 // next variable.
@@ -13,21 +13,13 @@
 // A vote is stored under the variant's id, prefixed for the two new axes
 // (`layout-rooms`, `ground-dots`), so `look_votes` reads as one history.
 //
-// Round 1 (11-13): Cupertino beat Studio twice ("likes the colors from the
-// Cupertino"); its palette became the baseline in round 2, along with the
-// token system in docs/ui-overhaul.md. `git show 914683d:frontend/src/looks/`
-// has the retired round-1 looks.
-//
-// Round 3 (11-14): the accent opened up (accents.css). Votes by 11-20: violet
-// and rose one yes each, nothing else voted.
-//
-// Round 4 (11-20): "more radical changes, like new designs for the dashboard,
-// solutions to fix clutter while keeping functionality." Round 3 only moved a
-// hue, so this round moves the layout itself: four different answers to
-// clutter (Today, Rooms, Tiles, Canvas; retired 11-22), each keeping every card, sheet,
-// ask and the console reachable. And the map's contour ground, which he
-// wanted changed ("map is kinda cool", #28 and #46), gets five alternatives
-// (plan/mapGrounds.js).
+// Round 1's winner, Cupertino, became the baseline palette in round 2, along
+// with the token system in docs/ui-overhaul.md.
+// `git show 914683d:frontend/src/looks/` has the retired round-1 looks.
+// Round 3 opened up the accent (accents.css). Round 4 moved the layout
+// itself: four answers to clutter (Today, Rooms, Tiles, Canvas, since
+// retired), each keeping every card, sheet, ask and the console reachable,
+// and five alternatives to the map's contour ground (plan/mapGrounds.js).
 import "./flexoki.css";
 import "./amber.css";
 import "./accents.css";
@@ -35,13 +27,12 @@ import "./map-narrow.css";
 import "./grounds.css";
 import "./lab.css";
 
-// Round 5 (11-22): the user's round-4 verdict. Keep Rooms' sidebar as the
-// structure, Today's sentence-like glance as its header, and Canvas's
-// centered ask bar and floating glass top bar: one hybrid layout, plus three
-// takes on Needs you and an agent visualizer.
+// Round 5 combined round 4's winners into one hybrid layout: Rooms' sidebar
+// as the structure, Today's sentence-like glance as its header, and Canvas's
+// centered ask bar and floating glass top bar; plus three takes on Needs you
+// and an agent visualizer.
 //
-// Picked 11-22: "i like inline layout and then focus line header". Hybrid is
-// the desk now (plan/Rooms.jsx, plan/desk.css), Needs you is inline in each
+// The hybrid is the desk now (plan/Rooms.jsx, plan/desk.css), Needs you is inline in each
 // room with the most urgent ask on the top bar (plan/FocusLine.jsx), and the
 // round-4 concepts and the other two Needs-you takes are gone
 // (`git show c1423ce:frontend/src/plan/Concepts.jsx` has them). Classic stays

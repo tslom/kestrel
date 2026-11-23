@@ -16,18 +16,16 @@ export const trendUrl = (m, range) =>
     ? `/api/health?range=${range}&metric=${m.slice(7)}`
     : `/api/trends?range=${range}&metric=${encodeURIComponent(m)}`;
 
-// Trends card, on the lede form — and narrowed to **energy** while getting
-// there.
+// Trends card, on the lede form, narrowed to **energy**.
 //
-// It used to draw three sparklines: sleep, steps and energy. Two of those are
-// the health card's own headline metrics, so once both cards started leading
-// with a conclusion instead of a chart, the desk was at risk of announcing the
-// same short night twice in two different voices. DESIGN.md's rule about not
+// Sleep and steps are the health card's own headline metrics, and with both
+// cards leading with a conclusion instead of a chart, drawing them here would
+// announce the same short night twice in two different voices. DESIGN.md's rule about not
 // answering a question twice settles it: health owns the body's raw metrics,
 // and this card keeps the one signal nothing else on the desk derives —
 // energy, the 0-100 readiness score built from sleep, resting HR and HRV.
 //
-// Sleep and steps aren't gone from here; they're the muted line under the
+// Sleep and steps are still here as the muted line under the
 // lede, where they read as the inputs to the score rather than as claims of
 // their own. The full metric picker, every range and the charts are in the
 // sheet.

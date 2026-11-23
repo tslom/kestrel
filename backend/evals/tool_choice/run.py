@@ -53,16 +53,16 @@ def tool_chars(overlay: dict[str, str]) -> int:
 async def judge(batch: list[dict], system: str, gate: asyncio.Semaphore) -> list[str]:
     numbered = "\n".join(f"{i + 1}. {c['p']}" for i, c in enumerate(batch))
     # Answers are keyed by message number. A bare array was positional, and
-    # Haiku now and then drops a line from it (13 answers for 14, 11-17):
-    # when it also doubled one elsewhere the count still matched, and every
-    # answer after the slip was scored against the next message (51/83 on
-    # 11-17, all of the misses shifted by one). A missing key is a re-ask.
+    # Haiku now and then drops a line from it (13 answers for 14): when it
+    # also doubles one elsewhere the count still matches, and every answer
+    # after the slip is scored against the next message, all of the misses
+    # shifted by one. A missing key is a re-ask.
     for _ in range(3):
         async with gate:
             out = await agent.ask(ASK + numbered, model=MODEL, system=system,
                                   thinking={"type": "disabled"})
         # The first object, not first-{ to last-}: some answers trail a
-        # second one (JSONDecodeError "Extra data", 11-17).
+        # second one (JSONDecodeError "Extra data").
         found = re.search(r"\{.*?\}", out, re.S)
         try:
             keyed = json.loads(found.group(0)) if found else {}

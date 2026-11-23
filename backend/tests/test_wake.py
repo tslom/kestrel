@@ -1,4 +1,4 @@
-"""§21 step 5 — the scheduled wake.
+"""The scheduled wake.
 
 Two halves are worth testing and they are tested differently. `plan()` and
 `_coalesce()` are pure and take everything as arguments, so the decision to

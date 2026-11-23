@@ -66,8 +66,6 @@ def _seed_days(table, day, n=1):
     con.close()
 
 
-# ---------------------------------------------------------------- freshness
-
 def test_empty_cache_is_stale_even_when_the_refresh_succeeded(status_client, monkeypatch):
     """The failure mode the panel is for: chat.db unreadable, aw-server down —
     refresh() returns cleanly, writes nothing, and every other signal is green."""
@@ -109,8 +107,6 @@ def test_future_days_are_not_stale(status_client, monkeypatch):
     assert _source(status_client({"stub": _mod()}))["state"] == "ok"
 
 
-# ------------------------------------------------------------ refresh errors
-
 def test_failed_refresh_is_broken_and_keeps_the_last_good_time(status_client, monkeypatch):
     monkeypatch.setitem(heartbeat.FRESHNESS, "stub", ("stub_days", "day", 1))
     _seed_days("stub_days", db.day_key())
@@ -133,8 +129,6 @@ def test_recovery_clears_the_failure_streak(status_client, monkeypatch):
     assert row["state"] == "ok" and row["fails"] == 0 and row["error"] is None
 
 
-# -------------------------------------------------------------- info notes
-
 def test_benign_skip_note_does_not_break_the_source(status_client, monkeypatch):
     """news skips because it already fetched today. That's a note, not a fault
     — there's no generic way to read a skip as failure, so it must not try."""
@@ -156,8 +150,6 @@ def test_unreachable_host_note_marks_partial_data_stale(status_client, monkeypat
     # names, not the raw dict repr of urllib errors
     assert row["notes"] == ["unreachable: pc"]
 
-
-# ------------------------------------------------------------------- probes
 
 def test_provider_probe_can_condemn_a_current_cache(status_client, monkeypatch):
     """messages' case: the cache looks fine because it synced before Full Disk
@@ -186,8 +178,6 @@ def test_a_raising_probe_cannot_500_the_panel(status_client, monkeypatch):
     assert row["state"] == "broken"
     assert "aw exploded" in row["detail"]
 
-
-# ------------------------------------------------------------- roll-up shape
 
 def test_worst_first_ordering_and_counts(status_client, monkeypatch):
     monkeypatch.setattr(heartbeat, "FRESHNESS", {})
@@ -224,7 +214,6 @@ def test_heartbeat_info_is_stored_as_json(dbfile):
     assert json.loads(heartbeat.rows()["stub"]["info"]) == {"days": ["2026-07-25"]}
 
 
-# --------------------------------------------------------------- event log
 # provider_health is overwritten every cycle, so anything that broke and then
 # healed is invisible in it. The log is the only durable record.
 

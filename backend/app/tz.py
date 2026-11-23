@@ -43,7 +43,7 @@ HOME_ZONE = "America/New_York"      # before the first transition
 # *user* is on a date, this says what frame an airline's clock is printed in.
 # `trips.dep_local` / `arr_local` are each local to their own airport, which is
 # checkable against the data — AA 2299 leaves RDU at 18:00 and reaches LAX at
-# 20:19 for a 5h19m block, and AA 2308 confirms it eastbound. So on 2026-08-17
+# 20:19 for a 5h19m block, and AA 2308 confirms it eastbound. So on the moving day
 # zone_on() says Los_Angeles (the user lands there) while dep_local's 18:00 is
 # Eastern; reading a departure through TIMELINE puts it three hours out.
 #

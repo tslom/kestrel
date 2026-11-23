@@ -13,9 +13,6 @@
 // - "done": finished and landed. Closed into the parent's group, unmounted,
 //   still resumable by a click.
 // - "idle": none of those, e.g. one the user has since typed in.
-//
-// Before 11-18 children were peers in a flat bar, a closed one's unmerged
-// branch was forgotten, and a sixth open_tab was refused outright.
 
 // Tabs past these wait in the queue, the rest of the queue is refused.
 export const MAX_QUEUED = 8;

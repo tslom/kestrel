@@ -91,8 +91,6 @@ def test_real_timeline_is_sorted_and_uses_valid_zones():
     assert ZoneInfo(tz.HOME_ZONE)
 
 
-# ---------- the calendar's use of it ----------
-
 def _row(start, end, all_day=False):
     return {"start_at": start, "end_at": end, "all_day": all_day}
 

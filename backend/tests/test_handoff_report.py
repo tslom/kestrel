@@ -1,4 +1,4 @@
-"""New Features #72: a handed-off tab's report fires at the real end of its
+"""A handed-off tab's report fires at the real end of its
 work, whole. The logic is frontend (lib/handoff.js), so this runs its node
 tests (frontend/tests/handoff.test.mjs) under pytest, which is the commit bar."""
 

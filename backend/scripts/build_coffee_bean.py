@@ -1,5 +1,5 @@
 """Build backend/app/food_data/coffee_bean.json from Coffee Bean & Tea Leaf's
-published nutrition PDF (§25 — the one campus venue whose full menu has
+published nutrition PDF (the one campus venue whose full menu has
 official numbers fetchable from here).
 
     curl -sL -o cbtl.pdf "$(curl -sIL https://www.coffeebean.com/nutrition | ...)"

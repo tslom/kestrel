@@ -1,6 +1,7 @@
 """email_days marks a day synced only once it has happened. A this-year read
-on 08-13 marked Sep–Dec with empty results; a marked day is never backfilled,
-so any of those days the recent-days refresh later missed stayed empty."""
+would otherwise mark the rest of the year with empty results; a marked day is
+never backfilled, so any of those days the recent-days refresh later missed
+would stay empty."""
 
 from datetime import date, timedelta
 

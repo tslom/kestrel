@@ -112,8 +112,6 @@ def recent(days: int = WINDOW_DAYS) -> dict:
             "unseen": sum(r["unseen"] for r in rows)}
 
 
-# ---------- undo ----------
-
 def _undo_task(ref: dict) -> None:
     with db.session() as con:
         t = con.execute("SELECT status FROM tasks WHERE id=?",
@@ -188,8 +186,6 @@ def undo(row_id: int) -> dict:
         con.execute("UPDATE activity SET undone_at=? WHERE id=?", (_now(), row_id))
     return get(row_id)
 
-
-# ---------- routes ----------
 
 class RedoIn(BaseModel):
     kind: str

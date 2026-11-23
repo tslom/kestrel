@@ -1,4 +1,4 @@
-"""Slash-command discovery for the console (IDEAS §4) — zero tokens.
+"""Slash-command discovery for the console — zero tokens.
 
 Scans the same places the console's setting_sources = ["user", "project"]
 load from — ~/.claude and VAULT_PATH/.claude — for commands/*.md and

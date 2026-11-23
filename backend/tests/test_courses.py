@@ -246,8 +246,8 @@ def _hours_on(path):
 
 
 def test_a_second_block_for_one_person_adds_rather_than_overwrites(monkeypatch, tmp_path):
-    """The 2026-09-01 loss: one TA's four blocks written one call at a time,
-    each amending the entry the last call wrote, three of them gone."""
+    """One TA's four blocks written one call at a time must not each amend
+    the entry the last call wrote, leaving three of them gone."""
     path = _note(monkeypatch, tmp_path, [])
     for when, where in [("Mon, Wed 16:00-18:00", "GCS SB9"),
                         ("Tue 09:00-12:00", "https://usc.zoom.us/j/99180444912"),
@@ -346,8 +346,8 @@ def test_a_different_person_is_always_a_new_block(monkeypatch, tmp_path):
 
 
 def test_a_dated_override_picks_the_block_that_meets_that_day(monkeypatch, tmp_path):
-    """The 2026-09-25 409: a TA with Mon and Thu blocks, a mailed "Thursday
-    next week on Zoom" — ambiguous by name, not by date."""
+    """A TA with Mon and Thu blocks, a mailed "Thursday next week on Zoom" —
+    ambiguous by name, not by date, so no 409."""
     path = _note(monkeypatch, tmp_path, [
         {"who": "Martin Lindqvist", "when": "Mon 13:00-14:00"},
         {"who": "Martin Lindqvist", "when": "Thu 08:00-10:00"},
@@ -364,8 +364,8 @@ def test_a_dated_override_picks_the_block_that_meets_that_day(monkeypatch, tmp_p
 
 
 def test_a_middle_name_still_finds_the_person(monkeypatch, tmp_path):
-    """The 11-17 409s: mail signed "Martin Paul Halvorsen", the note says
-    "Martin Halvorsen", and approving the moved hours failed three times."""
+    """Mail signed "Martin Paul Halvorsen", the note says "Martin Halvorsen":
+    approving the moved hours must not 409."""
     path = _note(monkeypatch, tmp_path, [
         {"who": "Martin Halvorsen", "when": "Tue 13:00-15:00", "where": "GCS Lower Level 1"},
         {"who": "Devon", "when": "Thu 12:00-14:00"},

@@ -1,6 +1,6 @@
 """Which place, on which visit — and learning your signature for the rest.
 
-§24 named a cluster. This is the correction to the assumption underneath that:
+place_suggest names a cluster. This is the correction to the assumption underneath that:
 at campus density **a cluster is not a place**. The busiest unnamed cluster in
 this vault spans 168m and contains Leavey Library, McCarthy Quad, Everybody's
 Kitchen, Birnkrant and the SSCI building, and which one a visit was is a
@@ -195,7 +195,7 @@ def _events_by_day(days: list[str]) -> dict[str, list]:
 def _event_for(stay: dict, by_day: dict) -> dict | None:
     """The timed event this visit overlapped, if one did.
 
-    Virtual locations are skipped for the reason §14 records: a Zoom URL
+    Virtual locations are skipped for the reason leave.py records: a Zoom URL
     geocodes, confidently and wrongly. Here it would not mislead about
     position — position is never read — but "standup" is not a place and
     offering it as a name would waste the click."""

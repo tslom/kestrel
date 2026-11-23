@@ -9,7 +9,7 @@ import { fmtDur, shortDay } from "../lib/time";
 import { palette } from "../lib/tokens.js";
 import { PlaceNamer, VisitList } from "./MapPlaces.jsx";
 
-// The location half as a map (IDEAS, 09-13).
+// The location half as a map.
 //
 // Every other location surface is a number per day — kilometres, minutes at
 // home, a count of places — and none of them can answer "where was I". This

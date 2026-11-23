@@ -52,14 +52,14 @@ import AgentLayer from "./AgentLayer.jsx";
 import { currentLayout, useLook } from "../lib/look.js";
 import { useScheduledPrompts } from "../lib/schedules.js";
 
-// The plan view (IDEAS: Kestrel UI redesign). One window that never scrolls:
+// The plan view. One window that never scrolls:
 // the glance strip and brief across the top, the stage (the console and the
 // map, side by side, never over each other), and on the right the "needs you"
 // list, which is where you act. A card opens into the side column; its full
 // view takes the window as a tab.
 //
 // It replaced the rail desk (a column of ranked, foldable cards beside the
-// console) outright on 2026-09-25; git history holds the desk.
+// console) outright; git history holds the desk.
 const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 const minutesFrom = (n) => new Date(Date.now() + n * 60000).toISOString();
 // Day-key arithmetic at local noon, so DST never tips a date over, and read

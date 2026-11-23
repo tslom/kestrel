@@ -21,7 +21,7 @@ from app.providers import offline
 
 def _urlerror() -> urllib.error.URLError:
     """What a dead resolver actually reaches us as — urlopen wrapping gaierror,
-    the exact shape logged during the 2026-08-05 post-wake outage."""
+    the exact shape logged during a post-wake outage."""
     return urllib.error.URLError(
         socket.gaierror(8, "nodename nor servname provided, or not known"))
 
@@ -102,7 +102,7 @@ def test_nested_collect_keeps_the_outer_notes():
 
 
 def _mod(payload, raises=None):
-    """A stand-in provider module with the §0 interface."""
+    """A stand-in provider module with the provider interface."""
     def get(rng, metric=None):
         if raises is not None:
             with offline.best_effort("stub backfill"):

@@ -1,4 +1,4 @@
-"""§21 step 4 — the at-desk channel.
+"""The at-desk channel.
 
 The dangerous half of an emitter is saying something twice, so most of what is
 worth testing here is dedupe and the two ways a queued row can leave the queue

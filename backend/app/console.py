@@ -238,7 +238,7 @@ TERMINAL_QUIET_S = 120
 # How long a turn can go without a word from the CLI and still count as working.
 # The wedge test: longer than any one foreground command's 10 minutes, and a
 # turn that's still talking holds a restart however long it has run. A clock on
-# the turn itself killed a long dev turn mid-work at 20 minutes (11-06).
+# the turn itself kills long dev turns mid-work.
 TURN_QUIET_S = 20 * 60
 
 
@@ -277,9 +277,9 @@ MAX_BUFFER_SIZE = 32 * 1024 * 1024
 # was the obvious choice — it is what the console uses everywhere else — but
 # the CLI settles more than Edit and Write under it: a Bash command that
 # writes *inside the workspace* is auto-approved by the CLI itself, before
-# `can_use_tool` is consulted. Measured on 2026-09-17: `rm <vault>/06-
-# Generated/x.md` ran with no card and no call into this module, while the
-# same `rm` on a path outside the vault prompted normally. Under `default`
+# `can_use_tool` is consulted. Measured: `rm <vault>/06-Generated/x.md` runs
+# with no card and no call into this module, while the same `rm` on a path
+# outside the vault prompts normally. Under `default`
 # every call arrives here, which is the only arrangement where the guard list
 # means anything — a guard the SDK can route around is a guard in name only.
 AUTO_MODE = "auto"
@@ -335,8 +335,8 @@ _REPO = Path(__file__).resolve().parents[2]
 def reload_note(cwd: str | Path | None) -> str:
     """The start line's warning for a dev tab in this repo on a server that
     isn't launch_app's: every save under backend/app restarts it, and the tab's
-    turn with it. On 10-29 that was a terminal uvicorn left from September,
-    which the .app had quietly attached to — this line is how it gets seen."""
+    turn with it. A stale terminal uvicorn the .app quietly attached to is
+    the usual case, and this line is how it gets seen."""
     if cwd is None or os.environ.get(HELD_RELOAD_ENV):
         return ""
     if Path(cwd).resolve() != _REPO:
@@ -512,8 +512,8 @@ def build_options(session_id: str | None, model: str | None,
             hooks={"PreToolUse": [ask_hook]},
             # Rewinding files (`{"type": "rewind"}`): the CLI snapshots each
             # file before a turn edits it, keyed by the prompt's uuid (see
-            # replay-user-messages below). Checked live 10-28, across a
-            # reconnect too.
+            # replay-user-messages below). Checked live, across a reconnect
+            # too.
             enable_file_checkpointing=True,
         )
     else:
@@ -894,7 +894,7 @@ async def cancel_queued(client: "ClaudeSDKClient", state: "SessionState",
     """Take queued messages back before the CLI reads them; the ones it
     hadn't read yet come back. Without this a Stop doesn't stop: the CLI runs
     whatever is still queued as a fresh turn the moment the interrupt lands
-    (tested 11-17). `cancel_async_message` has no SDK wrapper, hence the
+    (tested). `cancel_async_message` has no SDK wrapper, hence the
     private call; a CLI without it answers with an error, which counts as
     "already read" — the replay is then what settles it."""
     send = getattr(getattr(client, "_query", None), "_send_control_request", None)
@@ -1353,9 +1353,7 @@ async def read_session(client: "ClaudeSDKClient", ws: WebSocket,
     tell you when it finishes", and when it does the CLI runs a second turn
     nobody was reading. That reply sat in the SDK's queue until the next
     question, whose read then stopped at the *stale* result: from there every
-    answer showed up one turn late (session 1c15caea, 2026-10-23 — the reply
-    to "send out first 5" never rendered, and the next four exchanges went
-    sideways). Reading continuously gives that turn the same path as any other.
+    answer showed up one turn late. Reading continuously gives that turn the same path as any other.
     """
     messages = _with_suggestions(client, ws)
     while await stream_response(messages, ws, state):
@@ -1541,9 +1539,9 @@ async def stream_response(messages: AsyncIterator[Any], ws: WebSocket,
 # against its own table. It still belongs in the log ("how often am I cut
 # off" is a real question), under a name that answers it.
 #
-# The window's name is the CLI's to change, and it did: "session limit" became
-# "5-hour limit" and "weekly limit" around 10-21, and every stop after that
-# went back under `success`. A lost login arrives the same way, so it gets a
+# The window's name is the CLI's to change, and it does ("session limit"
+# became "5-hour limit" and "weekly limit"), which sends every stop back
+# under `success`. A lost login arrives the same way, so it gets a
 # name too, and `success` is never used even for wording nobody has seen yet.
 _LIMIT_RE = re.compile(r"\b(session|usage|rate|quota|weekly|daily|\d+-hour) limit\b",
                        re.IGNORECASE)
@@ -2418,11 +2416,10 @@ async def _console_session(ws: "console_link.Link") -> None:
 
     # One assistant turn can emit several tool calls at once, and each one
     # lands in can_use_tool concurrently. A card apiece meant the user answered
-    # the first while the rest sat queued behind it: a run of three
-    # `event_create` calls on 2026-08-29 came back "AbortError: Stream closed"
-    # with the later cards still unanswered, and 15 of the console's tool
-    # failures on record are that error. Same tool, same standing-yes rule,
-    # same turn — so it becomes one card, and one answer settles all of them.
+    # the first while the rest sat queued behind it, and the later calls came
+    # back "AbortError: Stream closed" with their cards still unanswered. Same
+    # tool, same standing-yes rule, same turn — so it becomes one card, and one
+    # answer settles all of them.
     bursts: dict[str, dict[str, Any]] = {}
 
     # What the Link needs to know to outlive a reload: whether there's work it
@@ -2977,7 +2974,7 @@ async def _console_session(ws: "console_link.Link") -> None:
                     # Nothing running here, yet the page sent Stop: it thinks
                     # a turn is live — one that died with an earlier socket
                     # (a mode switch, a restart). Without an answer its only
-                    # live control does nothing, forever (10-29).
+                    # live control does nothing, forever.
                     await ws.send_json({"type": "idle"})
                 continue
 

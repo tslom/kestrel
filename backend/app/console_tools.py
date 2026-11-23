@@ -1,19 +1,9 @@
 """In-process MCP tools for the console — the fourth face of the providers.
 
-IDEAS §0 gave every provider three faces over one implementation: a REST route,
-a CLI, and a cache table. The console was left using the CLI through Bash, and
-a replay of every console session shows what that cost:
-
-  * 111 Bash commands, **none** of which the read allowlist could approve. The
-    form SYSTEM_APPEND prescribes (`cd .../backend && .venv/bin/python -m
-    app.providers ...`) has a `&&` in it, and the model appends `2>/dev/null`
-    and `| head -40` by reflex. Every read was a card.
-  * Ranges guessed three different ways in one week — `2026-08-18,2026-09-01`,
-    `2026-09-02:2026-09-09`, `2026-08-24..2026-12-16`.
-  * A calendar id retyped without its `@group.calendar.google.com` suffix, so
-    18 consecutive create_event calls 404'd — after 18 approvals.
-  * A task filed into the harness's own store instead of app.db, where the
-    dashboard has never been able to see it.
+Every provider has three faces over one implementation: a REST route, a CLI,
+and a cache table. Through the CLI in Bash, the console gets a card for every
+read (the `cd … &&` form the allowlist can't approve), guesses the range
+syntax, retypes ids wrong, and files tasks into the harness's own store.
 
 These tools are that fourth face. They are not new capability; each one wraps a
 function the REST layer already calls, so app.db and the providers stay the one
@@ -25,32 +15,12 @@ Writes deliberately stay off that list: the writers are here so the console
 stops hand-rolling `curl -X POST` and raw `UPDATE tasks` SQL, not so it can
 write unattended. They still arrive as cards.
 
-Which stores get a writer is itself load-bearing. For a while only the task
-ones did, and two sessions on 2026-08-04 show what a missing writer costs: six
-things to buy were filed as six tasks, and a linen order's pickup date as a
-seventh, one session saying outright that no shopping-list tool was exposed to
-it and filing the tasks anyway. A store the console can read but not write
-doesn't stay unwritten — its contents end up in whichever store does have a
-writer.
+Which stores get a writer is itself load-bearing. A store the console can read
+but not write doesn't stay unwritten: its contents end up in whichever store
+does have a writer (things to buy filed as tasks, debts written into a task's
+note). So every store behind a card can be written from here.
 
-The debt tools are that same lesson landing exactly where DESIGN.md predicted
-it would. Session 137b2608 was told "this is a debt tracker so add them to
-debts -> ana and ben already paid"; with no debt writer it searched the vault
-for a file called something like debt, found none, and wrote four people's
-balances into a task's note. The second half of the instruction — close the
-task — then failed as a consequence, because the note it had just written was
-the only copy of the debt, and the session said so on its way out.
-
-The watchlist tools landed alongside them without waiting for their own bad
-session. That prediction has now been made twice and been right twice, so the
-third time is not worth collecting: every store behind a card can be written
-from here.
-
-The contact tools are the same lesson one step further out. app/contacts.py
-landed thirteen minutes before session 5719a6e8 asked the console to update a
-phone number, and the console — with no tool for it — answered that there was
-no write path and told the user to open Contacts.app and type it in. A
-capability the system has but the console cannot name is, from inside a
+A capability the system has but the console cannot name is, from inside a
 session, indistinguishable from one nobody built.
 """
 
@@ -137,12 +107,10 @@ def _cited(mod: Any, out: dict[str, Any]) -> dict[str, Any]:
 
 def _err(message: str) -> dict[str, Any]:
     # `is_error`, snake case: that is the key the SDK server reads off a
-    # handler's dict (create_sdk_mcp_server's run_tool). This said `isError`,
-    # the MCP wire spelling, until 11-18, and the server dropped it, so every
-    # refusal in this file reached the CLI as a success: 82 in the 14 days to
-    # 11-18, from `no such column` to a calendar 400. The card stayed green,
-    # and a failed write (`event_update` 400'd four times) still landed in the
-    # turn's change summary, which console.py builds from non-error results.
+    # handler's dict (create_sdk_mcp_server's run_tool). The MCP wire spelling
+    # `isError` is dropped by the server, so every refusal reaches the CLI as
+    # a success: the card stays green, and a failed write lands in the turn's
+    # change summary, which console.py builds from non-error results.
     return {"content": [{"type": "text", "text": f"error: {message}"}],
             "is_error": True}
 
@@ -258,9 +226,8 @@ def _schema(props: dict[str, Any], required: tuple[str, ...] = ()) -> dict[str, 
 
 # ---------- batches ----------
 #
-# course_review_add, list_add and food_log came in runs: all 58
-# course_review_add calls in the 14 days to 11-17 were in runs of 3+, each a
-# round trip through the model (Code Mode report, 11-17). `items` carries the
+# course_review_add, list_add and food_log come in runs of 3+, each a round
+# trip through the model. `items` carries the
 # run in one call. Each item takes the single call's own fields, and the
 # top-level ones are its defaults (one `code`, `list` or `meal` for all), so
 # a single-item call is unchanged.
@@ -397,9 +364,8 @@ async def email_body(args: dict[str, Any]) -> dict[str, Any]:
                     "(not its thread id)")
     if citations.REF_RE.fullmatch(msg_id.lower()):
         # The ref is what a read leaves in hand: a `provider source=email`
-        # line ends in one and carries no id at all (email.brief_line). Five
-        # calls in one session on 11-18 passed a ref here and were refused as
-        # uncached, though four of the emails were in the cache all along.
+        # line ends in one and carries no id at all (email.brief_line), so a
+        # ref is what gets passed here.
         found = await _blocking(citations.resolve, msg_id)
         if found is None:
             return _err(f"no read handed out the ref {msg_id!r}: pass a ref "
@@ -539,10 +505,9 @@ async def reddit_search(args: dict[str, Any]) -> dict[str, Any]:
         hits = await _blocking(reddit.search, query, sub, days, limit)
     except reddit.ArchiveBusy:
         # Its wording is "Timeout. Maybe slow down a bit", which reads as a
-        # rate limit and invites an immediate retry. This used to say "narrow
-        # it", and on 11-17 that advice was the waste: the search was down,
-        # not slow on the term, so a narrower or reworded retry 422'd just the
-        # same (r/ClaudeCode "code mode" at 30, 21 and then 10 days). Reaching
+        # rate limit and invites an immediate retry. Don't advise narrowing:
+        # the search is down, not slow on the term, so a narrower or reworded
+        # retry 422s just the same. Reaching
         # here, the listing reddit.search falls back to refused as well.
         return _err("the Reddit archive is refusing searches right now (it "
                     "was retried, and the newest-posts fallback refused too). "
@@ -660,8 +625,8 @@ async def venue_details(args: dict[str, Any]) -> dict[str, Any]:
 
 
 # How long one db_query may run. Reads of app.db take milliseconds; the one
-# that didn't (11-18, a correlated subquery per message row over 65k rows)
-# held its call until the CLI gave up at 1,260s, the general tab's MCP
+# that didn't (a correlated subquery per message row over 65k rows) held its
+# call until the CLI gave up at 1,260s, the general tab's MCP
 # timeout, which is sized for use_computer jobs rather than reads.
 DB_QUERY_SECONDS = 30
 
@@ -673,10 +638,9 @@ _FROM_RE = re.compile(r"\b(?:from|join)\s+[\"`\[]?([A-Za-z_]\w*)", re.I)
 def _schema_hint(con: Any, sql: str, error: str) -> str:
     """The real names after a wrong one, so the next call can be right.
 
-    The commonest db_query failure in the 14 days to 11-18 was a guessed name:
-    23 of its 25 refusals, 22 of them `no such column` (`list_items.text`
-    for `name`, `messages.date` for `day`/`ts`, `emails.label`), in 20
-    sessions. What came next was a probe of the schema or another guess.
+    The commonest db_query failure is a guessed name, nearly always `no such
+    column` (`list_items.text` for `name`, `messages.date` for `day`/`ts`),
+    and what comes next is a probe of the schema or another guess.
     This puts the columns of every table the statement reads in the error,
     and for a missing table the near names."""
     try:
@@ -975,8 +939,8 @@ _FILE_STATUS = {
     "missing": "the bytes aren't on this machine — iCloud-offloaded, or never "
                "downloaded. Opening that thread in Messages fetches it.",
     "too_big": "past the size limit extraction runs under.",
-    # Names what IS read: on 10-16 the bare "nothing reads that format" sent
-    # a session off on a 65-second `find /` for a .docx it couldn't open.
+    # Names what IS read: a bare "nothing reads that format" sends a session
+    # off on a `find /` for a file it can't open.
     "unsupported": "no reader for this format. What gets read: PDF, Word "
                    ".docx, plain text, images, contact cards, Wallet passes. "
                    "Video and audio carry no text, and an image that isn't "
@@ -1651,16 +1615,9 @@ async def expense_paid(args: dict[str, Any]) -> dict[str, Any]:
                  f"is {'paid' if b['paid_at'] else 'open again'}")
 
 
-# The habits card has had a table, a route and a widget since round 1, and was
-# the last store behind a card the console could read and not write — the drain
-# this prompt has been closing one store at a time since 2026-08-04. Nothing in
-# the transcripts had hit it yet, which is the same footing `watchlist_add`
-# shipped on; what makes it worth building anyway is that SYSTEM_APPEND already
-# points the model at this store ("mood/workout journaling moved to habits")
-# without giving it a door, so a spoken "I worked out today" had the task board
-# as its only writer. Habit-derived features are also the one thing standing
-# between the correlation matrix and a non-music-shaped question (IDEAS.md), and
-# what unblocks that is logging days, so the cheapest way to log matters.
+# SYSTEM_APPEND points the model at habits ("mood/workout journaling moved to
+# habits"), so without a writer a spoken "I worked out today" has the task
+# board as its only door.
 #
 # Name in, not id: see db.find_habit. Deliberately no cadence/target/unit —
 # they are columns nothing reads (the widget's own create form takes a name and
@@ -2258,11 +2215,9 @@ async def email_unschedule(args: dict[str, Any]) -> dict[str, Any]:
 
 # ---------- calendar writes ----------
 #
-# These are the second half of the 2026-08-16 connector outage. create_event /
-# update_event / delete_event existed only as claude.ai connector tools, which
-# go needs-auth in every headless session — so a console that could read the
-# calendar fluently could not move one lecture. They go out through the
-# backend's own Google token now (app/routes/calendar.py).
+# The claude.ai connector's calendar writers go needs-auth in every headless
+# session, so these go out through the backend's own Google token
+# (app/routes/calendar.py).
 #
 # Every one of them takes `match` as an alternative to `event_id`, and that is
 # the point rather than a convenience: the id is looked up in the cache instead
@@ -3563,7 +3518,7 @@ async def brain_read(args: dict[str, Any]) -> dict[str, Any]:
         for f in facts))
 
 
-# ---------- §25 food ----------
+# ---------- food ----------
 #
 # Logging has to cost one sentence, so the user never sees ids: the model
 # searches, picks, logs, and reports the day in one line. Ambiguity comes back

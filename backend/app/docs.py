@@ -135,7 +135,7 @@ async def open_path(raw: str) -> dict:
 
     This is what lets "go through handouts 9–16 in my Downloads" point at
     pages: read with pdftotext from the shell, the handouts had no ref, so
-    nothing in the reply could open them beside it (11-07)."""
+    nothing in the reply could open them beside it."""
     import asyncio
     from . import agent
     from .providers import attachments

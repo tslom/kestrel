@@ -1,5 +1,4 @@
-"""One-time (rerunnable) backfill: a Spotify GDPR export -> the `plays` table
-(IDEAS §8, deferred at ship time until the export arrived).
+"""One-time (rerunnable) backfill: a Spotify GDPR export -> the `plays` table.
 
 Handles both exports Spotify hands out, auto-detected:
 

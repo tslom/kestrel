@@ -9,7 +9,7 @@ import Files from "../ui/Files.jsx";
 import Icon from "../ui/icons.jsx";
 import SheetHead from "../ui/SheetHead.jsx";
 
-// Email review queue (IDEAS §5): one card per inbox message — AI summary,
+// Email review queue: one card per inbox message — AI summary,
 // recommended action, and the label it will be filed under. Three actions:
 // archive, unsubscribe, keep — and every one files the message under its
 // label, because after review the only thing a message is still for is being
@@ -168,7 +168,7 @@ function Card({ card, labels, hovered, onHover, onPin, onDone, onHold, onError }
         : <p className="email-ai dim">{card.snippet}</p>}
       {/* Why this call, in your own history's words. A recommendation drawn
           from two clicks has to admit that before it is trusted — the rule
-          §24 already follows for the place shortlist. `default` is the
+          the place shortlist already follows. `default` is the
           unknown-sender fallback and says nothing worth a line of card. */}
       {card.why && card.basis !== "default" && (
         <p className={`email-why email-why-${card.basis}`}>

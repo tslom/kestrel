@@ -115,6 +115,93 @@ claims it's only plumbing is how the grouping stops meaning anything.
 Rules: one truth per datum; the other format is generated, read-only, and
 regenerable. Sync is one-way only. Never parse a generated file back in.
 
+### Schema history (`db.py` MIGRATIONS)
+
+Each migration's header in `db.py` says what it creates and what a column
+means. Why a table exists, and the incident that produced it, is kept here.
+Migrations replay in order on a fresh app.db, so none is ever deleted, and the
+SQL of a shipped one never changes (`db.fingerprint` strips comments, so the
+prose may).
+
+- **v11–v12, task triage queue.** The migrated backlog landed with no
+  defer/due/priority, so everything piled into "available" undifferentiated.
+  v11 added a suggestion-plus-decision queue in email_triage's shape; v12
+  removed it once that one-time cleanup was done.
+- **v13, v37, v46, screen time.** Before v37, `screen.py` took `active_min`'s
+  row presence to mean "fetched", so it wrote `active_min=0.0` on days
+  ActivityWatch saw nothing (asleep, aw-server down, not yet installed), and
+  `features` copied those false zeros into the correlation matrix; `features`
+  backfills per day, not per feature, so v37 deleted them there too. v46
+  dropped the provider (§7 above, 2026-09-13). Its three tables were the source
+  of truth, not a cache, so the 332 days collected since 2026-01-01 were
+  dumped to `backend/data/backups/screen-tables-*.sql` first.
+- **v16, v35, Spotify identity.** The GDPR-export importer wrote ~266k `plays`
+  rows with a synthetic `sha:` artist id, because neither export carries one.
+  Grouping on `artist_id` split every artist in two at 2026-07-14 and pinned
+  `novelty` near 1.0 for twelve days: a six-year favourite read as brand new
+  the first time the poller saw it. v35 added `artist_key`, the casefolded
+  name. `artist_genres` never held a row: the batch `GET /artists?ids=` 403s
+  for this app, and Spotify then stopped returning `genres` at all, so genres
+  come from Last.fm (`artist_tags`).
+- **v20, location.** Overland (iOS) wrote the earliest `location_points`
+  rows, which is why the SQL's column comments still name its fields; OwnTracks
+  replaced it on 2026-08-14. Fixes first came to a separate listener process
+  behind Tailscale Funnel, and since 2026-09-22 come through the Cloudflare
+  relay (`providers/location_relay.py`).
+- **v41, lists.** v39 gave `shopping_items` its own table because the vault
+  had one buy-list. The next list wanted (packing for college, a party) would
+  have been a second near-identical table or a `kind` column, so the list
+  itself became a row.
+- **v42, alarms.** The dashboard had no way to reach the user with the laptop
+  shut. The answer isn't a notifier: it is writing a future-dated alarm to a
+  surface the phone syncs, while the lid is open. The machine computes; the
+  phone delivers.
+- **v45, usage.** Nothing checked whether the desk's ranking was right or
+  whether a card still earned its slot: seventeen cards rendered every
+  morning, and some hadn't been worth reading since the week they shipped.
+- **v47, debts remember being chased.** "Someone owes you $106" is true every
+  day and actionable on none of them; the card took 44 impressions and 3 opens
+  before it learned when it was your move.
+- **v48, office-hours proposals.** A Piazza post saying "no office hours
+  Thursday" is course data that arrives by mail and goes stale in the vault.
+  An extractor confident enough to rewrite the hours on its own can send you
+  across campus to a cancelled session, and you find out at a locked door, so
+  proposals wait for approval. A later migration added `action='add'` after
+  the CSCI 103 digest of 10-02 ("starting next week, OH Thursdays 12-2 in
+  GCS") was read, judged a standing schedule, and dropped.
+- **v49, sleep segments.** `health_days` held per-night totals only, while the
+  `sleep` dataPoint health.py already fetched carried the full
+  `sleep.stages` array, which the provider dropped (IDEAS, 09-13). The terrain
+  sheet (09-05) is why timestamps keep their offset: converting stored UTC with
+  the browser's current zone moved six years of evenings into the small hours
+  after the desk changed coasts.
+- **v53, visit labels.** At campus density a cluster is not a place: the
+  busiest unnamed one spans 168m and holds Leavey Library, McCarthy Quad,
+  Everybody's Kitchen, Birnkrant and the SSCI building. All three automatic
+  routes were measured before the table was added: coordinates are p50 17m /
+  p90 47m of error against ~15m of separation; time of day has no modes
+  (visits run 08:00 to 02:00); of 71 visit/event overlaps 8 were spatially
+  usable, with 48% geocoding to the campus centroid and 41% merely coinciding
+  in time. So the label comes from the person.
+- **v54, cite_refs.** Checking a fact the console restated meant searching
+  Gmail for whatever you half-remembered the subject was.
+- **email_sender_stats.** The model-only recommender agreed with 28.9% of 875
+  decisions, against 78.3% for always saying "archive"; it recommended `keep`
+  331 times and the mailbox owner kept 8. The prior comes from the record
+  instead.
+- **calendars.** With the name copied onto each event, renaming "Gym/Sports"
+  to "Gym/Workouts" reached only the rows in `refresh()`'s [today-7,
+  today+35] window, so `calendar_ids` (a SELECT DISTINCT over events) listed
+  both names against one id, and a calendar with no cached events was
+  invisible to it.
+- **events.description.** The approval card for a delete could show only title,
+  time and place, though the API returned `description` on every event and
+  `_normalize` dropped it.
+- **.docx re-extraction.** Four dietitian handouts sent on 10-16 had been
+  filed `unsupported`, a cached verdict, before Word support landed.
+- **`db.update_debt`** (not a migration). On 2026-10-11, merging nine split
+  debt rows by settling them recorded nine payments that never happened.
+
 ## Food (§25 — `app/food.py`, `app/food_estimate.py`, `providers/usc_dining.py`)
 
 Spec and the decisions behind it: `FOOD_PLAN.md`. What a later session needs:

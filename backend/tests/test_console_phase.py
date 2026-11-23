@@ -1,7 +1,7 @@
 """The `phase` lines a turn sends before it has text or a chip to show.
 
-Measured 10-30: on a tool turn the thinking block opens ~0.7s in and the call's
-block ~0.9s before its full input arrives, and before this the page showed
+Measured: on a tool turn the thinking block opens ~0.7s in and the call's
+block ~0.9s before its full input arrives, and without these the page shows
 only a bare "working…" through all of it. A subagent's blocks are its own
 business and send nothing.
 """

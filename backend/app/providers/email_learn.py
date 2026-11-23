@@ -1,4 +1,4 @@
-"""What you actually do with email (IDEAS §5) — the prior the model didn't have.
+"""What you actually do with email — the prior the model didn't have.
 
 The summarizer in email_triage.py guesses an action from the text of a message.
 Measured against 875 recorded decisions it agreed with the mailbox owner 28.9%
@@ -292,7 +292,7 @@ def predict(con, from_addr: str | None) -> dict | None:
 
     Returns {action, reason, basis, confidence}. `reason` is written to be
     shown on the card: a recommendation learned from two clicks has to say so
-    out loud before it is trusted, the same rule §24 follows for places.
+    out loud before it is trusted, the same rule place_suggest follows for places.
     """
     addr = (from_addr or "").strip().lower()
     if not addr:

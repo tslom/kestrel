@@ -1,11 +1,10 @@
 """heartbeat.record() — the stale/freshened half of the event log.
 
 `broke`/`recovered` read the refresh *outcome*, which cannot see a source that
-keeps refreshing successfully while its cache stops advancing. Location did
-exactly that on 2026-09-13: ingest stopped for four days, OwnTracks'
-store-and-forward flushed the backlog, and `provider_events` for location was
-empty afterwards — a real multi-day outage with no trace left. These pin the
-trace.
+keeps refreshing successfully while its cache stops advancing. Location can
+do exactly that: ingest stops for days, OwnTracks' store-and-forward flushes
+the backlog, and `provider_events` for location is empty afterwards — a real
+multi-day outage with no trace left. These pin the trace.
 """
 
 from datetime import timedelta

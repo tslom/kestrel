@@ -8,7 +8,7 @@ import { fmtAgo, fmtDay, fmtHM, shortDay, timeRange } from "../lib/time";
 import { dragPin } from "../lib/drag.js";
 import EventTime, { EventEnd } from "../ui/EventTime.jsx";
 
-// The Calendar sheet — a schedule, not a list of rows (IDEAS §1).
+// The Calendar sheet — a schedule, not a list of rows.
 //
 // The generic panel showed events as a flat day-grouped list, which answers
 // "what is on my calendar" and nothing else. The three questions actually
@@ -111,9 +111,9 @@ function Day({ day, events }) {
         );
       }
     }
-    // The row used to end in a "1h 30m" duration. Now that it opens with the
-    // span itself, that was the same fact said twice — and the day's total is
-    // still in the header, which is where "how full is this" gets answered.
+    // No "1h 30m" duration at the row's end: it opens with the span itself,
+    // so that would be the same fact said twice — and the day's total is in
+    // the header, which is where "how full is this" gets answered.
     const when = timeRange(ev.start, ev.end);
     list.push(
       <li key={`${day}-${ev.id}`} {...dragPin(`event · ${ev.summary}`, ev)}>

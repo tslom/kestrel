@@ -1,6 +1,6 @@
 """.claude/hooks/bash_check.py, replayed on the mistakes it stops.
 
-The blocked commands are copied from transcripts (10-19 to 11-18), and each
+The blocked commands are copied from transcripts, and each
 one failed. The passes are near misses that must keep working. Each rule's
 premise is checked too: the sqlite3 form it blocks really is a syntax error,
 and the perl bound it recommends really bounds. A hook runs on whatever

@@ -342,7 +342,7 @@ def course_key(code: str) -> str:
 def known_codes(term: str | None = None) -> list[str]:
     """Course codes in the vault for the term, exactly as written there.
 
-    Exists so the §22 mail extractor can be *given* the valid codes instead of
+    Exists so the office-hours mail extractor can be *given* the valid codes instead of
     being asked to produce them: a model left to guess writes "CS 103" for
     "CSCI 103", and the proposal then points at a note `find_course` can't open.
     Handing it the real list turns that whole class of miss into an honest
@@ -408,8 +408,8 @@ def _match(hours: list, who: str, slot: str | None) -> list[dict]:
 
     # Substring as before ("halvorsen" finds Martin Halvorsen), or every word of
     # the name on file inside the one given: mail signs with a middle name,
-    # and "Martin James Halvorsen" not matching "Martin Halvorsen" is why the
-    # 11-17 office-hours move couldn't be approved (409, three tries).
+    # and "Martin James Halvorsen" not matching "Martin Halvorsen" made an
+    # office-hours move unapprovable (409 on every try).
     def same(on_file: str) -> bool:
         on_file = on_file.lower()
         file_words = set(re.findall(r"[a-z0-9']+", on_file))
@@ -440,8 +440,8 @@ def _one(hours: list, who: str, slot: str | None) -> dict:
 def _one_on(hours: list, who: str, slot: str | None, weekday: int) -> dict:
     """`_one`, but a dated override already says which block it's about.
 
-    A TA with Mon and Thu blocks is ambiguous by name, not on 2026-10-01 — only
-    one of them meets that day. Falls through to `_one` (and its question)
+    A TA with Mon and Thu blocks is ambiguous by name, not on a given Thursday —
+    only one of them meets that day. Falls through to `_one` (and its question)
     when the date doesn't settle it: no slot given, and zero or several of
     `who`'s blocks on that weekday."""
     if not slot:
@@ -463,7 +463,7 @@ def _amendable(hours: list, who: str, when: str, slot: str | None) -> dict | Non
 
     Same person, same weekdays is the same standing block, so a new time for
     it is an edit; different weekdays is another block. Matching on `who`
-    alone is what lost three of one TA's four blocks on 2026-09-01 — each
+    alone is what once lost three of one TA's four blocks — each
     call amended the entry the call before it had just written, and each
     reported "updated", which nobody read. One person holding Mon 16:00-18:00,
     Tue 09:00-12:00 and Tue/Thu 15:00-18:00 is the ordinary case, not the
@@ -545,7 +545,7 @@ def standing_block(code: str, who: str, when: str) -> dict | None:
     """A copy of the entry `set_hours(code, who, when)` would amend, or None
     when it would add a new block. Raises CourseError where set_hours would.
 
-    For the §22 mail proposals: one reads it to tell a post that only restates
+    For the office-hours mail proposals: one reads it to tell a post that only restates
     hours already on file from news, and approval keeps it so the undo can
     put back the block it replaced rather than delete it."""
     _, post = find_course(code)

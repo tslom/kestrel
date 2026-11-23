@@ -1,4 +1,4 @@
-"""Place writes — naming a cluster the map drew (IDEAS §24).
+"""Place writes — naming a cluster the map drew.
 
 Here rather than in the location provider for the same reason the calendar
 writes are in routes/calendar.py: the provider reads, and `location_points` is

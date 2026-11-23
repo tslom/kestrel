@@ -55,7 +55,7 @@ MAX_LIMIT = 20                 # the API's own pageSize ceiling
 DEFAULT_RADIUS_M = 5000        # a bias, not a fence: farther hits still come
 MAX_RADIUS_M = 50000           # back, labelled with their real distance
 # A location fix older than this isn't "where the user is" any more; fall back
-# to home. Looser than §14's LEAVE_FIX_MAX_MIN (30): a leave-by alarm acts on
+# to home. Looser than leave.py's LEAVE_FIX_MAX_MIN (30): a leave-by alarm acts on
 # the number, a "near me" list only ranks by it.
 FIX_MAX_MIN = 60
 WALK_MAX_MIN = 90
@@ -123,7 +123,7 @@ def resolve(near: str, bias: dict | None = None) -> dict | None:
     """A place name or address -> {label, lat, lon}, via Places itself (it
     knows "Maple Hall" the way the Geocoding API knows street numbers), biased
     toward `bias` so a common name resolves to the local one. Falls back to
-    §14's geocoder. The label is the resolved address, so a wrong resolution
+    leave.py's geocoder. The label is the resolved address, so a wrong resolution
     is visible to whoever reads the result instead of silently skewing every
     distance."""
     body = {"textQuery": near, "pageSize": 1}

@@ -1,7 +1,7 @@
 """Named places, and the dated home that motivated them.
 
 The bug these tests pin is not hypothetical. `HOME_LAT`/`HOME_LON` were a
-single constant, this vault's owner moved 2026-08-17, and every day before the
+single constant, this vault's owner moved cross-country, and every day before the
 move was scored against the address they moved *to* — 3,561 km away. So
 `time_at_home_min` read a flat 0.0 for a month of days spent at home, twelve of
 which reached the correlation matrix, where they manufactured a
@@ -56,8 +56,6 @@ def _home_notes():
          "lat": NEW[0], "lon": NEW[1], "radius_m": 250, "from": "2026-08-18"},
     ]
 
-
-# ---------- the dated home ----------
 
 def test_home_follows_the_move(monkeypatch):
     _seed(monkeypatch, _home_notes())
@@ -137,8 +135,6 @@ def test_a_narrower_entry_wins_over_an_open_ended_one(monkeypatch):
     assert places.home_on("2026-07-25").name == "Dated"
     assert places.home_on("2026-09-01").name == "Open"
 
-
-# ---------- named places generally ----------
 
 def test_a_note_missing_coordinates_costs_only_itself(monkeypatch):
     _seed(monkeypatch, [

@@ -1,6 +1,6 @@
 """Look lab: verdicts on UI design variants, for the redesign rounds.
 
-The redesign is an A/B loop rather than one big rewrite (user, 11-13): a
+The redesign is an A/B loop rather than one big rewrite: a
 round of looks ships as CSS scoped to `html[data-look=…]`
 (frontend/src/looks/), you live with them and flip between two, and each
 verdict lands here with a note. The next round's dev tab reads these
@@ -10,7 +10,7 @@ won, and try the next variable.
 Which looks exist is the frontend's registry, not data: this only stores
 what you said about them.
 
-Except themes (New Features #105), which are data: a colour look Kestrel made
+Except themes, which are data: a colour look Kestrel made
 when asked ("make it warmer"). A theme is a set of **colour roles** and
 nothing else, each a `#RRGGBB` that lands on one design token. Free CSS is
 not accepted anywhere on this path, because guessed CSS is what failed in the

@@ -1,5 +1,5 @@
 """POST /api/sync (providers/api.py) — the on-demand refresh endpoint. It awaits
-poller.sync_all(), which is refresh_all() plus the §21 alarm reconcile plus the
+poller.sync_all(), which is refresh_all() plus the alarm reconcile plus the
 at-desk flush plus the wake schedule plus the monthly snapshot plus self-text
 routing, so the test stubs all six (the real ones hit every provider's live
 source and open app.db)

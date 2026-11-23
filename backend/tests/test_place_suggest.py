@@ -1,7 +1,7 @@
 """Naming a cluster the map drew — the candidate ranking, and the gate.
 
-Every threshold asserted here came off this vault's own fixes over
-2026-08-01..09-17, and the two tests worth reading first are the ones about
+Every threshold asserted here came off seven weeks of this vault's own fixes,
+and the two tests worth reading first are the ones about
 when the suggester must stay *quiet*:
 
 * `test_hub_cluster_gets_no_calendar_name` — the busiest unnamed cluster
@@ -69,7 +69,7 @@ def _events(con, rows):
 
 @pytest.fixture
 def geocoder(monkeypatch):
-    """A stand-in for §14's geocoder. Defaults to the campus-centroid answer
+    """A stand-in for the leave geocoder. Defaults to the campus-centroid answer
     Google really gives for a bare room code."""
     table = {}
 
@@ -157,8 +157,8 @@ def test_campus_centroid_geocode_does_not_veto(dbfile, geocoder):
 
 
 def test_virtual_locations_never_become_places(dbfile, geocoder):
-    """A Zoom link is on the calendar, is not on the map, and geocodes — §14
-    learned this the expensive way (a usc.zoom.us URL resolves to campus)."""
+    """A Zoom link is on the calendar, is not on the map, and geocodes — a
+    usc.zoom.us URL resolves to campus."""
     con = db.connect()
     days = [(f"2026-08-{d:02d}", 15) for d in (3, 5, 7, 10)]
     _events(con, [(d, h, "standup", "https://usc.zoom.us/j/9876543210")

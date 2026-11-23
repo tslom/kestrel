@@ -1,5 +1,5 @@
-"""Time-to-leave (§14). leave.py joins today's located timed events with a
-live traffic-aware route; the external seams (calendar, §10 fix, geocode,
+"""Time-to-leave. leave.py joins today's located timed events with a
+live traffic-aware route; the external seams (calendar, location fix, geocode,
 route) are all mocked here so these stay pure logic tests: leave_by math,
 origin selection (fresh fix vs HOME), the located/timed/future filter, and
 graceful degradation when the route can't be computed."""
@@ -118,7 +118,7 @@ def test_the_day_argument_actually_selects_the_day(monkeypatch):
 
 
 def test_strict_lets_a_calendar_outage_through(monkeypatch):
-    """The card wants [] and the §21 reconciler must not: an empty list reads
+    """The card wants [] and the alarm reconciler must not: an empty list reads
     as "nothing to leave for", and that withdraws live alarms."""
     def _boom(rng):
         raise RuntimeError("no calendar auth")
@@ -128,8 +128,6 @@ def test_strict_lets_a_calendar_outage_through(monkeypatch):
     with pytest.raises(RuntimeError):
         leave.compute_leaves(strict=True)
 
-
-# ---------- _geocode: virtual locations and the context retry ----------
 
 def _patch_geocode(monkeypatch, google: dict, *, context="", meteo=None):
     """Mock both geocode backends. `google` maps an address string to coords;
@@ -156,7 +154,7 @@ def _patch_geocode(monkeypatch, google: dict, *, context="", meteo=None):
 def test_virtual_locations_never_geocode(monkeypatch, loc):
     """Google answers these confidently and wrongly — "TBD" is a spot in the
     Pacific, a zoom URL is the USC campus — so a video call was earning a
-    drive time and a §21 alarm. Nothing should even be looked up."""
+    drive time and an alarm. Nothing should even be looked up."""
     asked = _patch_geocode(monkeypatch, {}, context="USC")
     assert leave.geocode(loc) is None
     assert asked == []

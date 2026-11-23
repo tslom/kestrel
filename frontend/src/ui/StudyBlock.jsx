@@ -565,10 +565,10 @@ function Cards({ data, inline }) {
 
 // The model sometimes escapes a newline twice inside the JSON string ("\\n"),
 // so a code question's ``` fence arrives as one line with literal `\n`s in it
-// and showed as backticks and backslashes (11-10). It can mix the two in one
+// and shows as backticks and backslashes. It can mix the two in one
 // string, a real break after the bold title and then a fence written with
-// literal `\n`s, which opened a fence that never closed and drew an empty code
-// box (11-10). So the literal ones are turned into breaks wherever they sit
+// literal `\n`s, which opens a fence that never closes and draws an empty code
+// box. So the literal ones are turned into breaks wherever they sit
 // outside math and outside code that's already well formed: `$\nabla f$`,
 // `\neq` and `\nu` are TeX, and the `\n` in a real fence's `printf("\n")` is C.
 const KEEP_SPLIT = new RegExp(`(${[

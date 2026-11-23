@@ -1,4 +1,4 @@
-"""§21 alarms — the reconcile diff and the flight source.
+"""Alarms — the reconcile diff and the flight source.
 
 plan() is pure and takes its clock as an argument, which is deliberate: the
 dangerous half of this feature is deciding what to *withdraw*, and that decision
@@ -173,7 +173,7 @@ def seed_trip(con, **over):
 
 
 def test_checkin_fires_24h_before_departure_in_the_airports_zone(dbfile):
-    """The bug this pins: on 2026-08-17 the user is in Los_Angeles by TIMELINE,
+    """The bug this pins: on departure day the user is in Los_Angeles by TIMELINE,
     but RDU's 18:00 departure is Eastern. Reading dep_local through zone_on()
     would place check-in three hours late."""
     con = db.connect()
@@ -239,7 +239,7 @@ def test_missing_trips_table_reports_unknown_not_empty(dbfile):
 
 def test_unknown_airport_falls_back_to_the_users_zone():
     zone = tz.airport_zone("XXX", "2026-08-20")
-    assert str(zone) == "America/Los_Angeles"       # after the 8/17 move
+    assert str(zone) == "America/Los_Angeles"       # after the move
     assert tz.airport_zone_known("XXX") is False
     assert tz.airport_zone_known("rdu") is True     # case-insensitive
 
@@ -262,7 +262,7 @@ def seed_package(con, **over):
 
 def test_package_fires_on_its_eta_morning_in_the_users_zone(dbfile):
     """The mirror of the flight test: an ETA day has no clock of its own, and
-    the user is in Los_Angeles by 08-18 — 9am there, not 9am Eastern."""
+    the user is in Los_Angeles by the ETA day — 9am there, not 9am Eastern."""
     con = db.connect()
     seed_package(con)
     result = alarms.package_alarms(con, now=NOW, horizon=NOW + timedelta(days=14))
@@ -735,8 +735,8 @@ def test_the_relaunch_retry_gives_up(monkeypatch):
 
 
 def test_a_wedged_reminders_is_force_restarted(monkeypatch):
-    """11-11: one instance answered -609 to every retry for six cycles and a
-    leave alarm never reached the phone. After the retries, kill + relaunch."""
+    """A wedged instance answers -609 to every retry, cycle after cycle, and a
+    leave alarm never reaches the phone. After the retries, kill + relaunch."""
     from app import reminders
     restarts = []
     monkeypatch.setattr(reminders, "_restart_reminders", lambda: restarts.append(1))

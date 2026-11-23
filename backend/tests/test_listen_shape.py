@@ -1,4 +1,4 @@
-"""Listening *shape* (§8's "richer derived signals") — repeat_ratio,
+"""Listening *shape* — repeat_ratio,
 listen_sessions, longest_listen_min.
 
 `listen_min` says how much you listened; none of it says how. The contract

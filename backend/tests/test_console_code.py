@@ -31,8 +31,6 @@ def call(script: str) -> tuple[str, bool]:
     return out["content"][0]["text"], bool(out.get("is_error"))
 
 
-# ---------- escapes ----------
-
 ESCAPES = r"""
 const got = {};
 const attempt = async (name, f) => {
@@ -109,8 +107,6 @@ def test_unknown_names_are_refused():
     assert not r.ok and "no such function" in r.error
 
 
-# ---------- writes ----------
-
 @pytest.mark.parametrize("name", ["task_create", "list_add", "event_create",
                                   "email_draft", "file_read", "open_tab"])
 def test_writes_throw_with_the_way_out(name):
@@ -125,8 +121,6 @@ def test_every_write_tool_is_stubbed_and_none_is_bridged():
     assert not set(bridge.reads) & set(bridge.writes)
     assert "run_script" not in bridge.reads
 
-
-# ---------- caps ----------
 
 def test_a_busy_loop_times_out():
     r = run("while (true) {}", timeout=2)
@@ -187,8 +181,6 @@ def test_typescript_annotations_run():
     assert not err and text.startswith("42")
 
 
-# ---------- real multi-read scripts ----------
-
 def test_join_tasks_to_lists_and_aggregate(dbfile):
     for t in ("pay rent", "pay tuition", "call mom"):
         db.create_task(title=t)
@@ -238,7 +230,7 @@ def test_the_description_lists_every_bridged_read_and_stays_lean():
     for name in ct.run_script.bridge.reads:
         assert f"\n{name}(" in d
     assert "task_create" not in d
-    # 1.9k until 11-18, then +0.8k for the table summary (SCHEMA) and +0.3k
-    # for "decide first, return the answer": the code_mode eval's probing
-    # and raw-body returns are what they replaced.
+    # 1.9k, then +0.8k for the table summary (SCHEMA) and +0.3k for "decide
+    # first, return the answer": the code_mode eval's probing and raw-body
+    # returns are what they replaced.
     assert len(d) < 3000

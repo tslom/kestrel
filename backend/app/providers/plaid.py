@@ -121,7 +121,7 @@ def create_link_token(item_id: str | None = None) -> str:
     update mode (re-auth after ITEM_LOGIN_REQUIRED, or granting additional
     consent after `needs_consent`: pass the access_token, omit products).
 
-    `additional_consented_products: ["liabilities"]` on every token (§18) —
+    `additional_consented_products: ["liabilities"]` on every token —
     optional, so it never blocks Link finishing for an institution that
     doesn't support liabilities, but grants it up front where supported
     instead of requiring a second reconnect later."""

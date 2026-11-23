@@ -41,8 +41,6 @@ def _refused(*a, **k):
     raise agent.AgentError(LIMIT)
 
 
-# ---------- email.refresh ----------
-
 def test_a_refused_summary_is_deferred_not_a_failed_refresh(dbfile, synced,
                                                             monkeypatch):
     monkeypatch.setattr(email_triage, "summarize_pending", _refused)
@@ -83,8 +81,6 @@ def test_the_poller_records_a_deferred_refresh_as_healthy(dbfile, synced,
     assert row["ok"] and not row["error"]
     assert row["recent"].endswith("o")   # mail synced: a real run, not a skip
 
-
-# ---------- email_extract.refresh ----------
 
 def test_a_refused_extraction_still_polls_flights(dbfile, monkeypatch):
     """The flight poll and check-in tasks use no model; a spent window must
@@ -131,8 +127,6 @@ def test_breaker_open_triage_fetches_nothing(dbfile, spent, monkeypatch):
     with db.session() as con:
         assert [r["msg_id"] for r in email_triage.pending(con)] == ["m1"]
 
-
-# ---------- brief, brain ----------
 
 def test_breaker_open_brief_skips_gathering_and_says_why(dbfile, spent,
                                                          monkeypatch):

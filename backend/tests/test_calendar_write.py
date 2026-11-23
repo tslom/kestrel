@@ -246,9 +246,9 @@ def merging_gcal(gcal, monkeypatch):
 
 
 def test_an_all_day_event_can_be_given_a_clock_time(merging_gcal):
-    """11-18: "Friendsgiving" went in all-day, then a 17:00-23:59 update
-    400'd twice ("Invalid start time": the PATCH merged dateTime in beside
-    the stored date) and the session deleted and re-created it instead."""
+    """An all-day event given a 17:00-23:59 time must not 400 ("Invalid start
+    time": a PATCH that merges dateTime in beside the stored date), or the
+    session deletes and re-creates the event instead."""
     merging_gcal["event"] = {**EVENT, "start": {"date": "2026-11-28"},
                              "end": {"date": "2026-11-29"}}
     out = calendar_routes.update_event(event_id="ev1", calendar_id="primary",

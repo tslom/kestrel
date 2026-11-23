@@ -1,4 +1,4 @@
-"""§21 step 4 — the at-desk channel, for facts that are already true.
+"""The at-desk channel, for facts that are already true.
 
 Steps 1–3 built the channel that reaches a shut laptop: a future-dated alarm on
 a surface iCloud syncs, so the phone fires it hours after this machine went to
@@ -127,7 +127,7 @@ def at_desk() -> bool:
 
     **Fails open.** A probe that cannot answer lets the notification through.
     That direction is chosen, not incidental: this step exists because `_notify`
-    sat in email_extract.py since §16 and never once fired, and a presence check
+    sat in email_extract.py for months and never once fired, and a presence check
     that silently swallows every banner is that same bug in better clothes. A
     banner nobody sees costs one wasted line in Notification Center; a channel
     that is quietly always-off costs the feature.

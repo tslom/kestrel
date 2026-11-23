@@ -25,8 +25,6 @@ def _result(subtype="error_during_execution", text=""):
     return SimpleNamespace(subtype=subtype, result=text, is_error=True)
 
 
-# ---------- the label ----------
-
 
 def test_the_subtype_is_the_label_when_it_describes_a_failure():
     label, _ = _turn_fault(_result(text="boom"), None, None)
@@ -90,8 +88,6 @@ def test_an_ordinary_failure_mentioning_a_limit_it_isnt():
     assert label == "error_during_execution"
 
 
-# ---------- the detail ----------
-
 
 def test_result_text_is_kept_verbatim_when_there_is_some():
     _, detail = _turn_fault(_result(text="tool loop exceeded"), "Bash", None)
@@ -127,8 +123,6 @@ def test_the_detail_is_never_empty():
         assert detail.strip()
 
 
-# ---------- reading a tool result ----------
-
 
 def test_result_text_handles_both_content_shapes():
     """Tool results arrive as a bare string or as content blocks depending on
@@ -142,7 +136,6 @@ def test_result_text_handles_both_content_shapes():
     assert _result_text(SimpleNamespace(content=[{"type": "image"}])) == ""
 
 
-# ---------- the wiring ----------
 #
 # `_turn_fault` above is a pure function and the tests for it are cheap, which
 # is exactly the condition under which the interesting bug lives one layer

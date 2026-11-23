@@ -1,5 +1,5 @@
-"""Google Calendar provider (IDEAS §2) — first real provider on the §0
-pattern. Google Calendar is truth; `events` + `calendar_days` in app.db are
+"""Google Calendar provider — the first real provider on the shared
+provider pattern. Google Calendar is truth; `events` + `calendar_days` in app.db are
 the derived cache (safe to drop and re-pull). refresh() keeps a window around
 today warm; get() reads the cache and pulls cold days on demand.
 
@@ -328,8 +328,8 @@ def _dedupe(data: list[dict]) -> list[dict]:
 # touches rather than filling them. get() hands it out as all-day (with
 # `span`), so free slots, the brief, the Load chart and the cards treat it as
 # a banner instead of 24h of busy on every day; SQL readers of `events` use
-# SPAN_SQL for the same rule. 11-14: one such appointment read as 696h booked
-# for the week.
+# SPAN_SQL for the same rule. Without it one such appointment reads as 696h
+# booked for the week.
 SPAN_SQL = "(julianday(end_at) - julianday(start_at) > 1)"
 
 
@@ -396,7 +396,7 @@ def get(rng: Range, metric: str | None = None) -> dict:
     data.sort(key=_within_day_order)
     data = _dedupe(data)
     # refreshed_at = the STALEST synced day in the slice — honest for the
-    # "refreshed Nm ago" affordance (§1).
+    # "refreshed Nm ago" affordance.
     return {"data": data, "refreshed_at": refreshed}
 
 

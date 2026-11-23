@@ -3,8 +3,8 @@
 Kestrel links a dev tab's venv, .env, data and node_modules when it makes the
 tab's worktree (backend/app/console_worktree.py). A worktree made any other
 way (`claude --worktree`, the overnight jobs, `git worktree add` by hand) got
-none of it. On 11-18 an overnight session found no `.venv/bin/python`, and
-the worktree guard refused all 7 of its tries to link one by hand. Without
+none of it: no `.venv/bin/python`, and the worktree guard refuses an
+agent's tries to link one by hand. Without
 the venv's ruff and node_modules' eslint, lint_on_edit.py also passes every
 edit silently. This links the same list (.kestrel/worktree.json) when the
 session starts. The main checkout and an already-linked worktree are left as

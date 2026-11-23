@@ -1,9 +1,8 @@
 """Each dev tab in its own git worktree, on its own branch.
 
-On 2026-08-12 two dev tabs sharing one checkout each ran `git stash`: each
-swept up the other's edits, and the tree was left unbuildable. A tab's own
-worktree ends that: a stash, reset or checkout in one can't reach another's
-files. JetBrains Air does the same (`.air/worktree.json`); this copies its
+Two dev tabs sharing one checkout sweep up each other's edits with a `git
+stash` and leave the tree unbuildable. A tab's own worktree ends that: a
+stash, reset or checkout in one can't reach another's files. JetBrains Air does the same (`.air/worktree.json`); this copies its
 model, as `.kestrel/worktree.json`.
 
 - **Where:** `<repo>/.claude/worktrees/tab-<hex>`, on branch `kestrel/tab-<hex>`
@@ -29,7 +28,7 @@ model, as `.kestrel/worktree.json`.
   its worktree and branch removed when its socket closes. A resumed session gets its tree back at
   the same path (Claude Code files a session's transcript under its cwd, so
   the path is how a resume finds it, `for_session`); the memory stays the
-  main checkout's, which Claude Code shares across worktrees (checked 11-17).
+  main checkout's, which Claude Code shares across worktrees.
 - **Orphans** (`branches`, `sweep`): every `kestrel/tab-*` branch, and every
   `worktree-*` one Claude Code's own `--worktree` sessions (the night jobs)
   leave, whose tab or session is gone. On startup, on a tab's close and when
@@ -37,8 +36,8 @@ model, as `.kestrel/worktree.json`.
   what the plan view's "left behind" panel lists, with merge and discard.
   Gone means: no socket here holds the tree, and no live process holds its
   git lock (Claude Code locks a `--worktree` tree while its session runs,
-  naming the pid). Before 11-18 the next tab's start line carried them as a
-  ⚠, in whatever unrelated tab opened next on that repo.
+  naming the pid). They are listed there, not as a ⚠ in whatever unrelated
+  tab opens next on that repo.
 
 Stdlib only, and importable by macOS's python3 (3.9): the SessionStart hook
 (.claude/hooks/session_start.py) loads it outside the venv.

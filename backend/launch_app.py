@@ -157,10 +157,9 @@ def _port_holders() -> list[int] | None:
 
 def _take_over_port() -> bool:
     """Stop a dashboard backend this app didn't start, so the one it starts
-    is the one serving. Attaching to it instead (what this did until 10-29)
-    meant ⌘Q left it running, and a terminal `uvicorn --reload` from
-    September sat under the window for a month, restarting on every dev-tab
-    edit. False if the port is held by something else, or won't let go."""
+    is the one serving. Attaching to it instead means ⌘Q leaves it running,
+    and a stray terminal `uvicorn --reload` can sit under the window for
+    weeks, restarting on every dev-tab edit. False if the port is held by something else, or won't let go."""
     pids = _port_holders()
     if not pids:
         return False
@@ -233,8 +232,8 @@ def _start_backend(notify_fd: int | None = None) -> subprocess.Popen:
 
     Not `--reload`: uvicorn's reloader restarts the moment a file changes, and
     the console runs *inside* this server. A dev tab editing backend/app
-    restarted the process hosting its own turn — the socket dropped mid-edit,
-    the next approval card died "Stream closed", and the tab was gone (10-29).
+    restarts the process hosting its own turn — the socket drops mid-edit,
+    the next approval card dies "Stream closed", and the tab is gone.
     `Backend` waits for the turn to end first.
     """
     cmd = [_backend_python(), "-m", "uvicorn", "app.main:app",
@@ -244,8 +243,8 @@ def _start_backend(notify_fd: int | None = None) -> subprocess.Popen:
     # everything else here — including the "[reload]" lines, which are how
     # you tell a stale window from a stale server.
     # The marker console.py reads to tell a dev tab its edits are held. A
-    # dev tab on a terminal `uvicorn --reload` drops on every save — 10-29
-    # was a month-old one, invisible until a tab said so.
+    # dev tab on a terminal `uvicorn --reload` drops on every save, and that
+    # server is invisible until a tab says so.
     # notify_fd: the write end of the window's notification pipe (see
     # _notification_pipe), inherited by this one child and no further.
     # GUARD_ENV: this launcher runs the merge guard's check at restarts
@@ -553,13 +552,12 @@ def main() -> None:
 
     # Menu actions run on the main thread, and evaluate_js blocks on a
     # semaphore that only the main thread can release — called from here it
-    # deadlocked the window (⌘R froze the app until it was force-quit; the
-    # macOS hang report shows the main thread parked in that acquire). Off
-    # the main thread it returns once the page answers.
+    # deadlocks the window (⌘R freezes the app until it is force-quit, with
+    # the main thread parked in that acquire). Off the main thread it returns
+    # once the page answers.
     # ⌘R rebuilds first when sources moved on: a window left open across a
-    # commit otherwise reloads into the launch-time dist forever (free-response
-    # quizzes showed as "couldn't read" for hours that way). Same stat walk
-    # as launch, so an up-to-date dist costs nothing.
+    # commit otherwise reloads into the launch-time dist forever. Same stat
+    # walk as launch, so an up-to-date dist costs nothing.
     def _rebuild_and_reload():
         ensure_frontend_built()
         window.evaluate_js("location.reload()")
@@ -581,8 +579,8 @@ def main() -> None:
     # once the GUI is up, which is the earliest AppKit will accept a main menu.
     # private_mode=False: pywebview's default (True) erases the web view's
     # data every time the window opens, so localStorage — the tab list, each
-    # tab's session, every pref — outlived ⌘R but never ⌘Q. Reopening came
-    # back to one empty tab (New Features #69, 11-17).
+    # tab's session, every pref — would outlive ⌘R but never ⌘Q, and
+    # reopening would come back to one empty tab.
     webview.start(menu, private_mode=False)
 
     # SIGTERM the server so it drains. Aimed at the one process rather than the

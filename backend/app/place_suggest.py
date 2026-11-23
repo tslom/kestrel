@@ -1,6 +1,6 @@
 """What is this place called — candidates for a cluster you haven't named.
 
-§24 draws 93 places over seven weeks and two of them have names. The other 91
+The location map draws 93 places over seven weeks and two of them have names. The other 91
 are centroids, which answer "where" and not "where *was I*". This module turns
 a centroid into a ranked shortlist you can accept, edit, or ignore; accepting
 one writes a `type: place` note, and from then on `location._group_stays`
@@ -12,7 +12,7 @@ guess is right about a third of the time, wrong-but-quiet a third, and
 confidently wrong the rest — and a suggestion that is wrong costs a click,
 while an auto-applied name would silently corrupt `time_at_home_min`.
 
-Three sources, measured on this vault's own fixes (2026-08-01..09-17):
+Three sources, measured on seven weeks of this vault's own fixes:
 
 * **Calendar recurrence** — which located event recurs across a place's
   visits. The strongest source when it fires and the only one that knows
@@ -31,7 +31,7 @@ Three sources, measured on this vault's own fixes (2026-08-01..09-17):
   candidate that resolves half a mile away is not this place whatever the
   clock says.
 
-* **Google reverse geocoding** — already enabled for §14's `leave`, so no new
+* **Google reverse geocoding** — already enabled for `leave`, so no new
   API and no new key. Returns one good POI when the point is on one
   ("McCarthy Quad", typed `point_of_interest`), and a street address when it
   is not. Never ranked first: it is a guess about the world, not about you.
@@ -46,7 +46,7 @@ Three sources, measured on this vault's own fixes (2026-08-01..09-17):
   returns the single nearest feature, which at that coordinate is an unnamed
   fountain.
 
-* **Google Places nearby** (added 2026-10-13) — the same breadth as Overpass
+* **Google Places nearby** — the same breadth as Overpass
   from a source that stays up, each place carrying a category ("Parking Lot",
   "Library"), so a parking structure and the building beside it read apart.
   Overpass stays for what Google doesn't list (named quads, OSM-only
@@ -88,8 +88,8 @@ OVERPASS_URLS = (
     "https://overpass.kumi.systems/api/interpreter",
 )
 # Mirrors are raced, not tried in turn, and each gets this long. It was 25s
-# tried in order, and on 2026-10-13 the main instance 504'd and the mirror
-# read-timed-out, so naming one place sat for ~50s and then showed Google's
+# tried in order, and when the main instance 504'd and the mirror
+# read-timed-out, naming one place sat for ~50s and then showed Google's
 # addresses alone. A healthy answer takes 1-8s; past that the instance is
 # saturated and waiting longer buys a shortlist nobody is still looking at.
 TIMEOUT_S = 10
@@ -320,7 +320,7 @@ def _calendar_candidates(group: dict) -> list[dict]:
         return []
 
     # The clock agrees. Ask the map whether it could possibly be here — the
-    # geocoder is §14's, cached and context-retrying, rather than a second one.
+    # geocoder is leave.py's, cached and context-retrying, rather than a second one.
     #
     # The gate is here to catch one specific lie: an event you did not attend,
     # overlapping every visit to the place you stayed home in instead. Share

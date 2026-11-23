@@ -1,4 +1,4 @@
-"""REST face of the providers: GET /api/{source}?range=&metric= per IDEAS §0.
+"""REST face of the providers: GET /api/{source}?range=&metric=.
 
 Routes are generated from the registry — adding a provider module and
 registering it is all it takes to get its endpoint. Registered names must not
@@ -47,7 +47,7 @@ async def sync_now():
     """Force one full refresh cycle right now — the same work the poller does
     on its PROVIDER_REFRESH_SECONDS timer, so a just-changed source (a new
     calendar event, a fresh transaction) lands immediately instead of waiting
-    for the next cycle. Returns per-provider results/errors, plus the §21 alarm
+    for the next cycle. Returns per-provider results/errors, plus the alarm
     reconcile that follows them under an `alarms` key."""
     return await poller.sync_all()
 
@@ -74,7 +74,7 @@ def weather_current():
     The 502 is now the genuinely-nothing case only. weather.current() retries
     and then falls back to its last good reading (flagged `stale`), so an
     upstream blip costs the chip a staleness marker instead of a failed
-    request — which is what it cost on four days between 09-05 and 09-13."""
+    request, which is what it used to cost."""
     cur = weather.current(fresh_s=weather.CURRENT_FRESH_S)
     if cur is None:
         raise HTTPException(502, "weather API unavailable")

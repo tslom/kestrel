@@ -1,4 +1,4 @@
-"""The privacy rule for other models, as checks (New Features #86).
+"""The privacy rule for other models, as checks.
 
 Claude is the only model that sees the vault, the Brain, texts, email, money
 or contacts. Anything else gets a scrubbed brief, a clean environment and a

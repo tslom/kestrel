@@ -4,8 +4,8 @@ The CLI already does this: a user message sent while a turn runs is read at
 the next tool boundary, in the same turn, and replayed back with the uuid it
 was sent under; one sent while the turn is writing its last reply runs as a
 turn of its own right after; and `cancel_async_message` takes one back unread
-(all measured against CLI 2.1.318 on 11-17). The page used to hold the
-message until the whole turn ended, so the only way to cut in was Stop.
+(all measured against CLI 2.1.318). Holding the message until the whole
+turn ends would leave Stop as the only way to cut in.
 These drive the real socket loop against a CLI that behaves that way.
 """
 

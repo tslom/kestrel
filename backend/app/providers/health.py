@@ -1,4 +1,4 @@
-"""Google Health provider (IDEAS §3) — Fitbit Air data over the Google
+"""Google Health provider — Fitbit Air data over the Google
 Health API v4 (the Fitbit Web API successor; legacy API dies Sept 2026).
 Google Health is truth; `health_days` + `health_sync` in app.db are the
 derived cache (safe to drop and re-pull). One row per (day, metric) so
@@ -59,7 +59,7 @@ ROLLUP_MAX_DAYS_HEART_RATE = 14
 # demand by get() and backfill the cache.
 REFRESH_PAST_DAYS = 7
 
-# Intraday HR (§12): hourly-bucketed heart rate for a short trailing window,
+# Intraday HR: hourly-bucketed heart rate for a short trailing window,
 # feeding features.py's hr_var_day. Only the recent past is useful (a same-day
 # load proxy) and the rollUp endpoint caps heart-rate at ROLLUP_MAX_DAYS_HEART_RATE.
 INTRADAY_HR_DAYS = 7
@@ -157,8 +157,8 @@ def _hourly(token: str, dtype: str, start: date, end: date, pick,
     trailing week when the two agreed; asking it for a cold day in July (which
     the drill-down does) reads a day the desk spent on the other coast, and the
     machine clock would frame it three hours out — which both loses the day's
-    first hours and folds the next morning's into it. Measured before the fix:
-    2026-07-20 summed to 10,610 hourly steps against a stored daily 8,765."""
+    first hours and folds the next morning's into it: one such day summed to
+    10,610 hourly steps against a stored daily 8,765."""
     # Widen by a day each side so the local-day edges are fully covered
     # whatever the offset, then filter by the bucket key; the API caps the
     # span, so leave those two days inside this type's limit.
@@ -264,7 +264,7 @@ def _gather(jobs: dict[str, Callable[[], object]]) -> dict[str, object]:
     exception it raised}.
 
     Concurrent because each call is mostly waiting on Google: measured
-    2026-10-05, a refresh made 11 calls back to back for ~12.6s, every one
+    serially, a refresh made 11 calls back to back for ~12.6s, every one
     0.6-1s of round trip except the two heart-rate rollUps (2-4s, the only
     ones whose cost grows with the window). Side by side the refresh costs
     roughly its slowest call. Workers touch no database — they only fetch;
