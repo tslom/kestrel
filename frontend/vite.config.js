@@ -6,13 +6,9 @@ import react from "@vitejs/plugin-react";
 
 const BACKEND = process.env.KESTREL_BACKEND_PORT || "8788";
 
-// A window outlives the build it loaded. Dev tabs build all day under an open
-// Kestrel window, whose page still imports its own hashed chunks on demand, so
-// a build that empties dist 404s whatever that page hasn't fetched yet — KaTeX,
-// say, which blanks the desk on the next formula. So
-// emptyOutDir is off below and old chunks age out here instead. Rollup rewrites
-// everything a build emits, so an mtime this old means no build wants the file.
-// A week outlasts an open window in practice; past it, ui/markdown.jsx fails soft.
+// A window outlives its build: an open page imports its own hashed chunks on demand (KaTeX, say), so a build that
+// empties dist 404s them. emptyOutDir is off; old chunks age out here (mtime this old = no build wants it).
+// A week outlasts an open window in practice; past it ui/markdown.jsx fails soft.
 const ASSET_KEEP_MS = 7 * 24 * 3600 * 1000;
 
 function pruneOldAssets() {
@@ -29,25 +25,13 @@ function pruneOldAssets() {
   };
 }
 
-// Bitmap glyphs drawn too thin to see. TeX PDFs built from PK fonts carry some
-// glyphs as Type 3 bitmaps — CSCI 170's handouts draw the listing minus as a
-// 54×2 image mask, 0.24pt tall. pdf.js traces such a mask into a path and fills
-// it at true size, so at a side-panel scale it's half a device pixel and
-// antialiases to a faint smear or nothing ("n 1" for "n−1"), depending on where
-// it lands. Poppler and Preview give a mask at least one whole pixel per axis;
-// this does the same in pdf.js's compiled-glyph painter, snapped to the pixel
-// row/column under the glyph's centre. 6.5.438 still has the bug.
-//
-// That alone isn't enough: the glyph's `d1` bbox (5 20 60 22 for the minus) is
-// just as thin, and pdf.js clips to it before painting. Chrome antialiases the
-// clip, so the snapped bar comes out 50–75% grey; WebKit — what Kestrel.app
-// runs — drops it outright wherever the hairline straddles pixel rows, so
-// "a[j 1]" survives the snap alone there. So the clip grows one device
-// pixel each way on any axis under a pixel; the image row it must admit lies
-// within half a pixel of the bbox, and nothing outside the mask paints anyway.
-//
-// The anchors are pinned to the exact pdfjs-dist in package.json: a version
-// bump that moves one fails the build loudly rather than silently losing it.
+// Bitmap glyphs drawn too thin: TeX PK-font PDFs carry Type 3 bitmap glyphs (CSCI 170's listing minus is a 54x2
+// mask, 0.24pt tall). pdf.js fills it at true size, half a device pixel at side-panel scale, so it smears or
+// vanishes ("n 1" for "n-1"). Patch 1 gives the mask at least one whole pixel per axis, snapped to the pixel under
+// its centre (as Poppler/Preview do); 6.5.438 still has the bug. Patch 2 grows the glyph's thin `d1` bbox clip by
+// one device pixel on any axis under a pixel: WebKit (Kestrel.app) drops the hairline outright where it straddles
+// pixel rows; Chrome renders it 50-75% grey. Anchors are pinned to package.json's pdfjs-dist: a bump that moves
+// one fails the build loudly.
 const PDFJS_PATCHES = [
   [`  const drawOutline = function (c) {
     c.save();
@@ -101,22 +85,14 @@ export default defineConfig({
   optimizeDeps: { exclude: ["pdfjs-dist"] },
   build: {
     emptyOutDir: false,
-    // "hidden": the .map files are written next to each bundle but the bundle
-    // carries no sourceMappingURL, so the page never asks for them. They are
-    // for the backend — failures.py maps a desk report's minified frames
-    // (gk@…/assets/index-D2c-yNSi.js:55:48155) back to src/file:line when the
-    // report arrives, because the map for that hash only lasts as long as
-    // pruneOldAssets lets it. main.py refuses to serve them.
+    // "hidden": .map files are written but unreferenced; failures.py maps a desk report's minified frames back to
+    // src/file:line (the map only lasts as long as pruneOldAssets keeps it). main.py refuses to serve them.
     sourcemap: "hidden",
   },
   server: {
-    // KESTREL_BACKEND_PORT points the proxy at a backend started from a
-    // worktree (verify skill, Launch), so backend changes can be driven
-    // before they're merged.
-    // changeOrigin off (the string shorthand turns it on) so the backend sees
-    // the Host the page was served from: a page on any Vite port, the verify
-    // rig's :5199 included, is then same-origin through the proxy, which
-    // localguard.origin_ok lets write.
+    // KESTREL_BACKEND_PORT points the proxy at a worktree backend (verify skill). changeOrigin off (the string
+    // shorthand turns it on) so the backend sees the page's Host: any Vite port, the rig's :5199 included, is then
+    // same-origin through the proxy, which localguard.origin_ok lets write.
     proxy: {
       "/api": { target: `http://localhost:${BACKEND}`, changeOrigin: false },
       "/ws": { target: `ws://localhost:${BACKEND}`, ws: true },

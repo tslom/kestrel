@@ -7,31 +7,17 @@ import RefreshButton from "../ui/RefreshButton.jsx";
 import Icon from "../ui/icons.jsx";
 import { dragPin } from "../lib/drag.js";
 
-// Health card, on the lede form.
-//
-// Four metrics in a grid every day are real numbers on a useless card:
-// nothing on it says whether 71 bpm is your ordinary 71 or the start of
-// something, so reading it means remembering last week — which is exactly the
-// work a dashboard is supposed to have already done.
-//
-// So one call to /api/health/summary brings today plus the 28 days to read it
-// against, `lib/notable.js` decides whether any of it is unusual, and the card
-// leads with that or says nothing. Ranges, sleep stages, the nightly wellness
-// trio and every other metric stay in the sheet, which is where you go
-// when you want to look rather than be told.
-//
-// `floor` is the honest half of the notability rule and it has to be declared
-// here, because this is the file that knows 3 bpm is a lot and 3 steps is not.
-// Each one is "the smallest change I'd want a sentence about":
+// Health card, lede form: /api/health/summary brings today plus 28 baseline days, `lib/notable.js`
+// decides whether anything is unusual, and the card leads with that or says nothing (a grid of
+// numbers can't say whether 71 bpm is ordinary). Everything else lives in the sheet.
+// `floor` is declared here (this file knows 3 bpm is a lot, 3 steps is not): the smallest change worth a sentence.
 const CARD_METRICS = [
   { key: "steps", label: "Steps", worse: null, floor: 3000,
     fmt: (v) => Math.round(v).toLocaleString() },
   // Sleep is attributed to the wake-up date, so "today" is last night.
   { key: "sleep_hours", label: "Sleep", worse: "down", floor: 1,
     fmt: (v) => `${v.toFixed(1)} h` },
-  // The tightest band on the card (68–76 over a month) and the most diagnostic
-  // — a few bpm over your own median is the classic early-illness tell, which
-  // is why the floor is low enough to catch it and `worse: "up"` colours it.
+  // Tightest band (68–76 over a month); a few bpm over your median is the early-illness tell, hence the low floor.
   { key: "resting_hr", label: "Resting HR", worse: "up", floor: 3,
     fmt: (v) => `${Math.round(v)} bpm` },
   { key: "active_zone_minutes", label: "Zone min", worse: null, floor: 20,
@@ -51,11 +37,7 @@ export function useHealthCard() {
   const hit = sum ? lead(readings) : null;
   const rest = restLine(readings);
 
-  // HAS is *earned*, not granted for having a pulse. "Any metric non-null"
-  // is true every day the watch syncs, so the card would sit in the "today"
-  // band 365 days a year and mean nothing by being there. A body
-  // doing what it always does is the definition of QUIET, and the fold line
-  // still carries the numbers for the morning you want them anyway.
+  // HAS is earned: "any metric non-null" is true every synced day (a body doing its usual is QUIET).
   const level = !sum ? null : hit ? HAS : QUIET;
   const summary = rest || "nothing synced today";
 
@@ -73,9 +55,7 @@ export default function HealthWidget({ card, onPin }) {
         <h2>Health <span className="widget-sub">today</span></h2>
         <div className="widget-actions">
           <RefreshButton onClick={reload} busy={refreshing} />
-          {/* The pin still carries all four metrics and all 28 days. The card
-              shows one reading; the console gets the lot, which is the whole
-              trade this redesign makes. */}
+          {/* The pin carries all four metrics and 28 days; the card shows one reading. */}
           <button className="pin" disabled={!sum}
             onClick={() => onPin(...pin)}
             title="Attach today's readings and their 28-day baselines to your next console message"><Icon name="pin" /> pin</button>

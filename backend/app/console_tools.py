@@ -1,27 +1,9 @@
-"""In-process MCP tools for the console — the fourth face of the providers.
+"""In-process MCP tools for the console: the fourth face of the providers.
 
-Every provider has three faces over one implementation: a REST route, a CLI,
-and a cache table. Through the CLI in Bash, the console gets a card for every
-read (the `cd … &&` form the allowlist can't approve), guesses the range
-syntax, retypes ids wrong, and files tasks into the harness's own store.
-
-These tools are that fourth face. They are not new capability; each one wraps a
-function the REST layer already calls, so app.db and the providers stay the one
-source of truth. What changes is that a read has a stable tool name, which
-CONSOLE_ALLOWED_TOOLS can auto-approve without a wildcard, and a typed schema,
-which ends the guessing.
-
-Writes deliberately stay off that list: the writers are here so the console
-stops hand-rolling `curl -X POST` and raw `UPDATE tasks` SQL, not so it can
-write unattended. They still arrive as cards.
-
-Which stores get a writer is itself load-bearing. A store the console can read
-but not write doesn't stay unwritten: its contents end up in whichever store
-does have a writer (things to buy filed as tasks, debts written into a task's
-note). So every store behind a card can be written from here.
-
-A capability the system has but the console cannot name is, from inside a
-session, indistinguishable from one nobody built.
+Each tool wraps a function the REST layer already calls (app.db and the providers stay
+the one source of truth). Reads are auto-approved by name; writers stay cards. Every
+store behind a card needs a writer here, or its data lands in whichever store has one.
+Design: DESIGN.md → `app/console_tools.py`.
 """
 
 import asyncio
@@ -35,7 +17,7 @@ from typing import Annotated, Any, get_args, get_origin
 from claude_agent_sdk import create_sdk_mcp_server, tool
 from fastapi import HTTPException
 
-from . import agent, citations, console_code, db, expenses, sessions, tz
+from . import agent, citations, console_code, db, expenses, model_catalog, sessions, tz
 from .config import REDDIT_SUBREDDITS
 from .providers import REGISTRY, get as provider_get
 from .providers import ranges
@@ -46,9 +28,7 @@ _SOURCES = ", ".join(sorted(REGISTRY))
 _RANGES = ", ".join(ranges.VOCAB)
 _TRACKED_SUBS = ", ".join(f"r/{s}" for s in REDDIT_SUBREDDITS) or "none"
 
-# Body text shown per hit in reddit_search. Shorter than the provider's own
-# REDDIT_SELFTEXT_CHARS, which sizes what the cache stores rather than what one
-# read spends.
+# Body chars per reddit_search hit; shorter than REDDIT_SELFTEXT_CHARS (the cache's size) to bound what one read spends.
 _SNIPPET_CHARS = 240
 
 
@@ -58,16 +38,7 @@ def _text(payload: str) -> dict[str, Any]:
 
 def _with_refs(mod: Any, items: list[Any], body: list[str]) -> list[str]:
     """Stamp each rendered row with its citation ref, where the source has one.
-
-    The ref has to travel *with the row*, in the same read: a model that has
-    to make a second call to find out what to cite will mostly not bother, and
-    the whole feature is worth exactly as much as the fraction of claims that
-    carry one. Six characters a line is the price.
-
-    A provider without `cite()`, or a row it declines (an aggregate, a day
-    count), renders exactly as before — an uncitable number is better bare
-    than pointed at something arbitrary.
-    """
+    A provider without `cite()`, or a row it declines, renders bare."""
     cite = getattr(mod, "cite", None)
     if cite is None:
         return body
@@ -88,12 +59,7 @@ def _ref_for(cite: Any, item: Any) -> str | None:
 
 
 def _cited(mod: Any, out: dict[str, Any]) -> dict[str, Any]:
-    """The same stamping for the raw-JSON read: one extra `cite` field a row.
-
-    A shallow copy per row rather than a mutation, because `out` comes
-    straight off the provider and some of them hand back rows that are still
-    referenced by their own caches.
-    """
+    """The same stamping for the raw-JSON read: a `cite` field per row, on a shallow copy (providers' caches may hold the rows)."""
     cite = getattr(mod, "cite", None)
     items = out.get("data")
     if cite is None or not isinstance(items, list):
@@ -106,30 +72,18 @@ def _cited(mod: Any, out: dict[str, Any]) -> dict[str, Any]:
 
 
 def _err(message: str) -> dict[str, Any]:
-    # `is_error`, snake case: that is the key the SDK server reads off a
-    # handler's dict (create_sdk_mcp_server's run_tool). The MCP wire spelling
-    # `isError` is dropped by the server, so every refusal reaches the CLI as
-    # a success: the card stays green, and a failed write lands in the turn's
-    # change summary, which console.py builds from non-error results.
+    # `is_error` (snake case) is the key the SDK server reads; `isError` is dropped, so a refusal would reach the CLI as a success.
     return {"content": [{"type": "text", "text": f"error: {message}"}],
             "is_error": True}
 
 
 async def _blocking(fn, *args, **kwargs):
-    """Run sync `fn` on a worker thread. Every handler here is async and runs
-    on uvicorn's event loop — the one serving every other request and the
-    console's own websocket — so a provider's network backfill, a Gmail
-    fetch, or a 30s osascript called directly freezes the whole backend for
-    as long as it takes. Anything past a single-row read goes through here."""
+    """Run sync `fn` on a worker thread: handlers share uvicorn's loop, so anything past a single-row read goes here."""
     return await asyncio.to_thread(fn, *args, **kwargs)
 
 
 async def _backend_call(failure: str, fn, *args, **kwargs):
-    """`_blocking` for a backend route function, as (result, None) or
-    (None, error result). An HTTPException is a refusal already phrased for
-    a reader (bad arguments, an ambiguous match), so its detail goes back
-    as-is; anything else is a Gmail/Google/network failure, said as
-    f"{failure}: {e}"."""
+    """`_blocking` for a route function: (result, None) or (None, error result). An HTTPException's detail goes back as-is."""
     try:
         return await _blocking(fn, *args, **kwargs), None
     except HTTPException as e:
@@ -139,33 +93,14 @@ async def _backend_call(failure: str, fn, *args, **kwargs):
 
 
 # ---------- schemas ----------
-#
-# Every schema here goes through _schema() rather than being handed to @tool as
-# a bare {name: Annotated[...]} dict, because that shorthand ends in
-# `required: list(properties.keys())` — *everything* required. A parameter
-# these tools have always documented as optional was therefore refused when
-# omitted, and the model's recovery is worse than the error. Session 5719a6e8
-# is the whole failure in three calls: `provider` without a metric came back
-# "'metric' is a required property", and the retry filled in every remaining
-# blank it could see — `metric: ""` and `brief: false`, which turned a
-# one-line-per-item read into a week of raw JSON dumped into the context. The
-# note on `brief` below used to blame the model for passing false; it had no
-# way to leave it out.
-#
-# The contact writers are why this got fixed before they were added rather than
-# after. `contacts.update()` reads a present-but-empty field as "clear it" —
-# under the shorthand the model must send every field on every call, so an edit
-# adding a phone number would have blanked the name, the org and the note, and
-# synced that to the phone.
+# Every schema goes through _schema(): the SDK's bare {name: Annotated} shorthand makes everything required, so
+# optional params were refused (or filled with junk on retry), and `contacts.update()` reads "" as clear.
 
 _JSON_TYPES = {str: "string", int: "integer", float: "number", bool: "boolean"}
 
 
 class FactId:
-    """A Brain fact id parameter. The <brain> block prints facts as `[f815]`,
-    and the model copies that: `brain_verdict {"fact_id": "f815"}` was refused
-    by a plain integer schema before the handler — which already stripped the
-    f — ever ran. So the schema takes 815 or "f815" and _fact_id() reads both."""
+    """A Brain fact id: the <brain> block prints `[f815]`, so the schema takes 815 or "f815"; _fact_id() reads both."""
 
 
 def _fact_id(value: Any) -> int:
@@ -173,12 +108,7 @@ def _fact_id(value: Any) -> int:
 
 
 def _prop(spec: Any) -> dict[str, Any]:
-    """One `Annotated[type, "description"]` parameter as JSON Schema.
-
-    Deliberately narrow: it covers the types these tools actually take and
-    raises on anything else, so an unmapped annotation fails at import rather
-    than reaching the model as an untyped parameter.
-    """
+    """One `Annotated[type, "description"]` parameter as JSON Schema; raises on an unmapped type, so it fails at import."""
     desc = ""
     if get_origin(spec) is Annotated:
         spec, *meta = get_args(spec)
@@ -201,20 +131,8 @@ def _prop(spec: Any) -> dict[str, Any]:
 
 
 def _schema(props: dict[str, Any], required: tuple[str, ...] = ()) -> dict[str, Any]:
-    """A full JSON Schema, which create_sdk_mcp_server passes through verbatim
-    (its shorthand branch only fires when "type"/"properties" are absent).
-
-    Closed to unknown keys. Without `additionalProperties: false` a misnamed
-    argument was silently dropped and the call ran without it: `brain_read
-    {"slug": "school"}` (the param is `page`) came back "pass a page slug or a
-    query", and Kestrel told the user it didn't know their USC ID while that
-    fact sat active on the page; `task_update {"due_time": ...}` quietly set
-    nothing. The MCP server jsonschema-validates every call against this
-    schema (mcp/server/lowlevel/server.py, call_tool), so a wrong name now
-    comes back "Additional properties are not allowed ('slug' was
-    unexpected)" and the model retries with the right one. In 1,875 audited
-    calls the only unknown keys (22) were all such wrong-name guesses.
-    """
+    """A full JSON Schema (passed through verbatim by create_sdk_mcp_server), closed to unknown keys:
+    without `additionalProperties: false` a misnamed argument was silently dropped."""
     unknown = [r for r in required if r not in props]
     if unknown:
         raise ValueError(f"required names no such parameter: {unknown}")
@@ -225,20 +143,14 @@ def _schema(props: dict[str, Any], required: tuple[str, ...] = ()) -> dict[str, 
 
 
 # ---------- batches ----------
-#
-# course_review_add, list_add and food_log come in runs of 3+, each a round
-# trip through the model. `items` carries the
-# run in one call. Each item takes the single call's own fields, and the
-# top-level ones are its defaults (one `code`, `list` or `meal` for all), so
-# a single-item call is unchanged.
+# course_review_add, list_add and food_log come in runs of 3+; `items` carries the run in one call
+# (top-level fields are defaults, so a single-item call is unchanged).
 
 BATCH_MAX = 50
 
 
 def _batched(schema: dict[str, Any], what: str) -> dict[str, Any]:
-    """`schema` plus `items`: an array of objects with the same fields (types
-    only — the descriptions are already on the top-level ones), and nothing
-    top-level required any more, since a batch puts it in the items."""
+    """`schema` plus `items` (same fields, types only); nothing top-level required, since a batch puts it in the items."""
     item_props = {k: {kk: vv for kk, vv in v.items() if kk != "description"}
                   for k, v in schema["properties"].items()}
     return {**schema, "required": [], "properties": {**schema["properties"], "items": {
@@ -287,8 +199,7 @@ def _batch_result(lines: list[str], failed: list[str], one: bool) -> dict[str, A
                                  "(calendar, email) ignore this."],
         "query": Annotated[str, "Optional case-insensitive substring filter "
                                 "over the items' text fields."],
-        # Omitting this is the default and the right move; the instruction
-        # tone survives from when the schema made the model send a value.
+        # Omitting this is the default and the right move.
         "brief": Annotated[bool, "Leave this true (the default): one line per "
                                  "item, which is what almost every question "
                                  "needs. Set false only when you need a field "
@@ -311,12 +222,7 @@ async def provider(args: dict[str, Any]) -> dict[str, Any]:
     mod = REGISTRY[source]
     if not brief:
         import json
-        # The full read needs refs too, and finding that out took a live
-        # session: asked for a detail out of an email, it went `brief=false`
-        # for the body fields, got rows whose only handle was the raw Gmail
-        # `id`, and cited *that* — a 16-hex-digit string in the prose where a
-        # ref should be. The brief line was the only thing carrying a ref, and
-        # the brief line was the one thing that read hadn't asked for.
+        # The full read needs refs too: a model citing a `brief=false` detail only had the raw Gmail `id` and cited that.
         return _text(json.dumps(_cited(mod, out), indent=2, default=str))
 
     # Same shaping as the CLI's --format brief, over the same brief_line().
@@ -342,10 +248,7 @@ async def provider(args: dict[str, Any]) -> dict[str, Any]:
     _schema({
         "msg_id": Annotated[str, "The email's ref from the end of any email "
                                  "line (e7a3f1), or its msg_id."],
-        # Declared (and msg_id left out of `required`) because the schema is
-        # what gets checked first: the handler took `id` since August, but a
-        # required msg_id refused {"id": ...} before it ran — 15 times in the
-        # audited transcripts, every one a blind call on the deferred tool.
+        # Declared (msg_id not `required`) because the schema is checked first: a required msg_id refused {"id": ...} before the handler ran (15 blind calls).
         "id": Annotated[str, "Same as msg_id."],
         "chars": Annotated[int, "Optional cap on body length. Omit for the "
                                 "default, which is long enough for almost any "
@@ -354,18 +257,13 @@ async def provider(args: dict[str, Any]) -> dict[str, Any]:
     }),
 )
 async def email_body(args: dict[str, Any]) -> dict[str, Any]:
-    # `id` is what the provider's email output calls the field, and calls
-    # arrived under that name about once a week through August — the rename
-    # was never going to win, so take both. (`thread_id`, a different id
-    # space, is refused by the closed schema with its name in the error.)
+    # Calls arrive as `id` (the provider's field name) about weekly: take both. (`thread_id` is another id space; the closed schema refuses it by name.)
     msg_id = (args.get("msg_id") or args.get("id") or "").strip().strip("[]")
     if not msg_id:
         return _err("pass `msg_id`: the email's ref (e7a3f1) or its msg_id "
                     "(not its thread id)")
     if citations.REF_RE.fullmatch(msg_id.lower()):
-        # The ref is what a read leaves in hand: a `provider source=email`
-        # line ends in one and carries no id at all (email.brief_line), so a
-        # ref is what gets passed here.
+        # A `provider source=email` line ends in a ref and carries no id (email.brief_line), so a ref is what gets passed.
         found = await _blocking(citations.resolve, msg_id)
         if found is None:
             return _err(f"no read handed out the ref {msg_id!r}: pass a ref "
@@ -389,10 +287,7 @@ async def email_body(args: dict[str, Any]) -> dict[str, Any]:
     notes = ([" (quoted reply chain trimmed)"] if msg["quoted_trimmed"] else []
              ) + ([f" (truncated at {msg['chars']} chars)"] if msg["truncated"]
                   else [])
-    # The ref again, even though the brief line that named this message
-    # already carried one. A body is read exactly when the answer is going to
-    # quote something out of it — the moment a citation is most worth having
-    # and the moment the brief line is furthest back in the context.
+    # The ref again: a body is read when the answer will quote it, and the brief line is then furthest back.
     ref = email_provider.cite(msg)
     tag = f"  [{ref}]" if ref else ""
     return _text(f"{msg['received'][:16]} {msg['from']} <{msg['from_addr']}>"
@@ -446,8 +341,7 @@ async def email_search(args: dict[str, Any]) -> dict[str, Any]:
     out = [head]
     for it, line in zip(items, body):
         out.append(line)
-        # The id rides on its own labelled line, for email_body only — the
-        # line above carries the ref, which is what gets cited.
+        # The id rides its own line, for email_body only; the line above carries the ref to cite.
         detail = f"    {it['summary']}" if it.get("summary") else "   "
         out.append(f"{detail} (email_body msg_id: {it['id']})")
     return _text("\n".join(out))
@@ -471,9 +365,7 @@ async def email_search(args: dict[str, Any]) -> dict[str, Any]:
                                 "about the thing before quoting it, and use a "
                                 "distinctive noun phrase rather than a "
                                 "question."],
-        # Not a choice made here: the archive 400s a query that names no
-        # subreddit, so "search all of Reddit" is not on offer. A model that
-        # believes otherwise burns a call finding out.
+        # The archive 400s a query naming no subreddit, so "search all of Reddit" isn't on offer.
         "subreddit": Annotated[str, "Which subreddit to search, with or "
                                     "without the `r/` ('onebag'). Required — "
                                     "there is no way to search across all of "
@@ -499,16 +391,10 @@ async def reddit_search(args: dict[str, Any]) -> dict[str, Any]:
 
     from .providers import reddit
     try:
-        # In a thread, unlike the cache reads around it: this one always goes
-        # to the network, with a 30s timeout and a retry behind it, and the
-        # same event loop is carrying the session's websocket.
+        # In a thread: always hits the network (30s timeout, retry) and the loop carries the session's websocket.
         hits = await _blocking(reddit.search, query, sub, days, limit)
     except reddit.ArchiveBusy:
-        # Its wording is "Timeout. Maybe slow down a bit", which reads as a
-        # rate limit and invites an immediate retry. Don't advise narrowing:
-        # the search is down, not slow on the term, so a narrower or reworded
-        # retry 422s just the same. Reaching
-        # here, the listing reddit.search falls back to refused as well.
+        # "Timeout. Maybe slow down a bit" reads as a rate limit and invites a retry. Don't advise narrowing: the search is down, so a narrower retry 422s too.
         return _err("the Reddit archive is refusing searches right now (it "
                     "was retried, and the newest-posts fallback refused too). "
                     "That is the archive, not your query: don't rerun it "
@@ -520,9 +406,7 @@ async def reddit_search(args: dict[str, Any]) -> dict[str, Any]:
 
     scan = hits.get("scan")
     if scan and not scan["complete"]:
-        # The archive's search was down and this is reddit._scan: the phrase
-        # matched in the newest few hundred posts, which can be a day of a
-        # big subreddit. Said in the header so it isn't reported as a search.
+        # Search was down; this is reddit._scan (newest few hundred posts, maybe a day of a big sub). Said in the header so it isn't reported as a search.
         head = (f"reddit search {query!r} in r/{sub}: the archive's search is "
                 f"down, so this matched the phrase in the newest "
                 f"{scan['posts']} posts only (back to {scan['back_to']}), not "
@@ -534,11 +418,8 @@ async def reddit_search(args: dict[str, Any]) -> dict[str, Any]:
                 f"({hits['count']} posts, newest first)")
     if not hits["data"]:
         return _text(f"{head}\n(nothing)")
-    # A title alone can't answer a research question and there is no second
-    # hop to make — the console has no fetch tool, and Reddit would 403 it —
-    # so each hit carries a snippet of its body and its permalink for the
-    # user to open. Capped here rather than at REDDIT_SELFTEXT_CHARS: 25 posts
-    # of 600 chars is a screenful of context spent on one read.
+    # A title can't answer research and there is no second hop (no fetch tool; Reddit 403s), so each hit carries a body snippet and permalink.
+    # Capped here: 25 posts of 600 chars is a screenful of context.
     out = [head]
     for it in hits["data"]:
         out.append(reddit.brief_line(it))
@@ -588,8 +469,7 @@ async def venue_search(args: dict[str, Any]) -> dict[str, Any]:
     except (TypeError, ValueError):
         return _err("radius_km and limit must be numbers")
     try:
-        # Network-bound (a resolve, a search, two matrix calls) on the same
-        # loop as the session's websocket — same reason as reddit_search.
+        # Network-bound, on the session websocket's loop: see reddit_search.
         hits = await _blocking(
             venues.search, query, (args.get("near") or "").strip() or None,
             radius_m=radius_m, open_now=bool(args.get("open_now")),
@@ -624,10 +504,8 @@ async def venue_details(args: dict[str, Any]) -> dict[str, Any]:
     return _text(venues.details_brief(d))
 
 
-# How long one db_query may run. Reads of app.db take milliseconds; the one
-# that didn't (a correlated subquery per message row over 65k rows) held its
-# call until the CLI gave up at 1,260s, the general tab's MCP
-# timeout, which is sized for use_computer jobs rather than reads.
+# db_query timeout. Reads take ms; one correlated subquery over 65k message rows held a call until the CLI gave up at 1,260s
+# (the general tab's MCP timeout, sized for use_computer).
 DB_QUERY_SECONDS = 30
 
 # FROM/JOIN targets in a statement, for _schema_hint. A CTE or a table-valued
@@ -636,13 +514,7 @@ _FROM_RE = re.compile(r"\b(?:from|join)\s+[\"`\[]?([A-Za-z_]\w*)", re.I)
 
 
 def _schema_hint(con: Any, sql: str, error: str) -> str:
-    """The real names after a wrong one, so the next call can be right.
-
-    The commonest db_query failure is a guessed name, nearly always `no such
-    column` (`list_items.text` for `name`, `messages.date` for `day`/`ts`),
-    and what comes next is a probe of the schema or another guess.
-    This puts the columns of every table the statement reads in the error,
-    and for a missing table the near names."""
+    """The real names after a wrong one: the columns of every table the statement reads, and near names for a missing table."""
     try:
         tables = [r[0] for r in con.execute(
             "SELECT name FROM sqlite_master WHERE type IN ('table', 'view')")]
@@ -687,15 +559,12 @@ async def db_query(args: dict[str, Any]) -> dict[str, Any]:
     if not sql:
         return _err("sql is required")
 
-    # The connection is opened read-only rather than trusting the statement:
-    # a URI with mode=ro makes SQLite itself refuse a write, so this does not
-    # depend on parsing SQL correctly the way the Bash allowlist has to.
+    # mode=ro makes SQLite itself refuse a write, instead of depending on SQL parsing as the Bash allowlist must.
     import sqlite3
     uri = f"file:{db.APP_DB}?mode=ro"
 
     def run() -> list[dict] | dict[str, Any]:
-        # Off the loop: a model-written query can scan every table, and the
-        # busy_timeout below can wait up to 5s on a writer.
+        # Off the loop: a model-written query can scan every table; busy_timeout waits up to 5s.
         try:
             con = sqlite3.connect(uri, uri=True, timeout=5)
         except sqlite3.Error as e:
@@ -738,12 +607,8 @@ async def db_query(args: dict[str, Any]) -> dict[str, Any]:
 async def calendar_ids(args: dict[str, Any]) -> dict[str, Any]:
     want = (args.get("name") or "").strip().lower()
     with db.session() as con:
-        # The calendar list, which the sync rewrites from calendarList on every
-        # pull, so a rename shows up here once and a calendar with nothing in
-        # the cached window is still listed. The DISTINCT over event rows
-        # behind it is the pre-first-sync fallback: right after the migration
-        # the table is empty, and answering "no matching calendar" then would
-        # send the model to `primary` for a calendar that exists.
+        # Rewritten from calendarList on each pull, so renames show and empty calendars are listed. The DISTINCT over events is the pre-first-sync
+        # fallback: an empty table would answer "no matching calendar" and send the model to `primary`.
         rows = con.execute(
             "SELECT calendar_id, name AS calendar_name FROM calendars"
             " ORDER BY name").fetchall()
@@ -902,9 +767,7 @@ async def contact_find(args: dict[str, Any]) -> dict[str, Any]:
         return _err(f"cannot read Contacts: {e}")
     if not hits:
         return _text(f'no Contacts card matches "{query}"')
-    # Capped like every other read here: a two-letter query matches hundreds
-    # of the 2000-odd cards, and the model only ever needs the one it asked
-    # about plus enough of the rest to see it picked the wrong person.
+    # Capped: a two-letter query matches hundreds of the 2000-odd cards; the model needs the one it asked about plus enough to see a wrong pick.
     shown = hits[:20]
     out = [f'{len(hits)} card(s) match "{query}"'
            + (f", first {len(shown)}" if len(shown) < len(hits) else "")]
@@ -915,32 +778,17 @@ async def contact_find(args: dict[str, Any]) -> dict[str, Any]:
 
 
 # ---------- files that arrived on a message ----------
-#
-# The gap this closes is a rendering one, and it cost a session its answer. A
-# file arrives as a message whose text is the placeholder the sync wrote for
-# it — "(photo)", "(contact card)" — and nothing else in that row says a file
-# exists, let alone what it was called. Session 18517f8d was asked to draft
-# messages to two people whose contact cards were sitting in `attachments`; it
-# read `messages`, saw one "(contact card)" and no names, and told the user the
-# second contact had never come through. Both had. The filenames alone —
-# "Linus Pryor.vcf", "Reese Morgan.vcf" — were the entire answer, and
-# they were one join away the whole time. It also split "Linus Pryor" into
-# two people, which naming the file would have settled too.
-#
-# Listing and opening are separate tools because they cost differently:
-# message_files is a join and spends nothing, file_read parses the bytes and
-# may bill a vision call. That is why only the first is auto-approved.
+# A file arrives as a message whose text is the sync's placeholder ("(photo)", "(contact card)"); nothing else says a file exists.
+# Listing (message_files, a free join) and opening (file_read, may bill vision) are separate tools: only the first is auto-approved.
 
-# Cached text short enough to hand back in the listing rather than making the
-# model spend a second call on it — a vCard is 150 bytes and *is* the answer.
+# Cached text short enough to return in the listing (a vCard is 150 bytes and is the answer).
 _FILE_TEXT_INLINE = 500
 
 _FILE_STATUS = {
     "missing": "the bytes aren't on this machine — iCloud-offloaded, or never "
                "downloaded. Opening that thread in Messages fetches it.",
     "too_big": "past the size limit extraction runs under.",
-    # Names what IS read: a bare "nothing reads that format" sends a session
-    # off on a `find /` for a file it can't open.
+    # Names what IS read: a bare "nothing reads that format" sends a session off on `find /`.
     "unsupported": "no reader for this format. What gets read: PDF, Word "
                    ".docx, plain text, images, contact cards, Wallet passes. "
                    "Video and audio carry no text, and an image that isn't "
@@ -984,9 +832,7 @@ async def message_files(args: dict[str, Any]) -> dict[str, Any]:
     except (TypeError, ValueError):
         return _err(f"limit must be a number, got {args.get('limit')!r}")
 
-    # Stickers and dyn.* are dropped on the same grounds the provider drops
-    # them: a tapback and a rich-link payload are not files anyone chose to
-    # send, and they outnumber the ones that are.
+    # Stickers and dyn.* are dropped as the provider drops them: not files anyone chose to send.
     sql = ["SELECT a.id, a.filename, a.mime, a.size_bytes,"
            " a.locator IS NOT NULL AS available,"
            " m.ts, m.contact_name, m.handle, m.is_from_me, m.text AS carrier,"
@@ -998,9 +844,7 @@ async def message_files(args: dict[str, Any]) -> dict[str, Any]:
            " AND COALESCE(a.mime,'') NOT LIKE 'dyn.%'"]
     params: list[Any] = []
     if who:
-        # chat_guid included so a `waiting`/`unanswered` widget's own field
-        # pastes in verbatim — that is the shape the model is holding when it
-        # asks what someone sent.
+        # chat_guid included so a widget's own field pastes in verbatim.
         sql.append(" AND (m.contact_name LIKE ? ESCAPE '\\'"
                    " OR m.handle LIKE ? ESCAPE '\\'"
                    " OR m.chat_guid LIKE ? ESCAPE '\\')")
@@ -1038,9 +882,7 @@ async def message_files(args: dict[str, Any]) -> dict[str, Any]:
                    f'{direction}  {r["filename"] or "(unnamed)"}  '
                    f'[{r["mime"] or "unknown type"}, '
                    f'{_file_size(r["size_bytes"])}]  {state}')
-        # The carrier's own text, when the user typed something rather than
-        # letting the placeholder stand — "here's the club president" is what
-        # says who the card is, and it lives on a different row than the file.
+        # The carrier's own text ("here's the club president") says who the card is; it is on a different row than the file.
         carrier = (r["carrier"] or "").strip()
         if carrier and not carrier.startswith("("):
             out.append(f'        sent with: {carrier[:160]}')
@@ -1097,9 +939,7 @@ async def task_create(args: dict[str, Any]) -> dict[str, Any]:
     "status='done' to complete one. Never UPDATE the tasks table directly.",
     _schema({
         "task_id": Annotated[int, "The task's id (from provider/db_query)."],
-        # Same story as email_body's `id`: a db_query row names the column
-        # `id`, and {"id": "130"} was refused by a required task_id 3 times
-        # in the Sep–Oct transcripts before the call ever ran.
+        # Same as email_body's `id`: a db_query row names it `id`, and {"id": "130"} was refused by a required task_id 3 times.
         "id": Annotated[int, "Same as task_id."],
         "status": Annotated[str, "open, done, dropped, waiting, or someday."],
         "due": Annotated[str, "New due date, YYYY-MM-DD, or YYYY-MM-DDTHH:MM "
@@ -1138,9 +978,7 @@ async def task_update(args: dict[str, Any]) -> dict[str, Any]:
 
 
 def _list_names() -> str:
-    """The existing list names, for the error that hands a wrong guess back.
-    A model that was told "add it to my packing list" cannot see the chips,
-    so the failure has to say what it could have meant."""
+    """The existing list names, for the error that answers a wrong guess."""
     names = [lst["name"] for lst in db.all_lists()]
     return ", ".join(names) if names else "(none yet)"
 
@@ -1274,9 +1112,7 @@ async def debt_add(args: dict[str, Any]) -> dict[str, Any]:
         amount = float(amount)
     except (TypeError, ValueError):
         return _err(f"amount must be a number, got {amount!r}")
-    # `direction` carries the sign, so a negative here would mean the opposite
-    # of what it reads like: an i_owe of -40 subtracts from what the user is
-    # owed. Zero is the missing-amount failure wearing a number.
+    # `direction` carries the sign, so a negative here inverts it; zero is the missing-amount failure.
     if amount <= 0:
         return _err("amount must be greater than zero — use direction=i_owe "
                     "for a debt the user owes, not a negative amount")
@@ -1488,11 +1324,8 @@ async def watchlist_watched(args: dict[str, Any]) -> dict[str, Any]:
                  f"{'watched' if row['watched'] else 'back on the list'}")
 
 
-# Expenses to claim back from Dad (app/expenses.py). A store behind a card
-# gets its writers on the day it is built, not after the session that
-# proves it needed them (see this module's docstring). A claim is money
-# between family, so it could plausibly land in debts. The descriptions say
-# which one it is.
+# Expenses to claim back from Dad (app/expenses.py): a store behind a card gets its writers when built. A claim is family money and could
+# land in debts, so the descriptions say which.
 
 def _expense_line(row: dict) -> str:
     part = (f" of a ${row['txn_amount']:.2f} charge"
@@ -1615,15 +1448,8 @@ async def expense_paid(args: dict[str, Any]) -> dict[str, Any]:
                  f"is {'paid' if b['paid_at'] else 'open again'}")
 
 
-# SYSTEM_APPEND points the model at habits ("mood/workout journaling moved to
-# habits"), so without a writer a spoken "I worked out today" has the task
-# board as its only door.
-#
-# Name in, not id: see db.find_habit. Deliberately no cadence/target/unit —
-# they are columns nothing reads (the widget's own create form takes a name and
-# every row is daily/1/NULL), and a `weekly` habit would render a daily streak
-# that misses six days out of seven. A parameter the model can set and the card
-# can't honour is worse than an absent one.
+# SYSTEM_APPEND points at habits, so a spoken "I worked out today" needs a writer. Name in, not id (db.find_habit).
+# No cadence/target/unit: nothing reads them, and a `weekly` habit would render a daily streak.
 
 @tool(
     "habit_checkin",
@@ -1667,12 +1493,7 @@ async def habit_checkin(args: dict[str, Any]) -> dict[str, Any]:
         date.fromisoformat(day)
     except ValueError:
         return _err(f"day must be YYYY-MM-DD, got {day!r}")
-    # A day past the day-key is nearly always the 4am rollover rather than a
-    # user naming a future date: between midnight and 4am the wall-clock date
-    # is one ahead of the day the card files under, so a model reaching for
-    # `date` lands a check on a day that hasn't started. Refusing it here with
-    # the day-key in the message is a one-turn fix; letting it through puts a
-    # check on the card that no streak counts.
+    # A day past the day-key is nearly always the 4am rollover, not a future date; refuse with the day-key (no streak counts that check).
     if day > today:
         return _err(
             f"{day} is ahead of today's day-key ({today}), so a check there "
@@ -1717,10 +1538,7 @@ async def habit_add(args: dict[str, Any]) -> dict[str, Any]:
     if not name:
         return _err("name is required — what the habit should be called")
 
-    # Archived habits keep their check-in history, so re-creating one by name
-    # would strand that history on a row nothing renders and restart the streak
-    # at zero. Resuming is the correct answer and the user can't tell the
-    # difference from the outside.
+    # Archived habits keep their check-in history: re-creating by name would strand it and restart the streak, so resume.
     existing = db.find_habit(name, include_archived=True)
     if existing is not None:
         if not existing["archived"]:
@@ -2214,15 +2032,8 @@ async def email_unschedule(args: dict[str, Any]) -> dict[str, Any]:
 
 
 # ---------- calendar writes ----------
-#
-# The claude.ai connector's calendar writers go needs-auth in every headless
-# session, so these go out through the backend's own Google token
-# (app/routes/calendar.py).
-#
-# Every one of them takes `match` as an alternative to `event_id`, and that is
-# the point rather than a convenience: the id is looked up in the cache instead
-# of being retyped from a read, which is the exact slip that once produced 18
-# consecutive 404s.
+# The claude.ai connector's calendar writers go needs-auth headless, so these use the backend's Google token (app/routes/calendar.py).
+# `match` stands in for `event_id`: the id comes from the cache, not retyped (once 18 consecutive 404s).
 
 
 @tool(
@@ -2497,8 +2308,7 @@ async def event_rsvp(args: dict[str, Any]) -> dict[str, Any]:
 
 
 def _as_int(value: Any) -> int | None:
-    """A count that may arrive as "6" — same reflex as `_as_list`, and the
-    schema says integer, so a refusal here would only cost a turn."""
+    """A count that may arrive as "6" (like `_as_list`); a refusal would only cost a turn."""
     if value is None or (isinstance(value, str) and not value.strip()):
         return None
     try:
@@ -2508,13 +2318,7 @@ def _as_int(value: Any) -> int | None:
 
 
 def _repeats(out: dict[str, Any]) -> str:
-    """The repeat half of a calendar write's report.
-
-    A series is the one write whose result the model cannot see the whole of:
-    "created it" is equally true of a rule that fired once and of one that
-    filled the autumn, so the answer says which — and an open-ended rule says
-    that in words, since silence there reads as "it ends somewhere".
-    """
+    """The repeat half of a calendar write's report; an open-ended rule says so in words."""
     rule = (out.get("recurrence") or "").replace("RRULE:", "")
     if not rule:
         return ""
@@ -2528,10 +2332,7 @@ def _repeats(out: dict[str, Any]) -> str:
 
 
 def _as_list(value: Any) -> list[str]:
-    """One identifier or several. The schema asks for an array, but a model
-    that has just been told "add this number" reaches for the bare value often
-    enough that rejecting it would only cost a turn — and a phone number
-    arriving as a JSON number rather than a string is the same slip."""
+    """One identifier or several: accepts a bare value or a number where the schema asks for an array of strings."""
     if value is None:
         return []
     if not isinstance(value, (list, tuple, set)):
@@ -2540,9 +2341,7 @@ def _as_list(value: Any) -> list[str]:
 
 
 def _contact_failure(e: Exception) -> str:
-    """Contacts writes go out through osascript, so the usual failure is not a
-    bad argument but Automation permission never granted to whichever binary
-    launched uvicorn — which surfaces as an opaque osascript error."""
+    """The usual contacts failure is Automation permission never granted to whichever binary launched uvicorn."""
     msg = str(e)
     if "-1743" in msg or "not allowed" in msg.lower():
         return (f"{msg} — macOS is refusing Automation access to Contacts. "
@@ -2552,10 +2351,7 @@ def _contact_failure(e: Exception) -> str:
 
 
 def _resync_identities() -> None:
-    """contact_identities is a cache of the AddressBook files, refreshed on
-    each messages sync. Refreshing it here means the CRM shows the new name
-    without waiting for the next poll — best-effort, since the sync engine
-    writes those files on its own schedule and may not have caught up yet."""
+    """Refresh the contact_identities cache so the CRM shows a new name now. Best-effort: the sync may not have caught up."""
     try:
         from .providers import messages as messages_provider
         with db.session() as con:
@@ -2567,16 +2363,9 @@ def _resync_identities() -> None:
 
 SERVER_NAME = "vault"
 
-# The split is the security boundary, so it is made once, here, by which list a
-# tool is written into — not by a second list of names kept alongside. Reads are
-# auto-approved; every writer arrives as a card the user taps.
+# Reads auto-approve; every writer arrives as a card. The split is made by which list a tool is written into.
 # ---------- courses ----------
-#
-# Office-hours amendments arrive by mail and announcement — "2pm this week,
-# not 1pm", "no hours Thursday" — and the retyping is what leaves the card
-# stale. The console could reach the note with plain Edit; what these add is
-# the schema: a weekly `when` the card can place, a date that resolves, and
-# the right person's block picked before it's overwritten.
+# Office-hours amendments arrive by mail ("2pm this week, not 1pm"); these add the schema Edit lacks: a weekly `when`, a date that resolves, the right person's block.
 
 _WHEN_HELP = ("A weekly time, as 'Tue 13:00-14:00'. Several days share one "
               "entry: 'Mon, Wed 09:00-10:30'. 24-hour clock.")
@@ -2662,9 +2451,7 @@ async def course_except(args: dict[str, Any]) -> dict[str, Any]:
 async def course_set(args: dict[str, Any]) -> dict[str, Any]:
     from . import courses
     value = args.get("value")
-    # Not schema-required, so a missing one comes back as prose the model can
-    # act on rather than a rejection it can't read — and blanking a syllabus
-    # fact stays something you have to ask for.
+    # Not schema-required: a missing one returns prose the model can act on, and blanking a syllabus fact stays something you must ask for.
     if value is None or str(value).strip() == "":
         return _err("pass the new value; there's no way to clear a field here")
     try:
@@ -2674,15 +2461,11 @@ async def course_set(args: dict[str, Any]) -> dict[str, Any]:
 
 
 # ---------- study mode ----------
-#
-# Tutoring is the console's heaviest use, and it had no idea where in the term
+# Tutoring is the console's heaviest use; it lacked the term position and past misses (app/study.py).
 # the material sat or what the user had already got wrong (app/study.py).
 
-# The console session a tool call belongs to. console.py sets it to the
-# socket's SessionState before `client.connect()`; the SDK's reader task is
-# created inside connect() and copies the context, so the in-process tool
-# handlers it dispatches see the same object — and its `announced_id` once the
-# CLI has named the session. None outside the console (tests, scripts).
+# The session a tool call belongs to: console.py sets it before `client.connect()`; the SDK reader task copies the context, so handlers see it
+# (and `announced_id` once named). None outside the console.
 SESSION: ContextVar[Any] = ContextVar("console_session", default=None)
 
 
@@ -2692,24 +2475,32 @@ def _session_id() -> str | None:
 
 # ---------- handoff between tabs ----------
 
-# open_tab's model before this session's list has come in (session_models).
-FALLBACK_MODELS = ("sonnet", "opus", "haiku", "fable")
-
-
 def _tab_model(state: Any, mode: str, model: str, effort: str) -> tuple[str | None, str | None, str | None]:
-    """open_tab's `model` and `effort`, checked against the CLI's own list
-    (console.session_models, on the session state): (model, effort, None),
-    or (None, None, why) naming what's valid. Empty means the profile's own."""
-    from .config import DEFAULT_MODEL, DEV_MODEL, EFFORT_LEVELS
+    """open_tab's `model` / `effort` checked against the session's CLI list, else the live catalog:
+    (model, effort, None) or (None, None, why). A tier is a valid name; a model the account may not
+    run is refused naming those it may; empty means the mode's own."""
+    from .config import EFFORT_LEVELS
     listed = [m for m in getattr(state, "models", None) or []
               if m.get("value") and m["value"] != "default"]
     model, effort = model.strip().lower(), effort.strip().lower()
+    def family(name: str) -> str:
+        return model_catalog.family_of(model_catalog.resolve(name).model or name)
+
     if model:
-        names = [m["value"] for m in listed] or list(FALLBACK_MODELS)
-        if model not in names:
-            return None, None, f"no model '{model}'; this session's are: {', '.join(names)}"
+        names = ([m["value"] for m in listed]
+                 or [n for n in model_catalog.claude_names() if n not in model_catalog.TIERS])
+        if model not in names and model not in model_catalog.TIERS:
+            return None, None, (f"no model '{model}'; this session's are: "
+                                f"{', '.join([*model_catalog.TIERS, *names])}")
+        refused = model_catalog.blocked()
+        if family(model) in refused:
+            ok = [n for n in names if family(n) not in refused and not n.startswith("claude-")]
+            return None, None, (f"{model} isn't available on the Claude account in use "
+                                f"({refused[family(model)]}); pick one of: {', '.join(ok)}")
     if effort:
-        key = model or (DEV_MODEL if mode == "dev" else DEFAULT_MODEL)
+        key = model or model_catalog.mode_default(mode)
+        if key in model_catalog.TIERS:
+            key = family(key)
         row = next((m for m in listed if m["value"] == key), None)
         levels = list(row["efforts"]) if row else list(EFFORT_LEVELS)
         if not levels:
@@ -2976,12 +2767,14 @@ DELEGATE_TOTAL_CHARS = 30_000
 
 
 def _variant_line(v: dict) -> str:
-    who = v["provider"] + (f" · {v['model']}" if v.get("model") else "")
+    who = v["provider"] + (f" · {v['model']}" if v.get("model") else "") \
+        + (f" · account {v['account']}" if v.get("account") else "")
     if v["status"] != "ok":
         return f"variant {v['variant']} ({who}): FAILED: {v['error']}"
     secs = f"{(v.get('duration_ms') or 0) / 1000:.0f}s"
     angle = f" · angle: {v['angle']}" if v.get("angle") else ""
-    return f"variant {v['variant']} ({who}, {secs}{angle}): {v['file']}"
+    cut = f" CUT OFF ({v['cut_off']}; it may be unfinished)" if v.get("cut_off") else ""
+    return f"variant {v['variant']} ({who}, {secs}{angle}): {v['file']}{cut}"
 
 
 def _variant_text(v: dict, room: int) -> str:
@@ -2998,29 +2791,58 @@ def _redacted(found: list[str]) -> str:
             "The agent saw placeholders; put the real values back yourself.") if found else ""
 
 
+PURPOSE_ARG = ("boilerplate, refactor (mechanical), tests (scaffolding), format, "
+               "public-research, variants (throwaway) or image. Nothing else may go.")
+WORK_FOR_ARG = "personal, learning (self-study, not coursework) or commercial (any business's or client's work)."
+
+
+def _send(args: dict[str, Any]):
+    """The gate's inputs (delegates.runs.Send): the work, whose it is, which tab."""
+    from .delegates import boundary, runs
+    state = SESSION.get()
+    project = getattr(state, "project", None)
+    return runs.Send(
+        purpose=str(args.get("purpose") or "").strip().lower(),
+        work_for=str(args.get("work_for") or "").strip().lower(),
+        origin=boundary.Origin(getattr(state, "profile", None),
+                               project.name if project else None))
+
+
 @tool(
     "delegate",
-    "Send Gemini or ChatGPT on one self-contained errand to save Claude usage: "
-    "grunt work, a draft, a second opinion. It sees only the brief, so no "
-    "personal details in it (identifiers are stripped anyway). Returns its "
-    "reply; an error names what to install or sign into.",
+    "Send Gemini (Antigravity) or ChatGPT on one self-contained errand to save Claude usage: "
+    "grunt work, a draft of something generic, an image (prefer antigravity, artifact x.png; "
+    "also for very long public documents). Never school work (essays, homework), anything "
+    "personal, or a project's own ideas, features or design: keep those yourself; the gate "
+    "refuses them. Returns its reply; an error names what to install or sign into.",
     _schema({
-        "provider": Annotated[str, "gemini or codex."],
+        "provider": Annotated[str, "antigravity (Gemini) or codex (ChatGPT)."],
         "brief": Annotated[str, "The whole task, written to stand alone."],
+        "purpose": Annotated[str, PURPOSE_ARG],
+        "work_for": Annotated[str, WORK_FOR_ARG],
         "artifact": Annotated[str, "File name for the result, e.g. notes.md, hero.html. Default result.md."],
         "model": Annotated[str, "That provider's model id; omit for its default."],
-    }, ("provider", "brief")),
+    }, ("provider", "brief", "purpose", "work_for")),
 )
 async def delegate(args: dict[str, Any]) -> dict[str, Any]:
     from .delegates import boundary, runs
+    provider = str(args.get("provider") or "").strip().lower()
+    model, notes = (args.get("model") or "").strip() or None, []
+    if provider in model_catalog.OUTSIDE:
+        # Checked against the provider's live list; empty: Settings' default.
+        chosen, why = model_catalog.outside_pick(provider, model)
+        if chosen is None:
+            return _err(why)
+        model, notes = chosen.model, chosen.notes
     try:
         out = await runs.delegate(
-            str(args.get("provider") or "").strip().lower(), str(args.get("brief") or ""),
-            artifact=args.get("artifact"), model=(args.get("model") or "").strip() or None,
-            session_id=_session_id())
+            provider, str(args.get("brief") or ""),
+            artifact=args.get("artifact"), model=model,
+            session_id=_session_id(), send=_send(args))
     except (runs.DelegateError, boundary.BoundaryError) as e:
         return _err(str(e))
-    head = _variant_line(out) + _redacted(out["redactions"])
+    head = (_variant_line(out) + (f"\nRan {out['via']}." if out.get("via") else "")
+            + _redacted(out["redactions"]) + "".join(f"\nModel: {n}." for n in notes))
     if out["status"] != "ok":
         return _err(head)
     extra = f"\nAlso wrote: {', '.join(out['files'])}" if out.get("files") else ""
@@ -3031,12 +2853,14 @@ async def delegate(args: dict[str, Any]) -> dict[str, Any]:
     "fan_out",
     "\"Make N versions\": one self-contained task run as independent variants "
     "across Claude and the other ready providers, all returned for you to "
-    "judge. The task is all they see (delegate's rule). Then call shortlist "
-    "with the best few.",
+    "judge. delegate's rule holds: with others in the mix, only that kind of work. "
+    "Then call shortlist with the best few.",
     _schema({
         "task": Annotated[str, "The whole task, written to stand alone."],
+        "purpose": Annotated[str, PURPOSE_ARG + " Not needed when mix is all claude."],
+        "work_for": Annotated[str, WORK_FOR_ARG],
         "n": Annotated[int, "How many variants (default 3, at most 8). Ignored with mix."],
-        "mix": Annotated[list[str], "Who makes each one, e.g. ['claude','gemini','gemini','codex']. "
+        "mix": Annotated[list[str], "Who makes each one, e.g. ['claude','antigravity','antigravity','codex']. "
                                     "Omit and the ready providers take turns."],
         "angles": Annotated[list[str], "Optional direction per variant, in order "
                                        "('editorial serif', 'dense and technical'), so they differ on purpose."],
@@ -3045,14 +2869,23 @@ async def delegate(args: dict[str, Any]) -> dict[str, Any]:
     }, ("task",)),
 )
 async def fan_out(args: dict[str, Any]) -> dict[str, Any]:
+    from .config import DEFAULT_MODEL
     from .delegates import boundary, runs
+    asked = (args.get("claude_model") or "").strip().lower()
+    names = model_catalog.claude_names()
+    if asked and model_catalog.family_of(asked) not in names:
+        return _err(f"no Claude model '{asked}'; use one of: "
+                    + ", ".join(n for n in names if not n.startswith("claude-")))
+    # Claude on a model this account may run; each outside provider on its Settings default.
+    claude = model_catalog.pick(asked or DEFAULT_MODEL)
+    outside = {p: c.model for p in model_catalog.OUTSIDE
+               if (c := model_catalog.outside_pick(p, None)[0]) is not None}
     try:
         out = await runs.fan_out(
             str(args.get("task") or ""), n=_as_int(args.get("n")),
             mix=_as_list(args.get("mix")) or None, angles=_as_list(args.get("angles")) or None,
-            artifact=args.get("artifact"),
-            claude_model=(args.get("claude_model") or "").strip().lower() or None,
-            session_id=_session_id())
+            artifact=args.get("artifact"), claude_model=claude.model,
+            session_id=_session_id(), models=outside, send=_send(args))
     except (runs.DelegateError, boundary.BoundaryError) as e:
         return _err(str(e))
     made = [v for v in out["variants"] if v["status"] == "ok"]
@@ -3941,19 +3774,12 @@ READ_TOOLS = [provider, email_body, email_search, email_scheduled,
               event_zone, free_time, chat_search, contact_find, message_files, brain_read,
               course_context, course_review, study_coverage, doc_pages,
               food_search, food_day, food_suggest, project_info,
-              # Not a read either, but nothing to approve: opening a tab is
-              # apply-then-review — the tab is on screen, and closing it is
-              # the undo. Closing one is the same bargain: it only closes
-              # idle tabs, and the session stays resumable.
+              # Not reads, but apply-then-review: the tab is on screen and closing it is the undo.
               open_tab, tabs, message_tab,
-              # Other models (app/delegates): same bargain. What leaves is a
-              # scrubbed brief, logged, and the card would be asked on every
-              # errand Claude was told to hand off.
+              # Other models: what leaves is a scrubbed, logged brief; a card per errand would be noise.
               delegate, fan_out, shortlist,
-              # The look (app/looks.py): colour roles only, contrast-checked,
-              # and undone by picking another colour in the Look lab. It is a
-              # change all the same (console_changes records it), so the
-              # window reloads its colours and the turn's summary names it.
+              # The look: colour roles only, contrast-checked, undone in the Look lab;
+              # still recorded in console_changes.
               theme_set]
 # Tools that act on the window or the world, so not bridged into run_script.
 ACTING_TOOLS = [open_tab, tabs, message_tab, delegate, fan_out, shortlist, theme_set]
@@ -3974,10 +3800,7 @@ WRITE_TOOLS = [task_create, task_update, list_add, list_create, list_item_done,
                brain_note, brain_verdict, brain_page,
                food_log, food_entry, food_create, food_fix, food_close,
                food_weigh, food_profile,
-               # Not a write. file_read is on this list because the vision
-               # path spends money and parses bytes a stranger sent, and the
-               # card is where that gets consented to — the split is "what
-               # needs a tap", and mutation is only the usual reason.
+               # Not a write: file_read needs a tap because the vision path spends money on a stranger's bytes.
                file_read]
 
 # Code Mode (console_code, New Features #73): the reads above as functions in

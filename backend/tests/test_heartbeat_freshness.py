@@ -1,10 +1,7 @@
-"""heartbeat.record() — the stale/freshened half of the event log.
+"""heartbeat.record(): the stale/freshened half of the event log.
 
-`broke`/`recovered` read the refresh *outcome*, which cannot see a source that
-keeps refreshing successfully while its cache stops advancing. Location can
-do exactly that: ingest stops for days, OwnTracks' store-and-forward flushes
-the backlog, and `provider_events` for location is empty afterwards — a real
-multi-day outage with no trace left. These pin the trace.
+`broke`/`recovered` can't see a source that refreshes OK while its cache stops advancing (location ingest gaps).
+Design: DESIGN.md → Source status (`/api/status`), "stale".
 """
 
 from datetime import timedelta
@@ -17,8 +14,7 @@ from app.providers import heartbeat
 
 @pytest.fixture
 def health_db(dbfile, monkeypatch, frozen_day):
-    """Temp DB plus a FRESHNESS rule for a fake source, so these assert about
-    their own provider rather than whichever real one happens to be behind."""
+    """Temp DB plus a FRESHNESS rule for a fake source."""
     monkeypatch.setitem(heartbeat.FRESHNESS, "fake", ("weather_days", "day", 2))
     return dbfile
 
@@ -40,8 +36,7 @@ def _day_offset(days: int) -> str:
 
 
 def test_a_cache_that_stops_advancing_logs_stale(health_db):
-    """The whole point: the refresh succeeds every cycle, so ok is True and
-    nothing else in the system would write a row."""
+    """The refresh succeeds every cycle (ok is True), yet a stale row is written."""
     _seed_day(_day_offset(5))
     heartbeat.record("fake", ok=True)
 
@@ -58,8 +53,7 @@ def test_a_current_cache_logs_nothing(health_db):
 
 
 def test_stale_is_logged_once_not_every_cycle(health_db):
-    """A source behind all week must not write a row per 5-minute poll — the
-    same transitions-only discipline `broke` already has."""
+    """Transitions only: a source behind all week writes one row, not one per poll."""
     _seed_day(_day_offset(5))
     for _ in range(4):
         heartbeat.record("fake", ok=True)
@@ -77,8 +71,7 @@ def test_catching_up_logs_freshened(health_db):
 
 
 def test_going_stale_again_logs_again(health_db):
-    """Transitions, not a latch: the second episode is its own row, which is
-    what makes a recurring gap visible as recurring."""
+    """Not a latch: a second episode is its own row."""
     _seed_day(_day_offset(5))
     heartbeat.record("fake", ok=True)
     _seed_day(db.day_key())
@@ -91,8 +84,7 @@ def test_going_stale_again_logs_again(health_db):
 
 
 def test_a_failing_refresh_does_not_also_log_stale(health_db):
-    """While a source is down, `broke` already says so — a stale row next to
-    it is the same news twice, and the panel ranks broken worse anyway."""
+    """No stale row while the source is broken (`broke` already says so)."""
     _seed_day(_day_offset(5))
     heartbeat.record("fake", ok=False, error="boom")
 
@@ -102,24 +94,21 @@ def test_a_failing_refresh_does_not_also_log_stale(health_db):
 
 
 def test_an_empty_cache_is_not_called_stale(health_db):
-    """Never-synced and gone-stale are different states, and an empty cache
-    with no rows cannot tell you which — so it says neither."""
+    """An empty cache says neither never-synced nor stale."""
     heartbeat.record("fake", ok=True)
 
     assert _kinds() == []
 
 
 def test_a_provider_with_no_freshness_rule_is_left_alone(dbfile):
-    """screen/messages/location carry reachability their cache can't show, so
-    their own health() hook owns the verdict."""
+    """screen/messages/location own their verdict through their health() hook."""
     heartbeat.record("unruled", ok=True)
 
     assert _kinds("unruled") == []
 
 
 def test_a_future_dated_cache_is_not_stale(health_db):
-    """Weather and calendar cache days ahead of today; being early is not late
-    (age_days clamps, and this pins that it stays clamped here)."""
+    """Weather and calendar cache ahead of today: early is not late (age_days clamps)."""
     from datetime import date
     ahead = (date.fromisoformat(db.day_key()) + timedelta(days=6)).isoformat()
     _seed_day(ahead)

@@ -1,9 +1,6 @@
-"""GET /api/status — the source status panel's one endpoint.
+"""GET /api/status: a refresh that succeeds while writing nothing must not read ok, a never-configured source must not read broken, a benign skip note must not read as failure.
 
-The cases worth pinning are the ones the panel exists for: a refresh that
-*succeeds* while writing nothing must not read as ok, a never-configured
-source must not read as broken, and a benign skip note must not read as a
-failure (news says "already fetched today" every day of its life).
+Design: DESIGN.md → `tests/test_status.py`.
 """
 
 import json
@@ -24,15 +21,9 @@ def _ok_infra():
 
 @pytest.fixture
 def status_client(router_client, monkeypatch):
-    """Status routes over the temp DB with a one-provider registry, so a test
-    asserts about its own fake source rather than the live twelve. Auth lookups
-    are stubbed off by default (no token rows in a temp app.db anyway).
+    """Status routes over the temp DB with a one-provider registry; auth lookups stubbed off.
 
-    `_infra` is stubbed healthy for the same reason the registry is. It reads
-    the real VAULT_PATH and the real data/app.db, neither of which exists in a
-    fresh checkout, so leaving it live makes `counts` and `worst` depend on the
-    machine the suite runs on — green here, two extra broken rows in a bare
-    worktree or on CI. Tests that care about infra pass their own rows.
+    `_infra` is stubbed healthy: live, it reads the real VAULT_PATH and app.db, so `counts` and `worst` would depend on the machine. Tests that care pass their own rows.
     """
     def build(registry, auth=None, infra=None):
         monkeypatch.setattr(status_routes, "REGISTRY", registry)
@@ -67,8 +58,7 @@ def _seed_days(table, day, n=1):
 
 
 def test_empty_cache_is_stale_even_when_the_refresh_succeeded(status_client, monkeypatch):
-    """The failure mode the panel is for: chat.db unreadable, aw-server down —
-    refresh() returns cleanly, writes nothing, and every other signal is green."""
+    """chat.db unreadable or aw-server down: refresh() returns cleanly, writes nothing, everything else is green."""
     monkeypatch.setitem(heartbeat.FRESHNESS, "stub", ("stub_days", "day", 1))
     heartbeat.record("stub", ok=True, info={}, duration_ms=5)
     row = _source(status_client({"stub": _mod()}))
@@ -130,8 +120,7 @@ def test_recovery_clears_the_failure_streak(status_client, monkeypatch):
 
 
 def test_benign_skip_note_does_not_break_the_source(status_client, monkeypatch):
-    """news skips because it already fetched today. That's a note, not a fault
-    — there's no generic way to read a skip as failure, so it must not try."""
+    """news skips because it already fetched today: a note, not a fault (no generic way to read a skip as failure)."""
     monkeypatch.setitem(heartbeat.FRESHNESS, "stub", ("stub_days", "day", 1))
     _seed_days("stub_days", db.day_key())
     heartbeat.record("stub", ok=True, info={"skipped": "already fetched today"})
@@ -152,8 +141,7 @@ def test_unreachable_host_note_marks_partial_data_stale(status_client, monkeypat
 
 
 def test_provider_probe_can_condemn_a_current_cache(status_client, monkeypatch):
-    """messages' case: the cache looks fine because it synced before Full Disk
-    Access was lost. The probe is the only thing that knows."""
+    """messages: the cache looks fine because it synced before Full Disk Access was lost; only the probe knows."""
     monkeypatch.setitem(heartbeat.FRESHNESS, "stub", ("stub_days", "day", 1))
     _seed_days("stub_days", db.day_key())
     heartbeat.record("stub", ok=True, info={})
@@ -164,8 +152,7 @@ def test_provider_probe_can_condemn_a_current_cache(status_client, monkeypatch):
 
 
 def test_probe_off_state_is_not_a_failure(status_client, monkeypatch):
-    """An unconfigured source is grey, never red — the whole reason `off`
-    exists is that a panel which cries wolf stops being read."""
+    """An unconfigured source is grey, never red."""
     mod = _mod(health=lambda: {"state": "off", "detail": "no AW_HOSTS configured"})
     row = _source(status_client({"stub": mod}))
     assert row["state"] == "off"
@@ -195,10 +182,7 @@ def test_worst_first_ordering_and_counts(status_client, monkeypatch):
 
 
 def test_infra_is_counted_and_ranked_with_the_sources(status_client):
-    """The vault and app.db break the same way a provider does, so a broken
-    one has to reach `worst` and `counts` even when every source is fine —
-    this is what the ordering test used to assert by accident, off whatever
-    the machine's real vault happened to be doing."""
+    """The vault and app.db break like a provider, so a broken one reaches `worst` and `counts` even when every source is fine."""
     body = status_client(
         {"fine": _mod(health=lambda: {"state": "ok", "detail": "up"})},
         infra=[{"name": "vault", "state": "broken", "detail": "gone"},
@@ -214,8 +198,7 @@ def test_heartbeat_info_is_stored_as_json(dbfile):
     assert json.loads(heartbeat.rows()["stub"]["info"]) == {"days": ["2026-07-25"]}
 
 
-# provider_health is overwritten every cycle, so anything that broke and then
-# healed is invisible in it. The log is the only durable record.
+# provider_health is overwritten every cycle; the log is the only durable record of a break that healed.
 
 def test_breaking_and_recovering_both_land_in_the_log(dbfile):
     heartbeat.record("stub", ok=True)
@@ -233,8 +216,7 @@ def test_a_source_down_all_night_logs_once_not_every_cycle(dbfile):
 
 
 def test_a_changed_error_while_still_down_is_worth_a_row(dbfile):
-    """"429 became invalid_grant" is the useful detail — a rate limit that
-    turned into dead auth is a different problem needing a different fix."""
+    """"429 became invalid_grant" is the useful detail: a rate limit turned into dead auth needs a different fix."""
     heartbeat.record("stub", ok=False, error="429")
     heartbeat.record("stub", ok=False, error="429")
     heartbeat.record("stub", ok=False, error="invalid_grant")
@@ -242,8 +224,7 @@ def test_a_changed_error_while_still_down_is_worth_a_row(dbfile):
 
 
 def test_swallowed_substep_failures_are_logged_without_a_health_row(dbfile):
-    """The gap this closes: a Plaid leg 500s, refresh() catches it and returns
-    success, so provider_health says ok. Only the log knows."""
+    """A Plaid leg 500s, refresh() catches it and returns success, so provider_health says ok; only the log knows."""
     heartbeat.log_event("finance", "degraded", "liabilities: boom")
     heartbeat.record("finance", ok=True)
     assert heartbeat.rows()["finance"]["ok"] == 1

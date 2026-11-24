@@ -1,20 +1,9 @@
-"""Dashboard OAuth connect flow — the browser face of providers/oauth.py.
+"""Dashboard OAuth connect flow: the browser face of providers/oauth.py.
 
-Testing-mode Google apps expire refresh tokens after ~7 days (DESIGN.md), so
-re-auth is routine; this turns it into a Connect button instead of a terminal
-session. First-ever auth for an account still goes through the CLI (it needs
-the downloaded client_secret_*.json); the button reuses the client creds the
-CLI stored in the token row.
-
-Flow: POST /start hands back a Google consent URL bound to our own callback
-route (Desktop-app clients allow any 127.0.0.1 port/path implicitly) and, for
-UI callers, opens it in the system browser (open_browser — the frontend can't,
-see browser.py); Google redirects to GET /callback on the backend origin,
-which exchanges the code and stores tokens; the frontend polls GET
-/api/status (routes/status.py) until the account flips to authorized.
-
-Security: same model as the rest of the app — localhost-only. Token values
-never leave the backend, and the callback renders plain confirmation HTML.
+First auth per account stays on the CLI (needs the client JSON); the Connect button reuses
+the stored client creds. POST /start returns the consent URL (open_browser: the frontend
+can't, see browser.py), GET /callback exchanges the code, and the frontend polls /api/status.
+Token values never leave the backend. Design: DESIGN.md → OAuth and Plaid credentials.
 """
 
 import time
@@ -36,17 +25,13 @@ router = APIRouter(prefix="/api/oauth")
 
 REDIRECT_URI = f"http://127.0.0.1:{BACKEND_PORT}/api/oauth/callback"
 
-# state -> in-flight attempt (verifier, account, client creds). In-memory is
-# fine: single user, and a dead entry just means clicking Connect again.
+# state -> in-flight attempt (verifier, account, client creds); in-memory is fine (click Connect again).
 _pending: dict[str, dict] = {}
 PENDING_TTL = 600  # seconds
 
 
-# Which Google address each linked surface belongs to. Google's web apps key
-# off `authuser=<address>`, so without this every ↗ opens under whichever
-# account happens to be first in the browser's session — usually the wrong one.
-# Resolved from the APIs we already hold scopes for (Gmail profile, calendar
-# primary id), cached for the process: it only changes if you re-authorize.
+# Google address per linked surface, for `authuser=` on outbound links (else ↗ opens under the browser's
+# first account). Resolved from Gmail profile / calendar primary id; cached for the process.
 _addresses: dict[str, str | None] = {}
 
 
@@ -80,8 +65,7 @@ def oauth_addresses():
 class StartIn(BaseModel):
     account: str
     provider: str = "google"
-    # The frontend can't open the consent tab itself in the desktop shell
-    # (browser.py), so it asks us to. Off by default: the CLI opens its own.
+    # The desktop shell can't open the consent tab (browser.py), so the frontend asks us to; the CLI opens its own.
     open_browser: bool = False
 
 
@@ -106,8 +90,7 @@ def oauth_start(body: StartIn):
     _pending[state] = {"provider": body.provider, "account": body.account,
                        "client_id": client_id, "client_secret": client_secret,
                        "scopes": scopes, "verifier": verifier, "at": now}
-    # Last, and only once the attempt is recorded: the callback can land the
-    # moment the browser has the URL, and it needs to find `state` waiting.
+    # Last: the callback can land the moment the browser has the URL and needs `state` recorded.
     if body.open_browser:
         open_in_browser(url)
     return {"url": url, "account": body.account}

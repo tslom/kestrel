@@ -3,11 +3,9 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 
-// The live terminal of a computer-use job (backend: console_terminal.py), shown
-// in Claude's view. Only a screen: keys go down the socket and bytes come back.
-// It exists because the CLI's "allow this app?" prompt can only be answered
-// there, and it's the user who answers it. The socket attaches to a job that's
-// already running; it can't start one.
+// The live terminal of a computer-use job (backend console_terminal.py), in Claude's view: only a screen
+// (keys down the socket, bytes back). The CLI's "allow this app?" prompt can only be answered here, by
+// the user. The socket attaches to a running job; it can't start one.
 
 const encoder = new TextEncoder();
 

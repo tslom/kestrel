@@ -1,8 +1,4 @@
-"""Energy is computed from `health_days`; the provider read only tops it up.
-
-A lapsed Google login must not 502 the whole series for as long as the account
-stays disconnected, with the days it needs sitting in the cache.
-"""
+"""Energy is computed from `health_days`; a lapsed Google login must not 502 the series."""
 
 from app import db, trends
 from app.providers import health, oauth, ranges

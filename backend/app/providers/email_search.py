@@ -1,20 +1,7 @@
-"""Finding a message again — the reason review files anything.
-
-Two tiers. Locally, an FTS5 index (`email_fts`) over what app.db already
-holds for every cached message: subject, sender, the model's summary, its
-filing label, and `terms` — the order numbers, amounts, people and dates the
-summarizer pulled out of the body. That covers "the Lyft ride in September"
-and "order 124057035" without a body ever being stored. Past the
-cache, Gmail's own search, which does read bodies: its hits are fetched as
-metadata and written into `emails`, so the backfill summarizes them and the
-next search finds them locally.
-
-`email_fts` is derived and droppable. Rather than being kept in step by every
-writer — the summarizer, both sync paths, the action route, undo — it is
-rebuilt whole whenever a signature over the tables it reads stops matching
-(`ensure_index`). A rebuild of the ~1,200 cached messages is tens of
-milliseconds and runs only when a search does, so one cheap rule replaces a
-hook in five places that each could be forgotten.
+"""Finding a message again: local FTS5 (`email_fts`, derived and droppable) over cached
+subject, sender, summary, label and `terms`, then Gmail's own search for what the cache
+lacks (hits are cached as metadata). Never stores bodies.
+Design: DESIGN.md → §5 Email.
 """
 
 import re
@@ -62,10 +49,7 @@ _WORD = re.compile(r"[\w$.#@'-]+", re.U)
 
 
 def fts_query(text: str) -> str | None:
-    """Free text -> an FTS5 MATCH expression: every word must appear, each
-    quoted (so `c++`, `#1240` or `AND` can't be read as syntax) and each a
-    prefix — a half-typed word already matches, and "receipt" finds
-    "receipts" without a stemmer (see the migration for why there isn't one)."""
+    """Free text -> FTS5 MATCH: every word required, quoted (`c++`, `AND` aren't syntax), each a prefix (no stemmer)."""
     words = [w.strip(".'-#@$") for w in _WORD.findall(text or "")]
     words = [w for w in words if w]
     if not words:
@@ -109,9 +93,7 @@ def local(con, text: str, *, label: str | None = None, since: str | None = None,
                + " ORDER BY e.received_at DESC LIMIT ?")
         return [_card(r) for r in con.execute(sql, [*args, limit])]
     ensure_index(con)
-    # bm25 column weights follow the fts5() column order: msg_id, subject,
-    # sender, summary, terms, label. A subject or an extracted term hit is a
-    # far stronger signal than a word the summary happened to use.
+    # bm25 weights follow the fts5() column order (msg_id, subject, sender, summary, terms, label)
     sql = (_CARD.replace(" FROM emails e",
                          " FROM email_fts f JOIN emails e ON e.msg_id = f.msg_id")
            + " WHERE email_fts MATCH ?"

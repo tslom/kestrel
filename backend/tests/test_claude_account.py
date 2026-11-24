@@ -1,8 +1,7 @@
 """Settings → Claude account (app/claude_account.py).
 
-Every test runs a fake `claude`: nothing here may reach the real login. What's
-worth pinning is what crosses into a response (named fields only), the argv the
-email lands on, and one sign-in at a time that can be cancelled.
+Fake `claude` throughout. Pins response fields (named only), the argv the email
+lands on, and one cancellable sign-in at a time.
 """
 
 import json

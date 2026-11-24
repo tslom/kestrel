@@ -1,21 +1,7 @@
-"""People / CRM-lite. Not a provider: no range/metric
-axis, no refresh() — `people` holds the only real facts (birthday,
-watch_cadence_days, notes) and is NOT droppable (see db.py's v19 migration
-comment). Everything else here is a live merge over emails/messages/events,
-which stay the sources of truth for contact history — nothing about contact
-activity is cached in `people` itself.
-
-PATCH /api/people/{person_key} upserts name/birthday/watch_cadence_days/notes
-(dashboard widget uses this) — it's the same upsert shown below, just done
-from the UI instead of by hand:
-    INSERT INTO people (person_key, name, watch_cadence_days, created_at, updated_at)
-    VALUES ('grandma@example.com', 'Grandma', 42, datetime('now'), datetime('now'))
-    ON CONFLICT(person_key) DO UPDATE SET
-      watch_cadence_days=excluded.watch_cadence_days, updated_at=excluded.updated_at;
-
-Birthdays come from scripts/import_birthdays.py (AddressBook, rerunnable),
-not synced live — the dashboard can edit an imported birthday but doesn't
-re-run the import.
+"""People / CRM-lite router (not a provider). `people` holds the only real
+facts (birthday, cadence, notes) and is NOT droppable; contact activity is a
+live merge over emails/messages/events, never cached here. Birthdays come from
+scripts/import_birthdays.py. Design: DESIGN.md → §17 People.
 """
 
 import sys
@@ -44,11 +30,9 @@ class PersonPatch(BaseModel):
 UNANSWERED_DAYS = 3          # outbound email/message with no reply -> "waiting"
 WAITING_MAX_DAYS = 30        # past this it's a finished conversation, not a todo
 BIRTHDAY_LOOKAHEAD_DAYS = 7
-HISTORY_LIMIT = 200          # per source, in the person-detail view — plenty for a lifetime of one contact
+HISTORY_LIMIT = 200          # per source, in the person-detail view
 
-DRAFT_CONTEXT_MESSAGES = 20  # recent turns handed to the drafter — enough to
-                             # catch what's being answered without shipping a
-                             # year of someone's texts to a model
+DRAFT_CONTEXT_MESSAGES = 20  # recent turns sent to the drafter model
 DRAFT_COUNT = 3              # candidate replies per request
 
 
@@ -69,14 +53,8 @@ def _last_msg_at(con, ids: list[str]) -> str | None:
 
 
 def _derived_name(con, person_key: str) -> str | None:
-    """Fallback display name for a key with no people.name set — the contact
-    name Messages/Mail already resolved from macOS Contacts (most recent wins).
-    Lets a texted-but-not-CRM'd person show as 'Iris Hale' in the detail
-    view instead of a bare phone number.
-
-    AddressBook first: it's the authoritative card, and it's keyed by the
-    identity cluster, so it still resolves for a person whose key is one
-    identifier but whose messages arrived on another."""
+    """Fallback display name when people.name is unset: AddressBook cluster first
+    (resolves across identifiers), then the newest message/email contact name."""
     row = con.execute(
         "SELECT name FROM contact_identities"
         " WHERE (cluster_key=? OR identifier=?) AND name IS NOT NULL AND name != ''"
@@ -97,9 +75,7 @@ def _derived_name(con, person_key: str) -> str | None:
 
 
 def _last_event_at(con, name: str | None) -> str | None:
-    """Best-effort: the events table has no attendee list, so this is a
-    substring match on summary/location against the person's name, not a
-    real RSVP join."""
+    """Best-effort: no attendee list, so substring-match the name on summary/location."""
     if not name:
         return None
     like = db.like_contains(name)
@@ -110,8 +86,7 @@ def _last_event_at(con, name: str | None) -> str | None:
     return row["d"]
 
 
-# CRM fields the user actually owns — used to pick/merge the canonical row
-# when a cluster collapses several `people` rows into one person.
+# User-owned CRM fields; they pick/merge the canonical row of a cluster.
 _CRM_FIELDS = ("name", "birthday", "notes", "watch_cadence_days")
 
 
@@ -127,13 +102,9 @@ def _merge(con, p: dict, index=None) -> dict:
 
 
 def _merge_batch(con, people: list[dict]) -> list[dict]:
-    """Batched _merge() for listing many people at once (_all(),
-    brief_signals()) — one GROUP BY scan each over emails/messages instead
-    of _merge()'s 2 queries per person (~2N scans across all people).
-    _last_event_at can't be grouped (LIKE match against each person's name),
-    so that part stays per-person. Each person's activity is aggregated over
-    its cluster identifiers (`_ids`, attached by the caller); absent that it
-    falls back to the bare person_key."""
+    """Batched _merge(): one GROUP BY scan per table instead of 2 queries per
+    person. Events stay per-person (LIKE on name). Aggregates over the
+    caller-attached `_ids` (popped), else the bare person_key."""
     email_max: dict[str, str] = {}
     for r in con.execute(
             "SELECT LOWER(from_addr) AS a, MAX(received_at) AS t FROM emails"
@@ -160,11 +131,8 @@ def _merge_batch(con, people: list[dict]) -> list[dict]:
 
 
 def _merge_people_rows(rows: list[dict]) -> dict:
-    """Collapse several `people` rows for the same human (a card keyed by email
-    AND a row captured under a phone) into one. Canonical = the row carrying
-    the most CRM signal (name/birthday/notes/cadence), newest-updated as the
-    tiebreak; its person_key stays the clickable identity. Gaps are then filled
-    from the other rows so no user-entered datum is lost in the merge."""
+    """Collapse `people` rows for one human: canonical = most CRM fields set
+    (newest-updated breaks ties), gaps filled from the others so nothing user-entered is lost."""
     if len(rows) == 1:
         return dict(rows[0])
     canon = dict(sorted(
@@ -181,10 +149,8 @@ def _merge_people_rows(rows: list[dict]) -> dict:
 
 
 def _cluster_merge(con, rows: list[dict]) -> list[dict]:
-    """Collapse `people` rows sharing a contact cluster into one person each,
-    then batch-fill activity aggregated over the cluster's identifiers. Rows
-    with no cluster stay their own person (bare key). Shared by _all() and
-    search so both present unified people, not per-identifier fragments."""
+    """Collapse rows sharing a contact cluster, then batch-fill cluster-wide
+    activity. Rows with no cluster stay their own person."""
     id_to_cluster, cluster_ids = _identity_index(con)
     groups: dict[str, list[dict]] = {}
     for p in rows:
@@ -232,12 +198,8 @@ def search_people(q: str):
 
 
 def _waiting_email(con) -> list[dict]:
-    """Threads whose most recent message is outbound (is_sent) and older
-    than UNANSWERED_DAYS — the email equivalent of messages.py's
-    'unanswered' metric. Scans whatever's cached (email.py backfills cold
-    days on demand, doesn't retain a rolling window on its own), so a
-    thread gone cold outside the sync range just won't surface here —
-    best effort, same posture as messages.py's contact_name lookup."""
+    """Threads whose latest message is outbound and older than UNANSWERED_DAYS.
+    Best effort: only sees cached days, so a thread cold outside them won't surface."""
     rows = con.execute(
         "SELECT e.thread_id, e.to_addr, e.subject, e.received_at, e.is_sent"
         " FROM emails e"
@@ -266,17 +228,10 @@ def _waiting_email(con) -> list[dict]:
 
 
 def waiting_on() -> list[dict]:
-    """Outbound email threads + iMessage chats with no reply — the console
-    drafts 'waiting' tasks from this feed; nothing here auto-creates
-    (decided in archive/ROUND34_PLAN.md).
-
-    Three ways a row leaves this feed, deliberately kept separate:
-      - **muted** (`people.hidden`) — the sender is a bot or someone you don't
-        care about. Permanent, applies to everything they ever send.
-      - **dismissed** (`waiting_dismissed`) — this particular dangling thread
-        doesn't need a reply. The person stays; only the current last message
-        is written off, so a new one brings them back on its own.
-      - **aged out** (`WAITING_MAX_DAYS`) — see below.
+    """Outbound email threads + iMessage chats with no reply; suggestions only,
+    nothing auto-creates tasks. A row leaves the feed three separate ways:
+    muted (`people.hidden`, permanent), dismissed (`waiting_dismissed`, only
+    that last message), or aged out (`WAITING_MAX_DAYS`).
     """
     with db.session() as con:
         hidden = {r["person_key"] for r in con.execute(
@@ -287,31 +242,22 @@ def waiting_on() -> list[dict]:
     for m in providers.get("messages", "today", "unanswered")["data"]:
         out.append({
             "kind": "message", "chat_guid": m["chat_guid"],
-            # person_key is the identity cluster the provider collapsed the
-            # person's threads by — muting them mutes every thread at once.
+            # person_key is the identity cluster: muting it mutes every thread.
             "to": m.get("contact_name") or m["handle"],
             "key": m.get("person_key") or m["handle"],
             "last_at": m["last_ts"], "days": round(m["hours"] / 24, 1),
-            # what they actually said. Email rows have no equivalent: those
-            # are threads *you* sent last, so there's no message owed a reply.
+            # Email rows have none: you sent last.
             "preview": m.get("text") or "",
         })
-    # Drop muted spam/automated senders — normalize each key the same way
-    # person rows are keyed so an email/phone match lands.
+    # Key normalized like person rows so email/phone matches land.
     out = [w for w in out
            if (normalize_handle(w.get("key") or "") or (w.get("key") or "").lower())
            not in hidden]
-    # Drop threads dismissed as "nothing to reply to" — but only while the
-    # dismissed message is still their latest. A newer last_at means they
-    # wrote again, which un-dismisses the row without any action from you.
+    # A newer last_at un-dismisses the row.
     out = [w for w in out
            if not (t := dismissed.get((w["kind"], w.get("key"))))
            or w["last_at"] > t]
-    # Past the ceiling this stops being "you owe a reply" and becomes "that
-    # conversation ended" — a friend's three-month-old 'chillin' isn't a
-    # todo, and those rows sat permanently at the top because the feed sorts
-    # by longest silence. Aged out, not dismissed: nothing to undo, and a new
-    # message starts the clock over on its own.
+    # Aged out, not dismissed: nothing to undo; a new message restarts the clock.
     out = [w for w in out if w["days"] <= WAITING_MAX_DAYS]
     out.sort(key=lambda d: -d["days"])
     return out
@@ -361,7 +307,7 @@ def delete_dismiss(kind: str, key: str):
 class Reminder(BaseModel):
     kind: str
     key: str
-    last_at: str            # the message being replied to — see source_ref below
+    last_at: str            # the message being replied to; keys source_ref
     name: str | None = None  # display name, so the task doesn't read "+12025550123"
     preview: str | None = None
     subject: str | None = None  # email rows have a subject where texts have a preview
@@ -391,9 +337,7 @@ def post_remind(body: Reminder):
         due=db.day_key(),
         source="ui", source_kind="waiting", source_ref=ref,
         source_excerpt=excerpt[:500] if excerpt else None,
-        # The waiting row is the whole context: who, and what they said. Put
-        # it in the note so the task still means something in tasks.md, away
-        # from the People panel it was created in.
+        # Self-contained note: the task must read on its own in tasks.md.
         note=f"{body.kind} from {who} on {body.last_at[:10]}"
              + (f": {excerpt}" if excerpt else ""),
         owed_to=who)
@@ -429,8 +373,7 @@ def get_dismissed():
         rows = con.execute(
             "SELECT kind, key, through_ts, created_at FROM waiting_dismissed"
             " ORDER BY created_at DESC").fetchall()
-        # The table stores only the key it was dismissed by, so a phone-keyed
-        # row reads as a bare number — useless for deciding whether to undo.
+        # Keys are bare numbers/emails; resolve a name so the user can decide to undo.
         out = [dict(r) | {"name": _derived_name(con, r["key"]) or r["key"]}
                for r in rows]
     return {"data": out}
@@ -442,9 +385,7 @@ def get_hidden():
     with db.session() as con:
         rows = con.execute(
             "SELECT person_key, name FROM people WHERE hidden=1 ORDER BY name").fetchall()
-        # people.name is only set for CRM'd contacts; muting is mostly aimed
-        # at people you never made a card for, so fall back the same way the
-        # detail view does rather than printing the raw key.
+        # people.name is set only for CRM'd contacts; fall back like the detail view.
         out = [{"key": r["person_key"],
                 "name": r["name"] or _derived_name(con, r["person_key"])
                 or r["person_key"]} for r in rows]
@@ -461,24 +402,14 @@ def get_signals():
 
 # ---------- conversations (group-chat / per-chat rollup) ----------
 #
-# The People views above are keyed per-handle (one person). This is the other
-# axis:
-# every chat_guid as its own conversation, so group chats — which fan a
-# single thread across many
-# handles — finally show up as one row instead of dissolving into their
-# members. Everything here rolls up the `messages` cache alone; chat.db's
-# custom group names aren't cached, so a group is labeled by its participants
-# (e.g. "Alice, Bob +2") rather than a nickname like "Family 👨‍👩‍👧".
+# Per-chat_guid axis (the views above are per person), so a group chat is one row.
 
 CONVERSATION_LIMIT = 100          # conversations listed, most-recent-active first
 CONVERSATION_HISTORY_LIMIT = 200  # messages shown in one conversation's detail
 
 
 def _is_group_guid(chat_guid: str | None, sender_count: int) -> bool:
-    """Group if Messages' guid carries the group marker (the `;+;` segment;
-    1:1 chats use `;-;`) OR we've seen more than one distinct sender. The guid
-    marker catches quiet groups where only one member ever spoke; the sender
-    count is the fallback for any guid that doesn't follow the convention."""
+    """Group if the guid has `;+;` (1:1 uses `;-;`; catches quiet groups) or there are >1 senders."""
     if chat_guid and ";+;" in chat_guid:
         return True
     return sender_count > 1
@@ -486,8 +417,7 @@ def _is_group_guid(chat_guid: str | None, sender_count: int) -> bool:
 
 def _conversation_label(is_group: bool, participants: list[dict],
                         chat_guid: str | None) -> str:
-    # dedupe by display name, order-preserving: one person on two handles
-    # (a phone + an email) is one participant, not "Felix, …, Felix".
+    # Dedupe by name (order kept): one person on two handles is one participant.
     names: list[str] = []
     for p in participants:
         n = p["name"] or p["handle"]
@@ -504,15 +434,11 @@ def _conversation_label(is_group: bool, participants: list[dict],
 
 
 def conversations(con, guids: set[str] | None = None) -> list[dict]:
-    """One row per chat_guid, most-recently-active first. Participants are the
-    distinct non-me senders (busiest first, so the label leads with the people
-    who actually talk). last_* describe the newest message so the list reads
-    like an inbox.
+    """One row per chat_guid, newest-active first; participants are non-me
+    senders, busiest first; last_* describe the newest message.
 
-    `guids` scopes the scan to named chats and lifts CONVERSATION_LIMIT. The
-    detail view can be opened on a chat older than the newest 100 (a person's
-    history links straight to it), and capping there handed the UI messages
-    with no header at all."""
+    `guids` scopes the scan and lifts CONVERSATION_LIMIT: the detail view can
+    open a chat older than the cap and needs its header."""
     if guids is not None:
         if not guids:
             return []
@@ -541,8 +467,7 @@ def conversations(con, guids: set[str] | None = None) -> list[dict]:
             "  WHERE chat_guid IS NOT NULL" + scope + " GROUP BY chat_guid"
             " ) l ON l.chat_guid=m.chat_guid AND l.max_ts=m.ts", args):
         last.setdefault(r["chat_guid"], r)  # tie on max(ts): keep first
-    # chat.db metadata cache (providers/messages.py _sync_chats): a real custom
-    # group name + the authoritative group flag, when the chat has been synced.
+    # Custom group name + authoritative group flag (messages._sync_chats).
     meta = {r["chat_guid"]: r for r in con.execute(
         "SELECT chat_guid, display_name, is_group FROM chats"
         + (f" WHERE chat_guid IN ({','.join('?' * len(args))})" if scope else ""),
@@ -551,8 +476,7 @@ def conversations(con, guids: set[str] | None = None) -> list[dict]:
     for guid, tot in totals.items():
         plist = parts.get(guid, [])
         m = meta.get(guid)
-        # Prefer chat.db's style flag; fall back to the guid/sender heuristic
-        # for chats not in the cache yet (older rows, cache dropped).
+        # Fallback heuristic for chats not in the cache.
         is_group = bool(m["is_group"]) if m else _is_group_guid(guid, len(plist))
         custom_name = m["display_name"] if m else None
         lm = last.get(guid)
@@ -567,9 +491,7 @@ def conversations(con, guids: set[str] | None = None) -> list[dict]:
             "last_from_me": bool(lm["is_from_me"]) if lm else False,
             "last_sender": (lm["contact_name"] or lm["handle"])
                            if lm and not lm["is_from_me"] else None,
-            # a 1:1 chat is really one person — hand the UI the key so it can
-            # drill straight into the existing person detail instead of a
-            # thin single-handle "conversation".
+            # 1:1: the UI drills into person detail with this key.
             "person_key": plist[0]["handle"] if not is_group and plist else None,
         })
     out.sort(key=lambda c: c["last_ts"] or "", reverse=True)
@@ -584,12 +506,8 @@ def _conversation_messages(con, chat_guid: str) -> list[dict]:
 
 
 def _labels_for_chats(con, chat_guids: set[str]) -> dict[str, dict]:
-    """{chat_guid: {is_group, label}} for a specific set of chats — used to
-    tag a person's messages with which conversation each came from (a 1:1 vs a
-    named group). Same labeling rules as conversations() (custom chat.db name
-    wins, unnamed groups fall back to a participant list), but scoped to just
-    these guids rather than the recency-capped global list, so even a person's
-    old group chats resolve."""
+    """{chat_guid: {is_group, label}} for these chats, same labeling as
+    conversations() but not recency-capped, so old group chats resolve."""
     if not chat_guids:
         return {}
     guids = list(chat_guids)
@@ -640,9 +558,8 @@ def _mmdd(birthday: str | None) -> str | None:
 
 
 def brief_signals(day: str) -> dict:
-    """Birthdays within BIRTHDAY_LOOKAHEAD_DAYS and contacts past their
-    watch cadence — suggestions only for the brief, never auto-tasks
-    (decided in archive/ROUND34_PLAN.md)."""
+    """Birthdays within BIRTHDAY_LOOKAHEAD_DAYS and contacts past their watch
+    cadence; suggestions only, never auto-tasks."""
     today = date.fromisoformat(day)
     with db.session() as con:
         people = [dict(r) for r in con.execute("SELECT * FROM people WHERE hidden=0")]
@@ -681,10 +598,8 @@ def brief_signals(day: str) -> dict:
 
 
 def _identity_index(con) -> tuple[dict[str, str], dict[str, list[str]]]:
-    """(identifier -> cluster_key, cluster_key -> [identifiers]) from the
-    contact_identities cache (providers/messages.py sync_identities). Empty
-    maps if the cache is missing/unpopulated, in which case callers fall back
-    to the bare key — i.e. today's un-unified behavior, never an error."""
+    """(identifier -> cluster_key, cluster_key -> [identifiers]) from contact_identities.
+    Empty if the cache is missing; callers then use the bare key."""
     id_to_cluster: dict[str, str] = {}
     cluster_ids: dict[str, list[str]] = {}
     try:
@@ -699,10 +614,8 @@ def _identity_index(con) -> tuple[dict[str, str], dict[str, list[str]]]:
 
 def _identifiers_for(key: str, id_to_cluster: dict[str, str],
                      cluster_ids: dict[str, list[str]]) -> list[str]:
-    """Every identifier belonging to the same person as `key`. Driven only by
-    the AddressBook cluster (a shared Contacts card / shared identifier), never
-    by name, so two different people who share a name are never merged. Falls
-    back to just `key` when it isn't in any cluster (not a saved contact)."""
+    """Every identifier of the same person as `key`, by AddressBook cluster only
+    (never by name); just `key` if unclustered."""
     cluster = id_to_cluster.get(key)
     ids = set(cluster_ids.get(cluster, [])) if cluster else set()
     ids.add(key)
@@ -710,16 +623,11 @@ def _identifiers_for(key: str, id_to_cluster: dict[str, str],
 
 
 def _imessage_handle(identifiers: list[str], messages: list[dict]) -> str | None:
-    """The identifier to hand `imessage:` so Messages opens THIS person's
-    thread, or None if there's nothing addressable.
+    """The identifier for `imessage:`, or None if nothing is addressable.
 
-    Prefers a phone number, since that's what a 1:1 iMessage/SMS thread is
-    almost always keyed by, and re-expands it to E.164 (+1…) — `messages`
-    stores handles normalized to the last 10 digits, which Messages won't
-    resolve on its own. Falls back to an Apple-ID email. Ordering is by
-    who you've actually texted: an identifier that appears in the message
-    history beats one that only exists on the Contacts card, so a number
-    they've never messaged from doesn't win over the one they use."""
+    Phone first, re-expanded to +1 E.164 (stored handles are 10 digits, which
+    Messages won't resolve), then email. Identifiers seen in message history
+    beat card-only ones."""
     texted = {m["handle"] for m in messages if m.get("handle")}
     phones = sorted((i for i in identifiers if i.isdigit() and len(i) == 10),
                     key=lambda i: (i not in texted, i))
@@ -748,8 +656,7 @@ def post_open_messages(person_key: str):
     handle = _imessage_handle(handles, messages)
     if not handle:
         raise HTTPException(404, f"no phone or email on file for {key}")
-    # List form, no shell: the handle is DB-derived, but it reaches an OS
-    # launcher, so it stays an argv element and never a command string.
+    # The DB-derived handle reaches an OS launcher: argv element, never a command string.
     try:
         macos.open_url(f"imessage://{handle}")
     except RuntimeError as e:
@@ -758,11 +665,8 @@ def post_open_messages(person_key: str):
 
 
 def _person_identity(con, key: str) -> tuple[list[str], list[str]]:
-    """All (message-handles, email-addresses) that belong to this one person,
-    so a CRM row keyed by a single identifier (say an email) still surfaces the
-    texts they send from a phone and vice-versa. Identifiers are the same set
-    for both message and email lookups — a phone simply never matches an email
-    column and vice-versa, so one union list serves both."""
+    """(message handles, email addrs) of one person; both are the same union list
+    (a phone never matches an email column)."""
     id_to_cluster, cluster_ids = _identity_index(con)
     ids = _identifiers_for(key, id_to_cluster, cluster_ids)
     return ids, ids
@@ -788,10 +692,7 @@ def _messages_for(con, handles: list[str]) -> list[dict]:
 
 
 def _meetings_for(con, name: str | None) -> list[dict]:
-    """Same best-effort substring match as _last_event_at, just returning
-    every row instead of only the most recent — 'meetings we've had' is
-    calendar events whose summary/location mentions the person's name (no
-    attendee list is cached, so this is the closest available signal)."""
+    """Every event matched like _last_event_at (name substring; no attendee list)."""
     if not name:
         return []
     like = db.like_contains(name)
@@ -815,20 +716,14 @@ def get_person(person_key: str):
         row = con.execute("SELECT * FROM people WHERE person_key=?", (key,)).fetchone()
         person = dict(row) if row else {"person_key": key, "name": None, "birthday": None,
                                          "watch_cadence_days": None, "notes": None}
-        # No CRM name yet? Fall back to the Contacts name Messages/Mail resolved,
-        # so the header reads "Iris" not "2025550166" (also sharpens the
-        # meeting match below, which keys off the name).
+        # Also feeds the meeting match below, which keys off the name.
         if not person.get("name"):
             person["name"] = _derived_name(con, key)
-        # Unify identifiers: a CRM row keyed by one email/number still shows the
-        # texts sent from the person's other handles (search opens people by
-        # their CRM key, which often isn't the phone their messages live under).
+        # The CRM key often isn't the handle the messages live under.
         handles, addrs = _person_identity(con, key)
         emails = _emails_for(con, addrs)
         messages = _messages_for(con, handles)
-        # Tag each message with the conversation it came from (a 1:1 vs a named
-        # group chat) — this person's own texts span every chat they're in, so
-        # a group message is theirs but said in front of others.
+        # Tag each message with its conversation: their texts span every chat they're in.
         labels = _labels_for_chats(con, {m["chat_guid"] for m in messages if m["chat_guid"]})
         for m in messages:
             info = labels.get(m["chat_guid"])
@@ -842,9 +737,7 @@ def get_person(person_key: str):
         "emails": emails,
         "messages": messages,
         "meetings": meetings,
-        # What POST /open-messages would hand to Messages.app, or null when
-        # there's nothing addressable — lets the UI hide the button instead of
-        # offering one that 404s.
+        # What /open-messages would open; null lets the UI hide the button.
         "message_handle": _imessage_handle(handles, messages),
         "stats": {
             "email_count": len(emails),
@@ -871,7 +764,7 @@ def patch_person(person_key: str, body: PersonPatch):
         existing = dict(row) if row else {}
         merged = {k: fields.get(k, existing.get(k))
                   for k in ("name", "birthday", "watch_cadence_days", "notes", "crew")}
-        # hidden and day_one are NOT NULL; coalesce a never-set stub to 0
+        # NOT NULL columns: coalesce a never-set stub to 0
         hidden = int(bool(fields.get("hidden", existing.get("hidden", 0))))
         day_one = int(bool(fields.get("day_one", existing.get("day_one", 0))))
         with con:

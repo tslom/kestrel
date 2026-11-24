@@ -5,23 +5,17 @@ import { useTicker } from "../lib/poll.js";
 import { broadcastRefresh, useWidgetData } from "../lib/refresh.js";
 import { prSummary, prTone } from "../lib/prWatch.js";
 
-// A dev tab's own row of the bar: the repo's .kestrel/project.json scripts
-// (backend: app/console_project.py) and the PR it watches (lib/prWatch.js).
-// Keyed by project and worktree by the console, so a new tree loads fresh.
-//
-// Scripts run in the tab's worktree on the tree's own port. A click starts
-// one, a click on a running one stops it. Their output is in the view pane's
-// Tasks (the "runs" event); "preview" opens the pane on the tree's
-// previewUrl, and autoOpenPreview does that by itself once a script this tab
-// started has a server listening there.
+// A dev tab's row: the repo's .kestrel/project.json scripts (app/console_project.py) and its watched PR
+// (lib/prWatch.js); keyed by project and worktree. Scripts run in the worktree on its own port (click
+// starts/stops; output in the view pane's Tasks via the "runs" event); "preview" opens the pane on
+// previewUrl, and autoOpenPreview does so once a script this tab started is listening.
 
 const ICON = { run: "play", test: "flask", lint: "sparkle", build: "hammer" };
 const enc = encodeURIComponent;
 
 export default function ProjectBar({ project, worktree, emit, prw, menu = false, parts = "both", onDone }) {
   const url = `/api/console/project?project=${enc(project)}${worktree ? `&worktree=${enc(worktree)}` : ""}`;
-  // Runs alive at first load were started before this mounted: their server
-  // coming up isn't something this tab asked to see.
+  // Runs alive at first load predate this mount: their server coming up isn't an ask.
   const known = useRef(null);
   const opened = useRef(new Set());
   const [err, setErr] = useState(null);
@@ -41,8 +35,7 @@ export default function ProjectBar({ project, worktree, emit, prw, menu = false,
   const topic = `project-runs:${(worktree || project).replace(/\s/g, "_")}`;
   const { data, reload } = useWidgetData(() => fetchJSON(url).then(publish), topic);
   const running = (data?.runs || []).filter((r) => r.running);
-  // Fast while a server is on its way up, slower once it's serving: the
-  // output in Tasks still moves, and an exit still shows.
+  // Fast while a server comes up, slower once serving.
   useTicker(reload, running.length ? (data.listening ? 10000 : 2000) : null);
 
   if (!data || (!data.config && !data.error && !prw?.pr && !prw?.error)) return null;

@@ -1,23 +1,9 @@
 """Expenses claimed back from Dad: mark them, send a spreadsheet, see it paid.
 
-Three steps, each one a table (schema and why in db.py's migration):
-
-  * **Mark.** An expense is a claim, not a transaction. It can come off a bank
-    charge (whole or in part) or be typed in by hand for cash and Venmo. It
-    snapshots what it was made from, so the Plaid cache stays droppable.
-  * **Send.** Export writes the waiting rows to an .xlsx and stamps them with
-    a batch. A sent row is frozen from then on, because it has to keep
-    matching the file Dad has. The same export records every posted
-    transaction as reviewed, which is where the Money sheet draws its
-    "reviewed through here" line.
-  * **Paid.** A batch is paid when the money arrives. `_wire_for` suggests the
-    deposit that looks like it, but only you mark it paid. A coincidental
-    $200 transfer that closed a $200 batch on its own would be a silent wrong
-    answer about money.
-
-The backend writes the file into EXPENSES_DIR (~/Downloads) instead of the page
-downloading it: the desktop shell's webview has downloads switched off, and
-this way the browser and the app behave the same.
+Tables in app.db (schema in db.py's migration). A claim snapshots its source
+charge so the Plaid cache stays droppable; a sent row is frozen to match the
+file Dad has; only the user marks a batch paid (`_wire_for` just suggests).
+Design: DESIGN.md → `app/expenses.py`.
 """
 
 from datetime import date, datetime
@@ -32,10 +18,8 @@ from .providers import ranges
 
 router = APIRouter(prefix="/api/expenses")
 
-# How close a deposit has to be to a batch's total to be suggested as its
-# payment: a dollar, or 2% on a big batch. That leaves room for a rounded-up
-# transfer or a wire fee, and is still tight enough that the weekly $40
-# allowance doesn't look like every small batch's payment.
+# Deposit-vs-batch-total slack for suggesting a payment: $1 or 2%. Tight enough
+# that the weekly $40 allowance doesn't match small batches.
 _WIRE_SLACK_ABS = 1.00
 _WIRE_SLACK_PCT = 0.02
 
@@ -52,9 +36,7 @@ def _money(v) -> float:
 
 
 def pretty_category(c: str | None) -> str | None:
-    """Plaid's FOOD_AND_DRINK as Food and drink. Mirrors prettyCategory in
-    MoneySheet.jsx, so a claimed row starts out named the way its charge
-    already reads on screen."""
+    """Plaid's FOOD_AND_DRINK as Food and drink. Mirrors prettyCategory in MoneySheet.jsx."""
     if not c:
         return None
     words = c.replace("_", " ").lower()
@@ -143,16 +125,13 @@ def add(transaction_id: str | None = None, amount: float | None = None,
 
 
 def follow_posted(con, posted: list[dict]) -> int:
-    """Move claims made on pending charges onto the charges that replaced
-    them. Called by finance's sync with Plaid's raw `added` rows, inside the
-    same write transaction that stores them. Returns how many moved.
+    """Move claims on pending charges onto the charges that replaced them.
+    Called by finance's sync with Plaid's raw `added` rows, inside its write
+    transaction. Returns how many moved.
 
-    What moves with the claim depends on whether it was sent. An unsent
-    claim takes the posted day and amount. A claim for the whole charge
-    follows the new total, and a partial one keeps its amount, capped at the
-    new total. A sent claim keeps its amount and day because they're in the
-    spreadsheet already. A different final amount is recorded in
-    `posted_amount` for the card to flag."""
+    Unsent: takes the posted day; a whole-charge claim follows the new total, a
+    partial keeps its amount capped at it. Sent: keeps amount and day (they're
+    in the spreadsheet); a different final amount goes in `posted_amount`."""
     moved = 0
     now = _now()
     for t in posted:
@@ -161,8 +140,7 @@ def follow_posted(con, posted: list[dict]) -> int:
             continue
         row = con.execute("SELECT * FROM expenses WHERE transaction_id=?",
                           (old,)).fetchone()
-        # The posted id already claimed would trip the UNIQUE constraint, and
-        # this runs inside the sync's write: it must never be what fails it.
+        # Posted id already claimed would trip UNIQUE inside the sync's write.
         if row is None or con.execute(
                 "SELECT 1 FROM expenses WHERE transaction_id=?",
                 (t["transaction_id"],)).fetchone():
@@ -226,9 +204,7 @@ def remove(expense_id: int) -> dict:
 # ---------- review ----------
 
 def mark_reviewed(con) -> int:
-    """Record every posted charge as looked at. Pending ones are skipped:
-    they get a new id when they post, and that new id is what needs looking
-    at."""
+    """Record every posted charge as looked at. Pending ones are skipped (new id on posting)."""
     return con.execute(
         "INSERT OR IGNORE INTO expense_reviewed (transaction_id, reviewed_at)"
         " SELECT transaction_id, ? FROM fin_transactions WHERE pending=0",
@@ -339,10 +315,8 @@ def export() -> dict:
     """Write every waiting expense to a spreadsheet, then stamp them sent and
     move the reviewed line up.
 
-    The file is written first and the stamping happens after. A failed write
-    therefore leaves nothing marked sent that Dad never got, and a failed
-    stamp deletes the file, so the next export doesn't send the same rows
-    twice under two names."""
+    File first, stamping after: a failed write marks nothing sent, and a
+    failed stamp deletes the file (no duplicate under a second name)."""
     with db.session() as con:
         rows = [dict(r) for r in con.execute(
             "SELECT * FROM expenses WHERE batch_id IS NULL ORDER BY day, id")]
@@ -403,9 +377,7 @@ def reveal(batch_id: int) -> str:
 # ---------- paid ----------
 
 def _inflows(con):
-    """Money that came in on a bank account, newest first. A credit card's
-    payment shows up as an inflow on the card, and it is never a transfer
-    from Dad."""
+    """Money in on a bank account, newest first. Credit-card payments are excluded (never from Dad)."""
     return con.execute(
         "SELECT t.transaction_id, t.day, t.name, t.merchant, -t.amount AS amount"
         " FROM fin_transactions t"
@@ -465,13 +437,9 @@ def set_paid(batch_id: int, paid: bool = True,
 # ---------- read ----------
 
 def _pending_state(con, rows: list[dict]) -> None:
-    """Tag each row claimed while pending: `pending` while its charge is
-    still waiting to post, `vanished` once the charge is gone without a
-    posted replacement (a hold that was released, a cancelled order).
-    Every other row gets None.
-
-    An empty fin_transactions means the cache was dropped, not that every
-    charge was cancelled, so nothing is called vanished then."""
+    """Tag rows claimed while pending: `pending` (charge not yet posted),
+    `vanished` (gone with no posted replacement), else None. An empty
+    fin_transactions means a dropped cache, so nothing is `vanished`."""
     ids = [r["transaction_id"] for r in rows if r.get("claimed_pending")]
     have = set()
     if ids:

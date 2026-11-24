@@ -4,16 +4,10 @@ import { useTicker, useVisiblePoll } from "../lib/poll.js";
 import { autoResumeOn, eventWindows, planResume, readAuto, windowState as stateOf,
          writeAuto } from "../lib/autoResume.js";
 
-// A turn the usage limit cut off mid-work (backend: result.limited). It says
-// when the window opens again and offers to carry on; Resume sends a
-// "continue" turn into the same session, which still holds everything the
-// cut turn had done. Until the window resets the button waits, because a
-// resume into a closed window only gets cut off again.
-//
-// With "Resume tabs automatically" on (Settings, the default) the banner
-// does it itself once the window has reset (lib/autoResume.js says when),
-// for a tab that isn't on screen too: every tab stays mounted, and so does
-// its banner. "Don't" leaves this one for a click.
+// A turn the usage limit cut off (backend result.limited): says when the window reopens; Resume sends
+// "continue" into the same session, and waits for the window (a closed one just cuts it off again).
+// With "Resume tabs automatically" (Settings, default) the banner resumes itself after the reset
+// (lib/autoResume.js), off-screen tabs too (every banner stays mounted); "Don't" leaves it for a click.
 
 // The polled windows alone (PlanApp's "Resume all" row, which has no tab).
 export function windowState(usage) {
@@ -34,18 +28,15 @@ export function useUsageWindow() {
 
 const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
-// `limited`: the tab's record ({ at, manual }); `rateLimits`: its socket's
-// own events; `model`: what it runs, since a per-model week binds only that
-// model. `onAuto` sends the resume as the tab (not as the user typing) and
-// says whether it went; `onDecline` marks the tab to be left alone.
+// `limited`: the tab's record ({ at, manual }); `rateLimits`: its socket's events; `model`: a per-model
+// week binds only that model. `onAuto` sends the resume as the tab and says whether it went; `onDecline` marks it left alone.
 export default function LimitBanner({ tab, limited, rateLimits, model, onResume, onAuto, onDecline }) {
   const usage = useUsage();
   const windows = [...(usage?.windows || []), ...eventWindows(rateLimits)];
   const { open, resetsAt } = stateOf(windows, { model });
   const on = autoResumeOn();
   const plan = planResume({ limited, windows, model, tab, auto: readAuto(tab), on });
-  // A clock that runs whether or not the page is showing; the plan is
-  // anchored to fixed times, so a late tick just fires late.
+  // A clock that runs while hidden; the plan is anchored to fixed times, so a late tick fires late.
   const [, tick] = useState(0);
   useTicker(() => {
     tick((n) => n + 1);

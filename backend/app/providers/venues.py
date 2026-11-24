@@ -1,36 +1,12 @@
-"""Venues — live lookup of real businesses and places, for "where should I go"
-(Google Places API (New) + Routes).
+"""Venues: live lookup of real businesses and places (Google Places API (New) + Routes).
 
-Not `app/places.py`: that one is the user's *own* dwelt places, clustered from
-location fixes. This one is the outside world — restaurants, cafés, parks, a
-venue an event is at — and it exists because web search was the only way the
-console could answer those, and an audit of its sessions (2026-08..10) found
-web search failing at exactly the parts a map knows:
+Not `app/places.py` (the user's own dwelt places). Live, uncached, no range axis,
+so not in REGISTRY. Per place: address, open-now, rating, price, travel minutes.
 
-  * addresses — a street address never resolved at all;
-  * distance — "closest KBBQ to Maple Hall" was the top search hit, and every
-    "~12 min Uber" in a comparison table was invented, not computed;
-  * open/closed — three of a dinner shortlist turned out permanently or
-    temporarily closed only after the user asked for a re-check, and at 9pm a
-    study-spot list offered two libraries that shut at 8.
-
-So a search here returns, per place, the formatted address, `businessStatus`,
-whether it is open *now* and when that changes, rating and review count, price
-level, and the reservable / good-for-groups flags; then one Routes matrix call
-adds real walk and drive minutes from the origin. What it cannot know — an AYCE
-tier's price, a campground's alcohol rule — still needs the venue's own page.
-
-Like reddit's `search()`, this is a live, uncached query with no range axis, so
-it is not in REGISTRY (nothing for the poller to refresh, no days to read):
-
-    python -m app.providers.venues "ayce kbbq" --near "Maple Hall, USC"
-    python -m app.providers.venues "breakfast" --near "1513 S Grand Ave, LA" --open-now
+    python -m app.providers.venues "ayce kbbq" --near "Maple Hall, USC" [--open-now]
     python -m app.providers.venues --details <place_id>     # + reviews, hours
 
-Billing note: asking for `reservable`/`goodForGroups`/reviews puts a request in
-Google's Enterprise + Atmosphere SKU, which has the smallest free monthly cap.
-That is the point of the call, so they are asked for; reviews are left to
-details() so a ten-result search doesn't pay for fifty of them.
+Design: DESIGN.md → `app/providers/venues.py`: live Places lookup.
 """
 
 import json
@@ -54,9 +30,7 @@ DEFAULT_LIMIT = 8
 MAX_LIMIT = 20                 # the API's own pageSize ceiling
 DEFAULT_RADIUS_M = 5000        # a bias, not a fence: farther hits still come
 MAX_RADIUS_M = 50000           # back, labelled with their real distance
-# A location fix older than this isn't "where the user is" any more; fall back
-# to home. Looser than leave.py's LEAVE_FIX_MAX_MIN (30): a leave-by alarm acts on
-# the number, a "near me" list only ranks by it.
+# Older fix falls back to home; looser than leave.py's LEAVE_FIX_MAX_MIN (30).
 FIX_MAX_MIN = 60
 WALK_MAX_MIN = 90
 
@@ -94,9 +68,7 @@ def api_request(url: str, *, body: dict | None, field_mask: str,
             else "GET", body=body, idempotent=True, timeout=timeout,
             headers={"X-Goog-Api-Key": _key(), "X-Goog-FieldMask": field_mask})
     except RuntimeError as e:
-        # Google's 403 for an API that isn't switched on is a wall of JSON
-        # with the reason ~600 chars in (so the body is read whole, and only
-        # trimmed here); the one thing worth saying is which switch.
+        # a 403 for an API not switched on buries the reason ~600 chars in; name the switch
         if "SERVICE_DISABLED" in str(e):
             api = "Routes API" if "routes" in url else "Places API (New)"
             raise RuntimeError(
@@ -120,12 +92,8 @@ def _default_origin() -> dict:
 
 
 def resolve(near: str, bias: dict | None = None) -> dict | None:
-    """A place name or address -> {label, lat, lon}, via Places itself (it
-    knows "Maple Hall" the way the Geocoding API knows street numbers), biased
-    toward `bias` so a common name resolves to the local one. Falls back to
-    leave.py's geocoder. The label is the resolved address, so a wrong resolution
-    is visible to whoever reads the result instead of silently skewing every
-    distance."""
+    """A place name or address -> {label, lat, lon} via Places, biased toward `bias`;
+    falls back to leave.geocode. The label is the resolved address so a wrong resolution is visible."""
     body = {"textQuery": near, "pageSize": 1}
     if bias:
         body["locationBias"] = {"circle": {
@@ -155,8 +123,7 @@ def resolve(near: str, bias: dict | None = None) -> dict | None:
 # --- shaping ----------------------------------------------------------------
 
 def _local_hm(rfc3339: str | None, offset_min: int | None) -> str | None:
-    """'2026-10-13T05:00:00Z' -> '10pm' in the *place's* zone (its own UTC
-    offset, not this machine's — a search from NC about LA reads LA hours)."""
+    """'2026-10-13T05:00:00Z' -> '10pm' in the place's own UTC offset, not this machine's."""
     if not rfc3339:
         return None
     try:
@@ -169,7 +136,7 @@ def _local_hm(rfc3339: str | None, offset_min: int | None) -> str | None:
     hm = t.strftime("%-I%p" if t.minute == 0 else "%-I:%M%p").lower()
     days = (t.date() - now.date()).days
     if (t.hour, t.minute) == (0, 0) and days == 1:
-        # 00:00 tomorrow is tonight's close; "12am tomorrow" read as a day off.
+        # "12am tomorrow" reads as a day off
         return "midnight"
     if days == 1:
         return f"{hm} tomorrow"
@@ -227,9 +194,7 @@ def _shape(p: dict, origin: dict) -> dict:
 
 
 def _add_travel(items: list[dict], origin: dict) -> str | None:
-    """Fill walk_min / drive_min / drive_km from one matrix call per mode.
-    Returns an error string instead of raising: a list without travel times
-    is still worth more than no list."""
+    """Fill walk_min / drive_min / drive_km, one matrix call per mode. Returns an error string, not a raise."""
     dests = [it for it in items if it["lat"] is not None]
     if not dests:
         return None
@@ -379,8 +344,7 @@ def brief_line(it: dict) -> str:
     else:
         parts.append("hours unknown")
     trip = []
-    # "min", not "m": "walk 892m" read as metres. Past WALK_MAX_MIN a walk
-    # time is noise next to the drive, so it's left out of the line.
+    # "min", not "m" (reads as metres); a walk past WALK_MAX_MIN is left out
     if it.get("walk_min") is not None and it["walk_min"] <= WALK_MAX_MIN:
         trip.append(f"walk {it['walk_min']} min")
     if it.get("drive_min") is not None:

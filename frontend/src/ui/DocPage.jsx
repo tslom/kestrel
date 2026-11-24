@@ -1,27 +1,15 @@
-// One page of a document the console pointed into, drawn where the answer is.
-//
-// Two callers, one component: a citation card (`[cite:d3f9a1#p12 "…"]`,
-// opened from the pill) and an embed (`[page:d3f9a1#p12]` on its own line,
-// drawn straight into the reply). Either way the page is the evidence, and
-// the quote — when there is one — is highlighted on it.
-//
-// The quote is also the check. lib/pdf.js searches for it; the outcome is
-// shown under the page and handed up through `onVerdict` so the pill can say
-// it too. Four outcomes and they must not read alike:
-//   here     — highlighted, no comment needed
-//   moved    — the words are real but on another page; show that page and
-//              say so, because the cited number was wrong
-//   notext   — a scanned page: nothing to search, so "can't check", never
-//              "not found"
-//   missing  — the words aren't in the document: the claim is unsupported
+// One page of a document the console pointed into: a citation card (`[cite:d3f9a1#p12 "…"]`) or an
+// embed (`[page:d3f9a1#p12]`), with the quote highlighted. lib/pdf.js checks the quote; the verdict
+// shows under the page and goes up via `onVerdict`. Outcomes that must not read alike:
+//   here (highlighted) / moved (on another page: show it, the cited number was wrong) /
+//   notext (scanned: "can't check", never "not found") / missing (claim unsupported)
 import { useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Icon from "./icons.jsx";
 import { loadDoc, drawPage, locate, findOnPage, fileUrl } from "../lib/pdf";
 import { DocPaneContext } from "../lib/docPane";
 
-// The enlarged page, over everything. Portaled to <body> so no card's
-// overflow or transform clips it; Esc or a click outside the page closes it.
+// The enlarged page, portaled to <body> so no card's overflow or transform clips it.
 export function Lightbox({ onClose, children }) {
   useEffect(() => {
     const esc = (e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
@@ -40,25 +28,21 @@ export function Lightbox({ onClose, children }) {
     document.body);
 }
 
-// `big` = this is the enlarged copy: no further zoom, and drawn at its width.
-// Keyed on what it shows, so another document, page or quote starts over
-// rather than each piece of state being reset by hand.
+// `big` = the enlarged copy (no further zoom). Keyed on what it shows, so a new doc/page/quote starts over.
 export default function DocPage(props) {
   return <DocPageBody key={`${props.docRef}\u0000${props.page}\u0000${props.quote ?? ""}`} {...props} />;
 }
 
 function DocPageBody({ docRef, page, quote, width = 396, embed = false, big = false, onVerdict }) {
   const [zoom, setZoom] = useState(false);
-  // In a console a click opens the page in the pane beside the chat, which
-  // is larger and stays put; elsewhere it enlarges in the lightbox.
+  // In a console a click opens the pane beside the chat; elsewhere the lightbox.
   const pane = useContext(DocPaneContext);
   const [doc, setDoc] = useState(null);
   const [err, setErr] = useState(null);
   const [shown, setShown] = useState(page);
   const [verdict, setVerdict] = useState(quote ? null : { status: "none" });
   const [rects, setRects] = useState([]);
-  // Which draw last finished; the page reads as drawn only while that's
-  // still the one on screen.
+  // Which draw last finished; the page reads as drawn only while it's still on screen.
   const [drawnFor, setDrawnFor] = useState(null);
   const canvas = useRef(null);
 
@@ -70,7 +54,7 @@ function DocPageBody({ docRef, page, quote, width = 396, embed = false, big = fa
     return () => { live = false; };
   }, [docRef, page, quote]);
 
-  // Where the quote is, once — it decides which page to show first.
+  // Find the quote once; it decides the first page shown.
   useEffect(() => {
     if (!doc || !quote) return;
     let live = true;
@@ -81,8 +65,6 @@ function DocPageBody({ docRef, page, quote, width = 396, embed = false, big = fa
       onVerdict?.(v.status);
     }, () => { if (live) setVerdict({ status: "notext", page }); });
     return () => { live = false; };
-    // onVerdict is a callback prop; re-running on its identity would re-search
-    // on every parent render.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onVerdict is a callback prop; its identity changes every parent render (above)
   }, [doc, page, quote]);
 
@@ -101,8 +83,7 @@ function DocPageBody({ docRef, page, quote, width = 396, embed = false, big = fa
       setDrawnFor(drawKey);
       if (quote && verdict && verdict.page === n && verdict.rects?.length) setRects(verdict.rects);
       else if (quote) {
-        // Paging away from the cited page and back, or onto another page
-        // the same words also appear on.
+        // Paging away and back, or onto another page with the same words.
         const got = await findOnPage(d.page, quote);
         if (live) setRects(got.rects || []);
       } else setRects([]);
@@ -122,11 +103,7 @@ function DocPageBody({ docRef, page, quote, width = 396, embed = false, big = fa
 
   const total = doc?.numPages;
 
-  // No paging. The answer chose which pages to show; flipping through the
-  // deck inside a reply loses the place it was showing, and "Open" is the
-  // way to browse the whole thing. Clicking the page enlarges it instead:
-  // a slide drawn half-width beside a question is legible for diagrams and
-  // not always for the code on it.
+  // No paging (the answer chose the pages; "Open" browses). A click enlarges: half-width slides can't show code.
   return (
     <div className={`doc-page${embed ? " doc-embed" : ""}`} style={{ maxWidth: width }}>
       <div className={`doc-sheet${big ? "" : " doc-zoomable"}`}

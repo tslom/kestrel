@@ -1,21 +1,9 @@
-"""Time-to-leave.
+"""Time-to-leave: today's remaining located events joined with a traffic-aware route.
 
-Not a provider — there's no range/metric axis and nothing for the poller to
-cache; this is a live join of today's remaining located events × a real
-traffic-aware route, computed on demand (precedent: brief.py). For each timed
-event today that still lies in the future and carries a location:
-
-    origin      = the latest location fix if younger than LEAVE_FIX_MAX_MIN, else HOME
-    destination = event location geocoded (Google, falling back to weather's
-                  Open-Meteo geocode, then to one retry with
-                  LEAVE_GEOCODE_CONTEXT appended for bare room codes)
-    leave_by    = event start − drive_with_traffic − LEAVE_BUFFER_MIN
-
-Google Maps Routes v2 gives the traffic-aware duration; Geocoding turns the
-location string into coords. Both live behind a 5-minute in-memory TTL cache
-(localhost, one user — no need for a DB table). Every external call degrades
-to None, so the endpoint always returns the event list; a missing key just
-means every leave_by is null.
+leave_by = event start - drive_with_traffic - LEAVE_BUFFER_MIN; origin is a fresh fix
+(< LEAVE_FIX_MAX_MIN) else home. Every external call degrades to None; lookups sit
+behind a 5-minute in-memory TTL cache.
+Design: DESIGN.md → `app/leave.py`: time-to-leave.
 """
 
 import http.client
@@ -41,8 +29,7 @@ ROUTES_URL = "https://routes.googleapis.com/directions/v2:computeRoutes"
 GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
 _TTL_SECONDS = 300
 
-# key -> (expiry_epoch, value). Shared by geocode + route lookups; localhost,
-# single process, so a plain dict is enough.
+# key -> (expiry_epoch, value); shared by geocode + route lookups.
 _cache: dict[str, tuple[float, object]] = {}
 
 
@@ -63,21 +50,12 @@ def _http_json(url: str, *, data: bytes | None = None, headers: dict) -> dict | 
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             return json.loads(resp.read())
-    # OSError, not just URLError: a connection the server drops mid-response
-    # surfaces as http.client.RemoteDisconnected (a ConnectionResetError),
-    # which urlopen doesn't wrap — it 500'd /api/leave twice. HTTPException
-    # covers IncompleteRead.
+    # OSError, not URLError: a mid-response drop is an unwrapped ConnectionResetError; HTTPException covers IncompleteRead.
     except (OSError, http.client.HTTPException, ValueError):
         return None
 
 
-# A location field that names no physical place. Google geocodes these
-# anyway, and confidently: a bare "TBD" comes back as (2.77, -77.67), a spot
-# in the Pacific off Colombia, and a `usc.zoom.us` URL comes back as the USC
-# campus centroid — so a video call was producing a real drive time and an
-# alarm telling the user to leave for it. Matching a URL anywhere, but the
-# word markers only as a prefix, so a real venue that merely contains one
-# ("The Virtual Reality Lab") still geocodes.
+# Locations that name no place; Google geocodes them confidently anyway. URL anywhere, word markers only as a prefix.
 _URL_RE = re.compile(r"https?://", re.I)
 _VIRTUAL_RE = re.compile(
     r"^\s*(tbd|tba|n/?a|none|online|virtual|remote|zoom|webex|skype|"
@@ -102,19 +80,10 @@ def _google_geocode(address: str) -> tuple[float, float] | None:
 
 
 def geocode(loc: str) -> tuple[float, float] | None:
-    """Location string -> (lat, lon). Google Geocoding first (it understands
-    venue/business names the way calendar locations are written), Open-Meteo's
-    place lookup as fallback, then one retry with LEAVE_GEOCODE_CONTEXT
-    appended. TTL-cached; None if nothing resolves, and None immediately for a
-    location that names no place (see is_virtual).
+    """Location string -> (lat, lon): Google, then Open-Meteo, then one retry with
+    LEAVE_GEOCODE_CONTEXT appended (bare room codes). TTL-cached; None if unresolved or virtual.
 
-    The retry exists because half the room codes on a university feed arrive
-    bare: "SOS B44, 3502 Trousdale Pkwy, Los Angeles, CA 90089" geocodes, but
-    the same room as plain "KDC 240" is nothing to Google, and those events got
-    no leave_by at all. With the campus appended they resolve — sometimes to
-    the building, sometimes only to the campus centroid, which is close enough
-    for a drive time and much closer than null.
-    """
+    A bare room code may resolve only to the campus centroid."""
     key = f"geo:{loc}"
     cached = _ttl_get(key)
     if cached is not None:
@@ -133,8 +102,7 @@ def geocode(loc: str) -> tuple[float, float] | None:
 
 def _drive_minutes(origin: tuple[float, float],
                    dest: tuple[float, float]) -> float | None:
-    """Traffic-aware DRIVE duration origin->dest in minutes, or None on any
-    failure / missing key. TTL-cached on rounded coords."""
+    """Traffic-aware DRIVE minutes origin->dest, or None on failure / missing key. TTL-cached."""
     if not GOOGLE_MAPS_API_KEY:
         return None
     key = ("route:%.4f,%.4f->%.4f,%.4f" %
@@ -160,7 +128,7 @@ def _drive_minutes(origin: tuple[float, float],
         dur = blob["routes"][0].get("duration", "")  # e.g. "2395s"
         if dur.endswith("s") and dur[:-1].isdigit():
             minutes = int(dur[:-1]) / 60
-    # Cache the failure as () too, so a flaky call doesn't hammer the API.
+    # failures cached as () too
     _ttl_set(key, minutes if minutes is not None else ())
     return minutes
 
@@ -175,24 +143,13 @@ def _origin() -> tuple[tuple[float, float], str]:
 
 
 def compute_leaves(day: str | None = None, *, strict: bool = False) -> list[dict]:
-    """Today's remaining timed events with a location, each annotated with a
-    leave_by. Degrades per-event: an event that won't geocode or route still
-    appears with leave_by/drive_min null. Also usable by brief.py.
+    """Remaining timed located events on `day`, each with leave_by (null if it won't geocode or route).
 
-    `strict` turns a failed calendar read back into an exception. A card that
-    can't reach the calendar should render empty, which is what the default
-    does — but an empty list means "nothing to leave for" to a caller that
-    can't see the difference, and the alarm reconciler withdraws alarms on exactly
-    that reading. For it, a calendar outage has to stay distinguishable from a
-    clear afternoon.
-    """
+    `strict` re-raises a failed calendar read: the alarm reconciler withdraws alarms on an
+    empty list, so an outage must not look like a clear afternoon."""
     day = day or db.day_key()
     try:
-        # `day` used to be assigned and then dropped on the floor — the range
-        # was always "today", so brief.py's compute_leaves(day) returned
-        # today's leaves whatever day it was building. Anchoring the range on
-        # it makes the argument mean what it says; a past day now comes back
-        # empty (nothing left to leave for) instead of quietly wrong.
+        # range anchored on `day`; a past day comes back empty
         events = calendar.get(parse_range("today", date.fromisoformat(day)))["data"]
     except Exception:  # no calendar auth etc. -> nothing to leave for
         if strict:
@@ -212,9 +169,7 @@ def compute_leaves(day: str | None = None, *, strict: bool = False) -> list[dict
             continue  # already started — nothing to leave for
         row = {
             "event": ev.get("summary"),
-            # Carried for alarms: an alarm keyed on summary+start loses its
-            # identity (withdraw + recreate on the phone) every time an event
-            # is renamed or moved, and the id survives both.
+            # alarms key on the id, which survives a rename or move
             "event_id": ev.get("id"),
             "location": ev["location"],
             "start": ev["start"],

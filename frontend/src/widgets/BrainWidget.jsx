@@ -9,15 +9,9 @@ import VaultLink from "../ui/VaultLink.jsx";
 import { dragPin } from "../lib/drag.js";
 import { holdDelete, useHeld } from "../lib/undo.js";
 
-// The Brain (DESIGN.md → The Brain): what Kestrel knows about you. Facts are
-// rows in app.db; this card is where you rule on them. A fact read off a
-// text, an email or a note waits here as "unconfirmed" until you ✓ it
-// (everything needs a ✓) — Kestrel already uses it, just
-// hedged. ✗ turns it into a tombstone ingest will never relearn.
-//
-// Review goes a page at a time, not a fact at a time: the backfill brings
-// hundreds, and "✓ the rest of Jamie" is how that stays an evening rather
-// than a chore.
+// The Brain (DESIGN.md → The Brain): facts live in app.db; this card is where you rule on them.
+// Unconfirmed facts are already used, hedged, until ✓; ✗ makes a tombstone ingest never relearns.
+// Review goes a page at a time (the backfill brings hundreds).
 
 const TOPIC = "brain";
 const BRAIN_DIR = "07-Brain";
@@ -28,8 +22,7 @@ export function useBrainCard() {
   const pending = data?.pending ?? 0;
   const known = pages.reduce((n, p) => n + p.active + p.pending, 0);
 
-  // Something to confirm is "today", never "needs you": nothing breaks while
-  // it waits, and Kestrel is already using the facts, labelled.
+  // To-confirm is "today", never "needs you": Kestrel already uses the facts, labelled.
   const level = !data ? null : pending > 0 ? HAS : QUIET;
   const summary = !data ? "" : known === 0 ? (data.ingesting ? "learning…" : "nothing learned yet")
     : (pending ? `${pending} to confirm · ` : "") + `${known} fact${known === 1 ? "" : "s"}`
@@ -101,9 +94,7 @@ function FactRow({ f, onChanged, editable = false }) {
   );
 }
 
-// One page's facts, refetched whenever the page in view changes — useLoad
-// only reloads on mount and on the bus, and the page moves on under it (✓ all
-// empties one, a click in the sheet picks another).
+// One page's facts, refetched when the page changes (useLoad reloads only on mount and the bus).
 function usePage(slug) {
   const got = useWidgetData(
     () => (slug ? fetchJSON(`/api/brain/page/${slug}`) : Promise.resolve(null)), TOPIC);

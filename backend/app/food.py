@@ -1,27 +1,10 @@
-"""Food tracker — what was eaten, against what a lean bulk needs, and what
-on campus would close the gap (FOOD_PLAN.md is the spec).
+"""Food tracker: what was eaten vs what a lean bulk needs (spec: FOOD_PLAN.md).
 
-app.db is truth for every row here: `foods` (the reusable thing you eat),
-`food_log` (one row per thing eaten), `food_profile` / `food_targets` (the
-inputs and any hand-set targets), `food_days` (a day closed by the user),
-`weigh_ins`. The USC menus and venues are the usc_dining provider's derived
-cache; SR28 is a read-only reference file checked into the repo.
-
-foods.source is one of: sr28 (USDA reference, per 100 g), usc_estimate (a
-dining-hall item, app/food_estimate.py), custom (a venue item or home food,
-typed or from the model's knowledge), off (a barcode via Open Food Facts —
-added after the migration's comment was written, which can't be edited).
-
-Numbers carry their provenance. A food's nutrients are per serving; a nutrient
-it doesn't have is absent, never 0, and day totals say how many entries were
-missing it — "you got no vitamin D" and "nobody knows" are different facts.
-
-Targets: protein is fixed (g/kg every day),
-energy is maintenance on a rest day and maintenance + the session's burn + a
-surplus on a training day — a surplus is only built with when there's training
-to build with. A training day is the Exercise habit checked (Fitbit's AZM
-auto-checks it), or, before that's happened, a gym-shaped event on the
-calendar.
+app.db is truth (`foods`, `food_log`, `food_profile`/`food_targets`, `food_days`,
+`weigh_ins`); USC menus are the usc_dining cache, SR28 a checked-in reference.
+foods.source: sr28, usc_estimate, custom, off (Open Food Facts barcode).
+Trap: a nutrient a food lacks is absent, never 0; day totals count the entries missing it.
+Design: DESIGN.md → Food (§25).
 """
 
 import gzip
@@ -101,12 +84,8 @@ class FoodError(ValueError):
 
 # ---------- how far to trust a number ----------
 #
-# A guessed number shows as a range, not false precision. The half-width is
-# a fraction of the value, from confidence: 0.8 → ±14%, 0.6 → ±28%, 0.4 →
-# ±42%, capped at ±45%. A published or corrected number (≥ 0.95) has none.
-# An entry's spread combines the food's (is the recipe right?) with the
-# portion's (was it that much?) in quadrature, since the two errors are
-# independent; a day's combines its entries the same way.
+# Half-width of the range is (1 - conf) * 0.7 of the value, capped at ±45%; conf ≥ 0.95 has none.
+# Food and portion spreads combine in quadrature (independent errors); so do a day's entries.
 
 PORTION_GUESSED = 0.6     # amount read off a photo or a vague line
 PORTION_ANSWERED = 0.9    # the one portion question was answered
@@ -133,8 +112,7 @@ def trust(s: float) -> str:
     return "exact" if s == 0 else "close" if s < 0.2 else "rough"
 
 
-# Dishes whose size varies a lot from one serving to the next — the only ones
-# worth a portion question. A can, a bar, a cookie or a slice is what it is.
+# Dishes whose size varies: the only ones worth a portion question.
 _AMORPHOUS = re.compile(
     r"\b(bowls?|soups?|stew|chili|curry|korma|masala|burritos?|plates?|platter|"
     r"combo|pasta|noodles?|lo mein|chow mein|rice|salad|casserole|stir[ -]?fry|"
@@ -417,7 +395,7 @@ def fix_food(food_id: int, *, nutrients: dict | None = None,
         before = {k: f["nutrients"][k] for k in ("kcal", "protein", "carbs", "fat")
                   if k in f["nutrients"]}
         detail = {**(f["detail"] or {}), "corrected_at": _now()}
-        # The history is how "is the estimator biased?" gets answered later.
+        # Kept so estimator bias can be measured later.
         detail["corrections"] = (detail.get("corrections") or [])[-9:] + [{
             "at": _now(), "before": before, "was_conf": f["confidence"],
             "given": given, "serving_desc": serving_desc, "serving_g": serving_g}]
@@ -984,17 +962,8 @@ def maybe_adjust(con, profile: dict) -> dict | None:
 
 # ---------- the scale as ground truth ----------
 #
-# Logged intake minus the energy the weight trend says went into (or came out
-# of) the body is what you actually burn, measured in the units you log in.
-# Compared with the formula's burn, the gap is either logging running low or
-# high, or a burn the formula has wrong — the two can't be told apart from
-# here, and it doesn't matter for targets: maintenance taken from your own
-# log is right in your log's units, whichever it is. So the gap is shown
-# ("logging runs ~300 kcal/day low, or you burn more than the formula
-# thinks") and the observed number replaces the formula, phased in as the
-# data firms up. Water weight swings a reading by a kilo or more, so the
-# trend is a least-squares slope over up to four weeks of weigh-ins, never
-# two readings.
+# Observed maintenance = logged intake minus the weight trend's energy; it replaces the
+# formula, phased in. The trend is a least-squares slope over up to 4 weeks, never two readings.
 
 KCAL_PER_KG = 7700
 CAL_WINDOW = 28
@@ -1069,8 +1038,7 @@ def calibration(con, day: str, profile: dict | None = None) -> dict:
     gap = observed - model
     verdict = ("consistent" if abs(gap) < max(150, 0.07 * model)
                else "low" if gap > 0 else "high")
-    # Phased in: a 2-week slope on a few readings is mostly water; four weeks
-    # and two weeks of logging is worth trusting fully.
+    # Phased in: a short slope on few readings is mostly water.
     weight = round(min(1.0, span / CAL_WINDOW) * min(1.0, len(days) / 14), 2)
     rest = observed - tk * trained / len(days)
     out.update(
@@ -1115,8 +1083,7 @@ def targets(con, day: str, profile: dict | None = None) -> dict | None:
     base = _formula_maint(kg, profile, day)
     cal = calibration(con, day, profile)
     if cal["ready"]:
-        # The scale's number, phased in; the weekly ±100 nudge is the cruder
-        # version of the same idea and stands down.
+        # The weekly ±100 nudge stands down once the scale's number is in.
         maint = (1 - cal["weight"]) * base + cal["weight"] * cal["maint_rest"]
     else:
         maint = base + float(profile.get("maint_adj") or 0)
@@ -1233,8 +1200,7 @@ def day_summary(day: str | None = None) -> dict:
         "missing": missing, "targets": tg, "coverage": coverage(tot, tg),
         "gaps": gaps(tot, tg), "closed": dict(closed) if closed else None,
         "setup_needed": missing_setup(profile, kg), "profile": profile,
-        # A "7-day average" of a reading weeks old would be a stale number
-        # passed off as current, so it's only given while one is recent.
+        # avg7 only while the last reading is recent.
         "weight": {"kg": kg, "avg7_kg": kg if last and (
                        date.fromisoformat(day) - date.fromisoformat(last["day"])).days <= 7
                    else None, "last": dict(last) if last else None,
@@ -1400,17 +1366,14 @@ MAIN_PROTEIN_G = 20   # an item with this much protein is an entrée
 
 def _plate_score(plate: list[dict], meal_need: dict, budget: float,
                  focus: list[str], caps_meal: dict) -> float:
-    """Everything is judged against *this meal's* share of what's left, not
-    the day's: the first version filled lunch with three entrées and 117 g of
-    protein, because the day still needed it."""
+    """Judged against this meal's share of what's left, not the day's."""
     n = add_nutrients([f["nutrients"] for f in plate])
     score = 0.0
     p_need = max(meal_need.get("protein", 0), 1)
     score += 3 * min(n.get("protein", 0), p_need) / p_need
     kcal = n.get("kcal", 0)
     if budget > 50:
-        # Overshoot costs; a quarter under is free (there's a snack later), so
-        # the plate isn't padded to budget with a cookie.
+        # Overshoot costs; a quarter under is free (no padding with a cookie).
         off = (kcal - budget) / budget
         if off > 0:
             score -= 3 * off
@@ -1449,13 +1412,12 @@ def suggest(day: str | None = None, meal: str | None = None, *,
     # A normal meal of this kind, as a share of the day (snacks on top).
     nominal = MEAL_SHARE[meal] / (1 - MEAL_SHARE["snack"])
     if day > db.day_key():
-        # Planning ahead: the earlier meals will happen, they just haven't.
+        # Future day: earlier meals will happen.
         share = nominal
     else:
         rem_meals = _remaining_meals(meal)
         share = MEAL_SHARE[meal] / sum(MEAL_SHARE[m] for m in rem_meals)
-    # This meal's share of what's left, never more than 1.4× a normal meal of
-    # that kind — an empty day doesn't make dinner the whole day's food.
+    # Capped at 1.4x a normal meal: an empty day isn't all dinner.
     meal_need = {k2: min(max(v, 0) * share, tn[k2]["target"] * nominal * 1.4)
                  for k2, v in need.items()}
     budget = meal_need["kcal"]
@@ -1476,8 +1438,7 @@ def suggest(day: str | None = None, meal: str | None = None, *,
                                                caps_meal))
         items = items[:22]
         best = None
-        # A hall plate is a few things off the line; a café order is one or
-        # two — three packaged bowls isn't a meal anyone buys.
+        # A hall plate is up to three things; a café order one or two.
         for size in ((1, 2, 3) if c["venue"]["kind"] == "dining_hall" else (1, 2)):
             for combo in combinations(items, size):
                 sc = _plate_score(list(combo), meal_need, budget, focus, caps_meal)
@@ -1486,9 +1447,7 @@ def suggest(day: str | None = None, meal: str | None = None, *,
         if best:
             plates.append((best[0], slug, c["venue"], list(best[1])))
     plates.sort(key=lambda p: -p[0])
-    # The same Positive Foods bowl is sold at three cafés: one plate, not
-    # three. And when a hall serves this meal, its best plate keeps a slot —
-    # three café bowls hid every dining hall on the first run.
+    # One plate per distinct item set (same bowl at three cafés); a hall's best plate keeps a slot.
     picked, seen_items = [], set()
     for p in plates:
         items = tuple(sorted(f["name"].lower() for f in p[3]))

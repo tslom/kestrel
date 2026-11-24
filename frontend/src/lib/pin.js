@@ -1,25 +1,12 @@
-// Shaping for console context pills. Every pin button hands the console what the
-// widget already had in hand — but "what the widget had" ranges from a 6-field
-// health summary to 538KB of messages, and the big end of that is more than the
-// window holds. So pinning is a budget, not a copy.
-//
-// Two rules, both about staying useful rather than merely small:
-//   - Plumbing fields go. A row's guid/refreshed_at/logo_url can't be reasoned
-//     about or acted on; they're pure token cost next to `text` and `contact_name`.
-//   - Long lists become a head sample that *says* it's a sample. `omitted` in the
-//     payload is the load-bearing part: a model handed a quietly-truncated array
-//     will confidently total the wrong number, where one that can see the cut
-//     says "of the 20 shown" or goes and queries the source.
-//
-// console.py's PILL_LIMIT is the floor under all of this. This module decides
-// what's worth keeping; that one guarantees no pill can cost the session.
+// Shaping for console context pills: pinning is a budget, not a copy (a pin ranges from 6 fields to 538KB of
+// messages). Plumbing fields go; long lists become a head sample that says it's a sample (`omitted`), so the
+// model never totals a quietly-truncated array. console.py's PILL_LIMIT is the floor under this.
+// Design: DESIGN.md → `frontend/src/lib/pin.js`.
 
-// Budget for one pill's row list, in serialized characters. Comfortably under
-// PILL_LIMIT (20k) so the shaped payload still has room for its wrapper keys.
+// Serialized chars per pill's row list; under PILL_LIMIT (20k) to leave room for wrapper keys.
 const ROW_BUDGET = 12_000;
 
-// Identifiers and display-only URLs. `id` is deliberately NOT here — the console
-// acts through it (POST /api/email/{id}/action), so it earns its bytes.
+// Plumbing. `id` is deliberately NOT here: the console acts through it (POST /api/email/{id}/action).
 const NOISE = new Set([
   "refreshed_at",   // every cached row carries it; the pill's own label dates it
   "guid",           // chat.db row identity, not addressable over the API
@@ -36,18 +23,13 @@ function slim(row) {
     if (NOISE.has(k)) continue;
     if (v === null || v === undefined || v === "") continue;
     if (Array.isArray(v) && v.length === 0) continue;
-    // A message row carries its files already decorated; shape them here so a
-    // raw provider slice gets the same treatment as a hand-built pin.
+    // Shape message files here so a raw provider slice matches a hand-built pin.
     out[k] = k === "attachments" ? pinFiles(v) : v;
   }
   return out;
 }
 
-/**
- * Head sample of `rows` that fits the budget, as `{ items, omitted }`.
- * Byte-budgeted rather than a fixed row count because rows differ by an order
- * of magnitude — 200 health readings cost less than 20 messages with bodies.
- */
+/** Head sample of `rows` fitting the budget, as `{ items, omitted }`. Byte-budgeted: row sizes differ by 10x. */
 export function capRows(rows, budget = ROW_BUDGET) {
   if (!Array.isArray(rows)) return { items: rows, omitted: 0 };
   const items = [];
@@ -62,13 +44,7 @@ export function capRows(rows, budget = ROW_BUDGET) {
   return { items, omitted: rows.length - items.length };
 }
 
-/**
- * Files a message carried, for pins. Mirrors what the message log renders (the
- * name is the actionable part), plus the one thing the chip only implies: text
- * extraction is opt-in (`attachments --extract`), so an unextracted file is a
- * filename and nothing more. Saying which is which stops the console from
- * claiming it read a PDF it can only see the name of.
- */
+/** A message's files for pins: name plus whether text was extracted (opt-in, `attachments --extract`), so the console never claims to have read a PDF it only sees the name of. */
 export function pinFiles(items) {
   if (!Array.isArray(items) || items.length === 0) return undefined;
   return items.map((a) => ({

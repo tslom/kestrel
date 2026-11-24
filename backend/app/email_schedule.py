@@ -1,28 +1,8 @@
-"""Scheduled send — Kestrel writes the email now, Gmail sends it later.
-
-Gmail's API has no scheduled send of its own (the UI's "Schedule send" is not
-exposed), so the split is: the message is an ordinary Gmail draft, and the
-*when* is a row in `scheduled_emails`. At send_at, send_due() calls
-`drafts.send` on that draft id. Two properties fall out of keeping the content
-in Gmail rather than here:
-
-- **Editing is just editing the draft.** Open it in Gmail before send_at and
-  change a word; what goes is what the draft says at that moment.
-- **Deleting the draft cancels the send.** drafts.send then 404s and the row is
-  recorded `cancelled`, not retried.
-
-This is the one place the dashboard sends mail on the user's behalf without a
-human pressing Send at the moment it leaves (routes/email.py's draft-only line,
-DESIGN.md §17). What stands in for that press is the approval card: the
-console's `email_schedule` tool is guarded in console_changes, so it cards even
-in auto mode, and the card shows recipient, subject and time.
-
-Exactly-once, not at-least-once. A row is claimed (`scheduled` -> `sending`)
-in one UPDATE before Gmail is called, so two concurrent cycles (the send loop
-and a manual /api/sync) can't both send it. A row found still `sending` after
-STUCK_MIN means a crash mid-call — whether Gmail sent it is unknowable from
-here, so it becomes `failed` with a "check Sent" note rather than being sent
-a second time.
+"""Scheduled send: the message is an ordinary Gmail draft, `scheduled_emails` holds the
+when (source of truth), and send_due() calls `drafts.send` at send_at. The one place mail
+goes out without a human pressing Send. Exactly-once: a row is claimed `scheduled` ->
+`sending` before Gmail is called; a stuck `sending` becomes `failed`, never resent.
+Design: DESIGN.md → §5 Email (Scheduled send).
 """
 
 from __future__ import annotations
@@ -35,9 +15,7 @@ from fastapi import HTTPException
 
 from . import db
 
-# Transient Gmail/network failures back off 1, 2, 4 … 64 minutes (about two
-# hours in all, enough to ride out a wifi drop), then give up loudly. The
-# backoff clock is in-process: a restart retries at once, which is fine.
+# Transient failures back off 1, 2, 4 … 64 min (~2h), then fail loudly; the clock is in-process (restart retries at once).
 MAX_ATTEMPTS = 8
 _next_try: dict[int, float] = {}
 STUCK_MIN = 10            # a `sending` row this old was interrupted mid-call
@@ -50,9 +28,7 @@ def _utc(dt: datetime) -> str:
 
 
 def parse_when(raw: str, *, now: datetime | None = None) -> datetime:
-    """An ISO datetime, naive meaning local time. Refuses the past (beyond a
-    couple of minutes' grace) and anything over a year out — both are far more
-    likely a wrong date than an intent."""
+    """An ISO datetime, naive = local. Refuses the past (beyond grace) and over a year out: likely a wrong date."""
     now = now or datetime.now().astimezone()
     try:
         when = datetime.fromisoformat((raw or "").strip())
@@ -78,15 +54,14 @@ def _row(con, sid: int) -> dict:
 
 def _public(r) -> dict:
     d = dict(r)
-    # Local for anything a person reads; UTC stays the stored form.
+    # UTC is stored; local for display
     d["send_at_local"] = (datetime.fromisoformat(d["send_at"]).astimezone()
                           .isoformat(timespec="minutes"))
     return d
 
 
 def _draft_headers(draft_id: str) -> dict:
-    """To/Subject of an existing Gmail draft — scheduling one the user wrote
-    by hand, or one email_draft made earlier."""
+    """To/Subject of an existing Gmail draft."""
     from .providers import email as email_provider
     from .routes import email as email_routes
     d = email_routes.api_call(
@@ -101,11 +76,8 @@ def schedule(*, send_at: str, draft_id: str | None = None,
              body: str | None = None, to: str | None = None,
              subject: str | None = None, reply_to: str | None = None,
              cc: str | None = None, attach: list[int] | None = None) -> dict:
-    """Schedule a draft to send at `send_at`. Either name an existing draft
-    (`draft_id`) or pass what email_draft takes and one is made here.
-
-    The time is validated before Gmail is touched, so a bad date never leaves
-    an orphan draft behind."""
+    """Schedule a draft at `send_at`: name `draft_id` or pass what email_draft takes.
+    The time is validated before Gmail is touched (no orphan draft on a bad date)."""
     when = parse_when(send_at)
     if draft_id:
         draft_id = draft_id.strip()
@@ -120,9 +92,7 @@ def schedule(*, send_at: str, draft_id: str | None = None,
         draft_id, to_addr, subj = made["draft_id"], made["to"], made["subject"]
     now = datetime.now().astimezone()
     with db.session() as con, con:
-        # One schedule per draft: rescheduling moves the existing row rather
-        # than queueing the same draft twice (the second send would 404 —
-        # harmless, but it would read as a cancellation that never happened).
+        # one schedule per draft: rescheduling moves the row (a second send would 404 as a phantom cancel)
         cur = con.execute(
             "UPDATE scheduled_emails SET send_at=?, to_addr=?, subject=?,"
             " error=NULL, attempts=0 WHERE draft_id=? AND status='scheduled'",
@@ -143,8 +113,7 @@ def schedule(*, send_at: str, draft_id: str | None = None,
 
 
 def cancel(sid: int) -> dict:
-    """Stop a pending send. The draft stays in Gmail — cancelling the *send*
-    shouldn't also throw away the writing."""
+    """Stop a pending send; the draft stays in Gmail."""
     with db.session() as con, con:
         row = _row(con, sid)
         if row["status"] != "scheduled":
@@ -163,8 +132,7 @@ def pending(con=None) -> list[dict]:
 
 
 def recent(con=None, *, limit: int = 20) -> list[dict]:
-    """Pending first, then the latest outcomes — what a "what's scheduled?"
-    question wants to see, including a send that failed overnight."""
+    """Pending first, then the latest outcomes (including an overnight failure)."""
     with db.borrow(con) as con:
         done = [_public(r) for r in con.execute(
             "SELECT * FROM scheduled_emails WHERE status NOT IN ('scheduled','sending')"
@@ -196,8 +164,7 @@ def send_due(*, now: datetime | None = None, api=None, token=None) -> dict:
         try:
             token = token or email_routes.access_token()
         except HTTPException as e:
-            # Not authorized right now: leave them scheduled, the next tick
-            # retries — but say so, or a dead token looks like a quiet queue.
+            # unauthorized: stay scheduled for the next tick, but record why
             with con:
                 con.execute("UPDATE scheduled_emails SET error=? WHERE"
                             " status='scheduled' AND send_at <= ?",
@@ -235,8 +202,7 @@ def send_due(*, now: datetime | None = None, api=None, token=None) -> dict:
                                 " WHERE id=?", (status, error, r["id"]))
                 out["retry" if status == "scheduled" else status] += 1
                 if status == "failed":
-                    # A mail that was promised and didn't go belongs in the
-                    # error log, not only in a table nobody opens.
+                    # a promised mail that didn't go belongs in the error log
                     from . import failures
                     failures.record("email_schedule", "send", f"#{r['id']}",
                                     detail=detail[:500])

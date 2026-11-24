@@ -1,9 +1,6 @@
 """weather.get() only backfills days Open-Meteo can answer for.
 
-A gap in weather_days past the API's horizon (more than MAX_PAST_DAYS back or
-beyond the MAX_FORECAST_DAYS window) can never be filled, so counting it as
-missing made every read of a long range a live call — every page load, for
-nothing.
+A weather_days gap past the API horizon (MAX_PAST_DAYS / MAX_FORECAST_DAYS) can never fill and must not count as missing.
 """
 
 from datetime import date, timedelta
@@ -48,8 +45,7 @@ def test_a_straddling_range_asks_only_for_the_fillable_part(dbfile, monkeypatch)
 # ---- a fetched day with a null metric is not refetched on every read ----
 
 def _fake_fetch(monkeypatch):
-    """_fetch stand-in: every requested day comes back with tmax but a null
-    precip_prob (which the real _fetch drops)."""
+    """_fetch stand-in: tmax present, precip_prob null."""
     calls = []
 
     def fetch(lat, lon, s, e):

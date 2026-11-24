@@ -3,15 +3,9 @@ import { fetchJSON } from "../lib/api";
 
 // What the desk's ranking got right, read back from /api/usage.
 //
-// The hard part is not the numbers, it's not lying with them. A card read at a
-// glance leaves no click, so a plain "least clicked" list would put the cards
-// that work best at the top of a list headed "candidates to cut". Every row
-// therefore shows the band history next to the touch count, and the only
-// automatic verdict — `idle` — requires *both* that the desk judged the card
-// had nothing to say on every day it saw it, and that you never opened it.
-//
-// Nothing here deletes or hides a card. It answers a question; the cut is
-// still a decision you make.
+// A card read at a glance leaves no click, so "least clicked" would rank the best cards as cuts.
+// Rows show band history beside touches, and `idle` (the only verdict) needs both nothing-to-say
+// every day seen and never opened. Nothing here deletes or hides a card.
 
 const RANGES = [
   ["7", "week"],
@@ -29,9 +23,7 @@ function ago(iso) {
 }
 
 function Row({ row }) {
-  // Two denominators, deliberately: days_seen is how long the card has been
-  // on the desk (a card added last week can't have a month of history), and
-  // days_active is how much of that it had something to report.
+  // days_seen is time on the desk (a new card has no month of history); days_active is days it had something to say.
   const quiet = row.days_seen - row.days_active;
   return (
     <tr className={row.idle ? "usage-idle" : ""}>
@@ -94,9 +86,7 @@ export default function UsageSheet() {
             <thead>
               <tr>
                 <th>card</th>
-                {/* "active" is days the card had something to say, out of the
-                    days it was on the desk. A low ratio isn't a bad card —
-                    it's a card that is usually correctly folded. */}
+                {/* A low active ratio isn't a bad card: it's usually correctly folded. */}
                 <th title="days with something to say / days on the desk">active</th>
                 <th title="unfolds plus sheet opens">opened</th>
                 <th>last</th>

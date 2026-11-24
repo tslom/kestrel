@@ -1,12 +1,9 @@
 """A message typed mid-turn goes in after the current step, not the turn.
 
-The CLI already does this: a user message sent while a turn runs is read at
-the next tool boundary, in the same turn, and replayed back with the uuid it
-was sent under; one sent while the turn is writing its last reply runs as a
-turn of its own right after; and `cancel_async_message` takes one back unread
-(all measured against CLI 2.1.318). Holding the message until the whole
-turn ends would leave Stop as the only way to cut in.
-These drive the real socket loop against a CLI that behaves that way.
+CLI behaviour (measured on 2.1.318): a message sent mid-turn is read at the next tool
+boundary and replayed with its uuid; one sent during the last reply runs as its own
+turn; `cancel_async_message` takes one back unread. Drives the real socket loop
+against a fake CLI that behaves so.
 """
 
 import asyncio
@@ -79,8 +76,7 @@ class FakeQuery:
 
 
 class FakeClient:
-    """The test scripts what the CLI says (`push`); `query` only records.
-    A uuid'd message is held in `pending`, as the CLI holds its queue."""
+    """The test scripts the CLI's output (`push`); `query` records, holding uuid'd messages in `pending`."""
 
     instance: "FakeClient | None" = None
 

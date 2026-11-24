@@ -1,7 +1,4 @@
-"""db habit helpers — checkin upsert/un-check, and the _streak walk (exercised
-through list_habits, which passes the given day as _streak's 'today'). The
-streak's defining quirk: an un-done today doesn't break it — it survives until
-today is actually missed."""
+"""db habit helpers: checkin upsert/un-check and the _streak walk (via list_habits); an un-done today doesn't break a streak until it is actually missed."""
 
 from app import db
 
@@ -140,8 +137,7 @@ def test_habit_history_span_and_values(dbfile):
 
 
 def test_delete_habit_takes_its_checkins(dbfile):
-    """Hard delete, unlike archive, must not leave rows behind: an orphaned
-    habit_checkins row re-appears in habit_history as a habit with no name."""
+    """Hard delete must leave no rows: an orphaned habit_checkins row reappears in habit_history as a nameless habit."""
     h = db.create_habit("typo")
     db.checkin(h["id"], day=db.day_key(), value=1)
     gone = db.delete_habit(h["id"])
@@ -155,9 +151,7 @@ def test_delete_habit_takes_its_checkins(dbfile):
 
 
 def test_delete_habit_is_not_archive(dbfile):
-    """The two are different answers and both stay reachable — archiving keeps
-    the history the streak is built from, deleting is for a row that should
-    never have existed."""
+    """Archive keeps the history the streak is built from; delete is for a row that should never have existed."""
     keep = db.create_habit("keep")
     db.checkin(keep["id"], day=db.day_key(), value=1)
     db.update_habit(keep["id"], archived=True)
@@ -174,9 +168,7 @@ def test_delete_missing_habit_is_none_not_an_error(dbfile):
 
 
 def test_delete_frees_the_name_for_reuse(dbfile):
-    """`name` is UNIQUE, so a deleted habit that left its row behind would
-    make re-adding the same name fail — which is exactly what someone does
-    after deleting a typo."""
+    """`name` is UNIQUE: a deleted habit leaving its row would block re-adding the same name."""
     h = db.create_habit("Exercise")
     db.delete_habit(h["id"])
     again = db.create_habit("Exercise")

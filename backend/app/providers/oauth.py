@@ -1,25 +1,12 @@
-"""OAuth helper — localhost redirect flow + token refresh.
+"""OAuth helper: loopback redirect flow + token refresh, one `tokens` row per (provider, account).
 
-One token row per (provider, account) in app.db `tokens`. Two Google
-accounts are expected: 'school' (Workspace — calendar/gmail) and 'personal'
-(health/fitbit); scope presets live in config.GOOGLE_ACCOUNT_SCOPES.
+Accounts 'school' and 'personal'; scope presets in config.GOOGLE_ACCOUNT_SCOPES. Tokens and
+client secrets live only in app.db: never return or print token values (status masks them).
+Needs a Desktop-app OAuth client. Design: DESIGN.md → OAuth and Plaid credentials.
 
-Security: tokens + client secrets live ONLY in app.db on this machine. The
-app is localhost-only (backend binds 127.0.0.1) — that is the whole security
-model. Never return token values from an API route or print them; status
-output masks everything.
-
-Authorize (interactive, run from a terminal — opens a browser):
     python -m app.providers.oauth authorize --account school \
         --client-json ~/Downloads/client_secret_*.json
-Then anywhere in the app:  access_token = oauth.get_token("google", "school")
-Re-auth after that (e.g. the Testing-mode ~7-day refresh-token expiry) is the
-dashboard's Connect button — app/routes/oauth.py drives build_auth_url()/
-exchange_code() through the backend's own callback route.
-
-Google Cloud prerequisite: an OAuth client of type **Desktop app** (loopback
-redirects to http://127.0.0.1:<any-port> are allowed implicitly — no redirect
-URI registration needed).
+    access_token = oauth.get_token("google", "school")
 """
 
 import base64
@@ -44,7 +31,7 @@ from ..config import GOOGLE_ACCOUNT_SCOPES
 GOOGLE_AUTH_URI = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
 
-# refresh access tokens this close to expiry rather than risk a mid-call 401
+# refresh this close to expiry to avoid a mid-call 401
 EXPIRY_MARGIN = timedelta(seconds=60)
 
 
@@ -54,12 +41,8 @@ class NotAuthorized(Exception):
 
 @contextmanager
 def as_value_error() -> Iterator[None]:
-    """Re-raise NotAuthorized as ValueError, same message.
-
-    ValueError is the providers' "bad request" — providers.get() callers turn
-    it into a 400 and the CLI into a one-line error — which is the right
-    answer to a read that needs a token nobody has granted. Used inside
-    offline.best_effort(), which re-raises anything that isn't the network."""
+    """Re-raise NotAuthorized as ValueError (providers' "bad request": a 400 / one-line CLI error).
+    Used inside offline.best_effort(), which re-raises anything that isn't the network."""
     try:
         yield
     except NotAuthorized as e:
@@ -92,7 +75,7 @@ def _save(provider: str, account: str, *, client_id: str, client_secret: str,
             " ON CONFLICT(provider, account) DO UPDATE SET"
             " client_id=excluded.client_id, client_secret=excluded.client_secret,"
             " access_token=excluded.access_token,"
-            # a refresh grant may omit refresh_token — keep the one we have
+            # a refresh grant may omit refresh_token: keep ours
             " refresh_token=COALESCE(excluded.refresh_token, tokens.refresh_token),"
             " token_uri=excluded.token_uri, scopes=excluded.scopes,"
             " expires_at=excluded.expires_at, updated_at=excluded.updated_at",
@@ -154,8 +137,7 @@ def exchange_code(account: str, code: str, verifier: str, redirect_uri: str, *,
 
 
 def stored_client(provider: str, account: str) -> tuple[str, str] | None:
-    """(client_id, client_secret) kept from a previous authorize, if any —
-    what lets the dashboard re-auth without the client_secret_*.json file."""
+    """(client_id, client_secret) from a previous authorize; lets the dashboard re-auth without the JSON."""
     row = _row(provider, account)
     if row and row["client_id"] and row["client_secret"]:
         return row["client_id"], row["client_secret"]
@@ -241,10 +223,8 @@ def refresh(provider: str, account: str) -> str:
         })
     except RuntimeError as e:
         if "invalid_grant" in str(e):
-            # Dead refresh token (Testing-mode ~7-day expiry, or revoked).
-            # Drop it so status()/get_token() say needs-auth instead of
-            # retrying a corpse every poll; keep the client creds so the
-            # dashboard Connect button can re-auth without the client JSON.
+            # Dead token (Testing-mode ~7-day expiry or revoked): drop it so status says needs-auth;
+            # keep the client creds for the Connect button.
             with db.session() as con, con:
                 con.execute(
                     "UPDATE tokens SET access_token=NULL, refresh_token=NULL,"
@@ -284,8 +264,7 @@ def _load_client(args) -> tuple[str, str]:
     if args.client_json:
         blob = json.loads(Path(args.client_json).expanduser().read_text())
         if "web" in blob:
-            # web clients need pre-registered redirect URIs -> the loopback
-            # flow dies with redirect_uri_mismatch. Only Desktop-app works.
+            # Web clients die on the loopback flow with redirect_uri_mismatch.
             sys.exit("this is a 'Web application' OAuth client — the loopback"
                      " flow needs type 'Desktop app'. Create one:"
                      " Cloud console > Credentials > Create credentials >"

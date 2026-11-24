@@ -1,16 +1,12 @@
-"""Rerunnable importer: macOS AddressBook birthdays -> people. ZBIRTHDAY is a Core Data timestamp (seconds since 2001-01-01 — the same
-APPLE_EPOCH offset chat.db uses for message.date, minus its nanosecond scale)
-representing noon UTC on the birthday. Apple stores a sentinel year (commonly
-1604) when the contact card has no real year, so a year is only kept when
-it's plausible (>= 1900); otherwise birthday is stored as bare MM-DD.
+"""Rerunnable importer: macOS AddressBook birthdays -> people.
 
-Usage:
-    python scripts/import_birthdays.py
+ZBIRTHDAY is Core Data seconds since 2001-01-01 (noon UTC on the birthday). A sentinel
+year (commonly 1604) means no real year: keep a year only if >= 1900, else bare MM-DD.
 
-Idempotent: upserts by person_key (name/birthday refresh on rerun); never
-touches watch_cadence_days/notes once a person row exists. A contact with no
-phone or email on file is skipped — there'd be nothing to key it to in
-emails/messages history.
+Usage: python scripts/import_birthdays.py
+
+Upserts by person_key (name/birthday refresh); never touches watch_cadence_days/notes.
+Contacts with no phone or email are skipped (nothing to key them on).
 """
 
 import glob

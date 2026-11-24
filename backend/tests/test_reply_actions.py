@@ -1,9 +1,4 @@
-"""The two things you can do with a thread you owe a reply to, short of
-replying: put it on today's list, or ask for a draft.
-
-Both are suggestion-only by design — remind creates a task you asked
-for, draft returns text you copy. Neither sends anything.
-"""
+"""Short of replying: remind (a task you asked for) or draft (text you copy). Suggestion-only, nothing sends."""
 
 from datetime import datetime
 
@@ -37,10 +32,7 @@ def test_remind_is_idempotent_for_one_message(con):
 
 
 def test_a_newer_message_earns_a_new_reminder(con):
-    """source_ref carries the message's timestamp, like a dismissal's
-    `through`. Person-keyed dedupe would mean answering someone once blocks
-    ever being reminded about them again — task_exists_for_source matches
-    completed and dropped tasks too."""
+    """source_ref carries the message timestamp: person-keyed dedupe would block reminders forever (it matches done and dropped tasks)."""
     people.post_remind(_req(last_at="2026-03-10T09:00:00"))
     with db.session() as c:
         c.execute("UPDATE tasks SET status='done' WHERE source_kind='waiting'")
@@ -64,8 +56,7 @@ def test_draft_reads_the_thread_oldest_first(con):
 
 
 def test_draft_with_no_thread_asks_the_model_nothing(con, monkeypatch):
-    """An empty thread returns no drafts rather than inviting the model to
-    invent a conversation — and must not spend a model call finding out."""
+    """An empty thread returns no drafts and makes no model call."""
     def boom(*a, **kw):
         raise AssertionError("called the model with no context")
     monkeypatch.setattr(reply_draft.agent, "ask", boom)

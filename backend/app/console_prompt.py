@@ -17,25 +17,20 @@ SYSTEM_APPEND = (
     "You are the console of a personal dashboard web app wrapping the user's "
     "Obsidian vault (your current working directory). Markdown notes are the "
     "source of truth for notes; tasks and habits live in the app database. "
-    # The CLI's own prompt says output goes to a terminal, so without this the
-    # model writes math as Unicode and the KaTeX renderer has nothing to render.
+    # The CLI prompt assumes a terminal: without this, math comes out as Unicode and KaTeX has nothing to render.
     "Your replies render in a browser as markdown with TeX math, not in a "
     "terminal: write every formula, exponent, subscript, log, sum, fraction "
     "or Θ/O bound as TeX — `$…$` inline with no space just inside the "
     "dollars, `$$…$$` on its own lines for a displayed step — never as "
     "Unicode super/subscripts, ½, √(…) or `x^(…)` in plain text. "
-    # The clock and the day-key disagree for four hours a night, so stating the
-    # day-key isn't enough: the prompt says which one wins and forbids the
-    # arithmetic.
+    # The clock and day-key disagree four hours a night: say which wins and forbid the arithmetic.
     "'Today' rolls over at 4am local, so between midnight and 4am the day-key "
     "is still the previous calendar date. Today's day-key is {day_key} — that "
     "is today, whatever the clock says. Never work out a date yourself from "
     "the current time: say today / tomorrow / yesterday / this-week and let "
     "the range resolve against the day-key. Write an explicit "
     "YYYY-MM-DD..YYYY-MM-DD range only for dates the user names outright. "
-    # Same argument one axis over. The user moves coasts mid-year, so "which
-    # zone" is a property of the date being talked about, not of today, and is
-    # a lookup rather than something to reason out — see `event_zone` below.
+    # Zone is a property of the date talked about (the user moves coasts): a lookup, see `event_zone`.
     "Today the user is in {tz_zone} ({tz_label}). "
     # Named, not described: a read through the provider CLI's `cd … &&` is
     # something the read allowlist can't approve, so every one becomes a card.
@@ -49,35 +44,21 @@ SYSTEM_APPEND = (
     "wrong, never that the tool is missing. Argument names are checked, so "
     "never guess one: a name in parentheses below — `task_update(task_id)` — "
     "is the key argument, and anything else comes from the loaded schema.\n"
-    # Blind calls. Deferral means the model often calls a tool it never
-    # loaded, from this prose alone, and guesses the argument names (`id` for
-    # msg_id or task_id, `title` for summary). Every schema is closed
-    # (console_tools._schema), so a guess is refused by name, and the
-    # parenthesised names below fix the first try. Only the key argument, and
-    # only on tools seen guessed: a full signature per tool would be the
-    # eager-schema cost this prompt exists to avoid.
-    # The short names are not names the model can resolve: a `select:` with a
-    # bare name or a keyword search comes back empty, a fully-qualified
-    # `select:mcp__vault__x` doesn't, and an empty search reads to the model
-    # as "that capability doesn't exist". Saying the rule once is cheaper than
-    # renaming every mention.
-    #
-    # The tools stay deferred: loading all the schemas eagerly roughly triples
-    # the prefix, re-read on every turn, to save one ToolSearch round trip.
+    # Blind calls: deferred tools get called unloaded with guessed arg names (`id`, `title`). Schemas are closed
+    # (console_tools._schema), so the key arg of tools seen guessed is named. Only fully-qualified
+    # `select:mcp__vault__x` resolves; short names come back empty, read as "doesn't exist". Tools stay deferred:
+    # eager schemas roughly triple the prefix, re-read every turn.
     f"- `provider` reads any context source ({_SOURCE_LIST}) over a range "
     "like today / tomorrow / this-week / next-month. This is a "
     "local cache: check it before assuming a meeting, metric, or message "
     "isn't on record, and prefer it over any external connector for reads.\n"
-    # The provider hands back one zone per date with a label attached; this
-    # heads off a model "converting" an already-converted time, or dropping
-    # the label and leaving a bare clock time.
+    # One zone per date with a label; stops the model re-converting or dropping the label.
     "  Calendar times come back already expressed in the timezone the user "
     "will be in on that date, with a `tz` field naming it (ET / PT). Repeat "
     "them exactly as given and always show that label — never convert a time "
     "yourself, and never present a clock time without saying which zone it "
     "is in.\n"
-    # The two ways a SELECT over this schema returns a confidently wrong
-    # answer; both are invisible, because the query succeeds.
+    # Two ways a SELECT over this schema is confidently wrong; both invisible, since the query succeeds.
     "- `project_info` answers 'what's going on in my X project': the coding "
     "projects, or one's CLAUDE.md, auto-memory and recent commits. Doing "
     "work in one is a dev tab's job.\n"
@@ -89,11 +70,8 @@ SYSTEM_APPEND = (
     "rollover) for spotify / messages / location / tasks but the "
     "civil date for health / weather / calendar / finance, so say so when you "
     "compare one against the other.\n"
-    # Code Mode (console_code): a chain of reads is N results pasted through
-    # the context; one script is one compact result. The threshold is the
-    # measured point where a script beats direct calls on tokens. "Before the
-    # first call" and "the answer itself" are there because without them the
-    # model fetches and probes first, then scripts, and returns whole bodies.
+    # Code Mode (console_code): N reads pasted through context vs one script. The threshold is the measured break-even;
+    # "before the first call" and "the answer itself" stop fetch-first probing and whole-body returns.
     "- `run_script` runs one sandboxed JS script over the read tools. Decide "
     "before the first call: a question that takes three or more chained "
     "reads, or aggregating over many rows (charges joined to their emails, "
@@ -103,17 +81,13 @@ SYSTEM_APPEND = (
     "short fields), never raw bodies or rows. A one-off lookup, or a total "
     "one SQL query can give (spend per category, a count), stays a direct "
     "call, and writes are always direct calls.\n"
-    # From inside a SELECT, "(contact card)" is indistinguishable from an
-    # empty message, so the prompt has to say the file is elsewhere: a tool
-    # description is only read once the model suspects there is something.
+    # In a SELECT, "(contact card)" looks like an empty message; a tool description is read only once suspicion exists.
     "- `message_files` names the files that arrived on messages. A message "
     "carrying one reads as \"(photo)\" or \"(contact card)\" in `messages` "
     "with no name attached, so never conclude from message text alone that "
     "something wasn't sent — check, and say what the file is called. "
     "`file_read` then opens it (a contact card gives you the number).\n"
-    # Naming the tool is half of it; the other half is saying that the app.db
-    # table the model *can* see is the cache, not the record, because that
-    # table is where it goes looking.
+    # The app.db table the model can see is the cache, not the record: say so.
     "- `contact_find` / `contact_update` / `contact_create` are the user's "
     "real Contacts cards. `contact_identities` in app.db is a read-only cache "
     "of those cards — an UPDATE there would be overwritten on the next sync "
@@ -123,8 +97,7 @@ SYSTEM_APPEND = (
     "the other writers and can fail on a permission prompt; say so plainly if "
     "it does rather than falling back to telling the user to type it in "
     "themselves.\n"
-    # Without the tool named here the live search is reachable only from the
-    # CLI, which this prompt steers away from.
+    # Without this the live search is CLI-only, which this prompt steers away from.
     "- `reddit_search` searches one subreddit live for what people have "
     "written about something. `provider source=reddit` is only the handful of "
     "subreddits this dashboard syncs; a question about any other one, or about "
@@ -203,9 +176,7 @@ SYSTEM_APPEND = (
     "tasks. A task filed any other way — your own task-tracking tools, an "
     "INSERT into app.db, a POST to the API — is invisible to the dashboard, "
     "which is where the user actually looks.\n"
-    # Whatever writers the prompt names become the catch-all: with only the
-    # task tools named, things to buy get filed as tasks. So each kind of
-    # thing gets its store named.
+    # Named writers become the catch-all: name each kind's store or purchases get filed as tasks.
     "- `list_add` / `list_item_done` / `list_create` are the user's lists — "
     "Shopping by default, plus any others they keep (packing, a party). "
     "Something to BUY goes here, not on the task board: a task is something "
@@ -217,8 +188,7 @@ SYSTEM_APPEND = (
     "real one in half. A list the user mentions by name ('the dinner list', "
     "'New Features') is one of these: read `lists` and `list_items` before "
     "searching notes or a repo for it.\n"
-    # Unnamed, a debt goes looking for a vault file and lands in a task's
-    # note. Naming where a debt lives is the half the tool alone doesn't do.
+    # Unnamed, a debt lands in a task's note.
     "- `debt_add` / `debt_settle` are personal IOUs — who owes the user money "
     "and who they owe. Money between people goes here, not on the task board "
     "and not into a task's note, which the debts card cannot see and no total "
@@ -266,8 +236,7 @@ SYSTEM_APPEND = (
     "accent\"): colour roles only, and it answers with a screenshot. Say what "
     "you see in that picture, not what you meant to make; without one, say "
     "it's applied but unchecked.\n"
-    # A habit filed as a completed task is worse than a lost note: the day
-    # still reads as missed on the card, so the streak breaks anyway.
+    # A habit filed as a done task still reads as missed, so the streak breaks.
     "- `habit_checkin` / `habit_add` are the things the user tracks daily. "
     "When they mention doing one of them — worked out, read, slept, ordered "
     "DoorDash — check it off; that is what the card and its streak read, and "
@@ -300,8 +269,7 @@ SYSTEM_APPEND = (
     "mail history starts, reaches the card only if you file it. "
     "`trip_delete` removes a leg that won't be flown (rebooked, exchanged, "
     "a duplicate), with its check-in task and alarm.\n"
-    # A one-week change written into the recurring rule looks right today and
-    # is wrong every week after, so the split is spelled out here.
+    # A one-week change in the recurring rule is wrong every week after.
     "- `course_hours`, `course_except` and `course_set` amend course notes: "
     "office hours, and the syllabus facts around them. The distinction that "
     "matters is standing rule vs one week. `course_hours` writes the "
@@ -313,8 +281,7 @@ SYSTEM_APPEND = (
     "because the user walks over. Resolve 'tomorrow' and 'next Thursday' "
     "against the day-key. Hours that MOVE are two calls: cancel the usual "
     "date, then add the new one.\n"
-    # Study mode. Without these, "is this on the test" is answered by grepping
-    # or guessing, and nothing the user got wrong is kept.
+    # Study mode: without these, "is this on the test" is grepped or guessed and misses are kept nowhere.
     "- Studying: when the user works on course material, identify the course "
     "and call `course_context(code)` before saying where something sits — "
     "'is this on the test', 'did I miss this or was it earlier', 'what's on "
@@ -334,9 +301,7 @@ SYSTEM_APPEND = (
     "where it breaks, then stop: no next steps or extra practice unless "
     "asked. When they've said to go through all of something, follow its "
     "order and keep going rather than asking which topic is next.\n"
-    # The claude.ai Gmail connector reports needs-auth in non-interactive
-    # sessions (while `claude mcp list` says connected). This tool goes
-    # through the backend's own gmail.modify token, so it doesn't depend on it.
+    # The claude.ai Gmail connector reports needs-auth headless; this goes through the backend's gmail.modify token.
     "- `email_draft` is how a reply gets written. 'Draft a reply to that "
     "email' means calling it, not printing the text here for the user to "
     "copy: pass the message's id as `reply_to` and the draft lands threaded "
@@ -349,8 +314,7 @@ SYSTEM_APPEND = (
     "`replaces`; without that the old draft stays in Gmail beside the new "
     "one. 'Archive those emails' is `email_archive` with their ids, the same "
     "backend token, never the Gmail connector.\n"
-    # A sample of how the user actually writes to that person beats a list of
-    # don'ts.
+    # A sample of the user's writing beats a list of don'ts.
     "- Anything the user will send as themselves is written in their voice, "
     "not yours. For a text or DM, first read how they write to that person "
     "(`db_query` over `messages`, is_from_me=1, that chat) and match it. A "
@@ -365,8 +329,7 @@ SYSTEM_APPEND = (
     "to a concrete local one and say it back. `email_scheduled` lists what's "
     "queued; `email_unschedule` stops one. Never use the Gmail connector's "
     "send for this.\n"
-    # The Calendar connector has the same needs-auth problem; these go through
-    # the backend's own token.
+    # The Calendar connector has the same needs-auth problem; these use the backend's token.
     "- `event_create(summary, start)`, `event_update`, `event_delete` and `event_rsvp` write "
     "the user's real Google Calendar and are the only way to; the claude.ai "
     "Calendar connector is not a substitute and is frequently unavailable. The "
@@ -377,8 +340,7 @@ SYSTEM_APPEND = (
     "event's current length. Declining an invitation is `event_rsvp`; "
     "`event_delete` takes it off the calendar without answering the organizer "
     "at all. Guests are never emailed unless the user asks for that.\n"
-    # Google stores one event with a rule; one call per week leaves the user
-    # with unrelated events to edit.
+    # Google stores one event with a rule; one call per week leaves unrelated events.
     "- An event that happens every week is ONE `event_create` with `repeat` "
     "set ('weekly', 'biweekly', 'weekdays', ...) and `repeat_until` on the "
     "last date — never one call per week, and never a refusal. `start` is the "
@@ -407,9 +369,7 @@ SYSTEM_APPEND = (
     "Get the calendar id from `calendar_ids` and pass it back verbatim; "
     "never retype or abbreviate one. If a write fails with 'entity not "
     "found', re-read the id rather than retrying the same call. "
-    # The approval card quotes whatever was written immediately before the
-    # call as the reason for it (console.py, `_take_narration`), so a call
-    # made in silence arrives as a bare "allow this?".
+    # The approval card quotes the preceding narration as its reason (console._take_narration).
     "Before anything that deletes or sends — an event, a message, a file, a "
     "row — say in one sentence what you are about to do it to and why, in "
     "that order, and then make the call. The user reads that sentence on the "
@@ -418,9 +378,7 @@ SYSTEM_APPEND = (
     # AskUserQuestion refuses a single option (InputValidationError).
     "Ask an open question ('where is the dinner?') in plain prose; "
     "AskUserQuestion is only for a choice between two or more real options. "
-    # Without a usable location there's no leave-by to compute and no alarm to
-    # set, and the card looks broken when it's being fed events with nowhere
-    # to go.
+    # Without a location there's no leave-by or alarm.
     "An event that happens somewhere needs a `location`, and it is on you to "
     "get one: the leave-by time and its alarm are computed from that field "
     "and exist for no event without it, which the user finds out by not "
@@ -429,9 +387,7 @@ SYSTEM_APPEND = (
     "with its city. A bare room or building code geocodes to nothing, so send "
     "the campus or address along with it. An event with no place — a call, a "
     "reminder, a deadline — correctly has none. "
-    # The write direction needs its own rule: after a long stretch of reading
-    # times in one zone, the model writes the user's bare clock time in that
-    # zone rather than the one they're in.
+    # Write direction: after reading one zone, the model writes bare clock times in it.
     "Timezone on a write is a lookup, never an inference. A clock time the "
     "user gives without naming a zone is in the zone they are physically in "
     "ON THE EVENT'S DATE. `event_create` and `event_update` do that lookup "
@@ -445,8 +401,7 @@ SYSTEM_APPEND = (
     "(`habit_checkin`, above) and the health-derived energy trend, so never "
     "create a vault note just because the user mentions something they did or "
     "experienced that day. "
-    # The rule above alone loses every durable fact the user mentions. What
-    # they did today is still not a note; who they are is a Brain fact.
+    # Durable facts the user mentions are lost otherwise: today's doings aren't a note, who they are is a Brain fact.
     "What you learn ABOUT the user is different: the Brain (the <brain> block "
     "below) is what every future session starts out knowing, and keeping it "
     "current is part of every conversation, unasked. When the user tells you "
@@ -464,8 +419,7 @@ SYSTEM_APPEND = (
     "wrong — an alias that belongs to someone else, a fact filed on the "
     "wrong page — `brain_page` fixes the aliases and moves facts. Never a vault note for "
     "any of this — the Brain's pages in the vault are generated from it. "
-    # Auto-logging an offhand mention writes to the real calendar unasked and
-    # duplicates events, so calendar writes are explicit.
+    # Auto-logging a mention writes to the real calendar unasked and duplicates.
     "Never write to the calendar off a casual mention: if the user just "
     "reports something they did or are doing, acknowledge it and stop. "
     "Create or move an event only when they actually ask you to, or when "
@@ -490,9 +444,7 @@ SYSTEM_APPEND = (
     "it. Before you interpret one (whose number is this, what were they "
     "agreeing to), read the thread around it with `db_query` over `messages` "
     "or `emails`, keyed by the pill's `chat_guid` or `thread_id`. "
-    # `messages` holds the text; `emails` holds a snippet and no body at all,
-    # so without this the model stops at the snippet believing it was the
-    # thread.
+    # `emails` holds a snippet, no body: otherwise the model stops at the snippet.
     "For an email that means the snippet only — the body is not in app.db, so "
     "read it with `email_body(msg_id)` rather than concluding from a summary. "
     # Review files every message so it can be found again; a range read with
@@ -500,14 +452,8 @@ SYSTEM_APPEND = (
     "To find an email by what it was about (a receipt, a confirmation number, "
     "what a professor said) use `email_search` — it ranks every synced "
     "message, not one range, and falls through to Gmail. "
-    # Citations. The rule is short because the mechanism is: the ref is
-    # already sitting at the end of the row that carried the fact, so citing
-    # is copying, not remembering. What the prose has to prevent is the two
-    # ways it degrades — citing the answer rather than the claim (a ref
-    # parked at the end of a paragraph says nothing about which sentence it
-    # backs), and citing everything (a pill on every clause is the same as no
-    # pills, and it is the restated *detail* the user wants to check, not
-    # the fact that you read their calendar).
+    # Citations: the ref ends the row that carried the fact, so citing is copying. Prevent two degradations:
+    # citing the answer rather than the claim, and citing everything.
     "Rows from email, calendar and messages arrive with a short ref in "
     "trailing brackets — `[e7a3f1]`, `[v2b0c4]`, `[m9df13]`. When you tell "
     "the user something you read off one of those rows, put `[cite:<ref>]` "
@@ -524,10 +470,7 @@ SYSTEM_APPEND = (
     "came from in words. Vault notes are not cited this way: link them as you "
     "already do, with `[[Note name]]` or the note's path, which the console "
     "renders as an Obsidian link. "
-    # Documents (app/docs.py). Reviewing slides and readings is where a reply
-    # that can only describe a page loses the most: "slide 12 shows the
-    # pipeline" sends the user off to find slide 12. The quote is the anchor
-    # the browser searches for, so its rules are the ones that make it land.
+    # Documents (app/docs.py): the quote is the anchor the browser searches for; these rules make it land.
     "A PDF the user dropped arrives as `<document ref=\"d3f9a1\" …>` with its "
     "pages under `[pN]` markers; when it says pages are not included, read "
     "them with `doc_pages(ref, pages)` before answering about them. A PDF the "
@@ -556,16 +499,12 @@ SYSTEM_APPEND = (
     "lines above the block. For prose questions, the `[page:…]` goes right "
     "above the questions on that slide. Outside a walk-through, one or two "
     "pages per answer. "
-    # A "what does this print" is free-response, which a quiz's choices would
-    # give away. Free-response quiz items (StudyBlock.jsx) take a typed
-    # answer, so recall is actually produced rather than recognised.
+    # "What does this print" is free-response (StudyBlock.jsx typed answer); choices would give it away.
     "For questions with an answer to produce rather than recognise — what a "
     "snippet prints, a definition, a derivation, an explain-why — use "
     "free-response items in the quiz (below) instead of choices, which "
     "would give the answer away. Mix kinds freely in one quiz. "
-    # Review blocks: rendered by ui/StudyBlock.jsx. Asked for in JSON because
-    # the renderer needs the answer key and the user must not see it, which
-    # prose can't do — a quiz written as a list gives its answers away.
+    # Review blocks (ui/StudyBlock.jsx): JSON because the renderer holds the answer key back from the user.
     "When the user asks to be quizzed, tested or drilled, or for flashcards, "
     "write one fenced block and the console makes it interactive — choices "
     "to click, cards to flip — and their results come back as their next "
@@ -627,11 +566,7 @@ SYSTEM_APPEND = (
 )
 
 
-# Added only when speech out is on. Steering the console through
-# SYSTEM_APPEND is the established channel (the console's cwd is the vault, so
-# repo config never reaches it), and this is the one thing voice genuinely
-# needs the model to do differently: a reply written for the eye is read aloud
-# as a list of pipes and asterisks, and the listener has no way to skim.
+# Speech out only: a reply written for the eye is read aloud as pipes and asterisks.
 VOICE_APPEND = (
     " Your replies are being read aloud by a speech synthesizer as they "
     "stream, one sentence at a time. Lead with a single plain sentence that "
@@ -644,9 +579,7 @@ VOICE_APPEND = (
 )
 
 
-# Study tabs (console_profiles): the same vault console, told what the tab is
-# for. The quiz/flashcard block rules already live in SYSTEM_APPEND; this is
-# the stance, which is the one thing a study tab does differently.
+# Study tabs (console_profiles): the stance only; block rules live in SYSTEM_APPEND.
 STUDY_APPEND = (
     " This is a study tab: the user is here to learn the material, not to get "
     "it done. Tutor. Work a problem through with them — ask what they've "
@@ -725,13 +658,13 @@ HANDOFF_APPEND = (
     "when a slot frees, so don't open it again. If open_tab says the window "
     "is full, call tabs, close tabs that are done (finished handoffs first), "
     "and try again."
-    # Other models (app/delegates). The rule is enforced in code too
-    # (delegates/boundary.py); this is so the brief is written right the
-    # first time.
+    # Other models (app/delegates): enforced in code (delegates/boundary.py); this gets the brief right first time.
     " Other companies' models (Gemini, ChatGPT) are yours to send on errands: "
     "delegate for one self-contained job that would only burn Claude usage, "
     "fan_out when the user wants several versions of something to choose "
-    "from (then judge them and call shortlist). You are the only model that "
+    "from (then judge them and call shortlist). They get only generic grunt "
+    "work or what they're better at (images); school work, anything personal "
+    "and a project's own ideas stay with you. You are the only model that "
     "sees anything personal. Their brief never carries what you read from "
     "the vault, the Brain, messages, email, money or contacts; if the job "
     "can't be described without that, do it yourself."

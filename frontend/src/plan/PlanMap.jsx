@@ -4,23 +4,14 @@ import { CARD_NAME } from "../widgets/cards.js";
 import { bend, createDotMotion } from "./dotMotion.js";
 import MapTerrain from "./MapTerrain.jsx";
 
-// The map: where a problem lives, and what a console turn touched. Kestrel at
-// the centre, each card at a fixed spot in one of six areas. It shows; the
-// list is where you act — so a node opens its card rather than doing anything
-// itself.
-//
-// Hand-written SVG in React. Positions below are on a 1000 × 660 plan, spread
-// to whatever shape the pane is rather than letterboxed: the pane is tall
-// beside the console and short above it, and a fixed picture fitted into either
-// came out at half size with its labels unreadable. So the SVG is drawn in
-// real pixels, the nodes move and the text doesn't scale with them. The ground
-// under it all is MapTerrain, a live height field drawn from these same nodes.
+// The map: where a problem lives and what a console turn touched; a node opens its card, the list acts.
+// Hand-written SVG in real pixels: positions are on a 1000 × 660 plan spread to the pane, text unscaled.
+// MapTerrain is the ground. Design: DESIGN.md → The map (`plan/PlanMap.jsx`).
 
 const W = 1000, H = 660;
 const HUB = { x: 500, y: 330 };
 
-// Where each card sits. Machine nodes are where the console works rather
-// than a card: they only matter when a call uses them.
+// Where each card sits; machine nodes are where the console works, not cards.
 const NODES = {
   email:     { name: "Email",      x: 110, y: 105 },
   calendar:  { name: "Calendar",   x: 300, y: 92 },
@@ -64,9 +55,7 @@ const CARD_SOURCE = {
   food: "usc_dining",
 };
 
-// Stretched to a short or narrow pane, nodes land on each other's labels. Each
-// one is a box its size plus its name; any two that overlap are pushed apart
-// along their shallower side, so a roomy pane is left exactly as planned.
+// Overlapping node boxes (size plus name) are pushed apart along their shallower side; a roomy pane is untouched.
 function spread(nodes, hub, w, h, k) {
   const boxW = 62 * k, boxH = 46 * k;
   const edge = 20;
@@ -110,8 +99,7 @@ function ringSeg(r, i, n) {
     + ` A${r} ${r} 0 0 1 ${(Math.cos(a1) * r).toFixed(2)} ${(Math.sin(a1) * r).toFixed(2)}`;
 }
 
-// A Kestrel dot's circle round the hub, clear of the halo; the hub's words
-// slide out of its way while there are dots (styles.css, .map-hub).
+// A Kestrel dot's orbit round the hub, clear of the halo (styles.css .map-hub slides its words aside).
 const HUB_ORBIT = 26;
 const reduceQuery = () => window.matchMedia?.("(prefers-reduced-motion: reduce)");
 function useReducedMotion() {
@@ -125,8 +113,7 @@ function useReducedMotion() {
   return still;
 }
 
-// Monospace, so a label's width is its length. Keeps one inside the pane when
-// its node sits near an edge: the node's own label is centred on it otherwise.
+// Monospace: a label's width is its length, used to keep it inside the pane near an edge.
 const LABEL_CH = 6.6;
 const nudge = (text, x, w, k) => {
   const half = (text.length * LABEL_CH * k) / 2 + 4;
@@ -136,8 +123,7 @@ const nudge = (text, x, w, k) => {
 const band = (lvl) => (lvl === NEEDS ? "needs" : lvl === HAS ? "has" : "quiet");
 const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
-// What a node carries when it's dragged into the prompt: the card's summary
-// and the payload its hook read, without the hook's functions.
+// What a dragged node carries: the card's summary and payload, without the hook's functions.
 const DATA_KEYS = ["data", "queue", "sum", "payload", "notes", "series", "balances",
                    "spend", "waiting", "signals"];
 function cardPin(id, card, level) {
@@ -165,7 +151,7 @@ export default function PlanMap({ cards, sal, sources, trace, askCount = {}, sno
     return () => ro.disconnect();
   }, []);
   const sx = box.w / W, sy = box.h / H;
-  // Nodes shrink a little in a small pane, down to where text stays readable.
+  // Nodes shrink in a small pane, to 0.8 at most.
   const k = Math.max(0.8, Math.min(1, Math.sqrt(sx * sy)));
   const hubAt = { x: HUB.x * sx, y: HUB.y * sy };
   // A short pane has no room for a line under each node; hover still has it.
@@ -178,8 +164,7 @@ export default function PlanMap({ cards, sal, sources, trace, askCount = {}, sno
 
   const nodes = useMemo(() => spread(Object.entries(NODES).map(([id, n]) => {
     const card = cards[id];
-    // A card whose every ask is snoozed draws as "today", dashed, until
-    // they come back.
+    // Every ask snoozed: draws as "today", dashed.
     const snoozed = snoozedCards.has(id);
     const lvl = n.machine ? null : snoozed ? HAS : sal[id]?.level ?? null;
     const recent = sources[CARD_SOURCE[id]]?.recent ?? null;
@@ -192,9 +177,7 @@ export default function PlanMap({ cards, sal, sources, trace, askCount = {}, sno
   }), { x: HUB.x * sx, y: HUB.y * sy }, box.w, box.h, k),
   [cards, sal, sources, askCount, snoozedCards, sx, sy, box.w, box.h, k]);
 
-  // The ground: how tall each card stands is how much it needs you. Asks add
-  // height, so a card with a queue outgrows one with a single row. Machine
-  // nodes aren't cards, so they raise nothing; Kestrel always stands.
+  // The ground: height = need (asks add). Machine nodes raise nothing; Kestrel always stands.
   const scale = Math.sqrt(sx * sy);
   const hills = useMemo(() => {
     const out = [{ id: "hub", x: hubAt.x, y: hubAt.y, lift: 0.75, sig2: 2 * (70 * scale) ** 2,
@@ -208,8 +191,7 @@ export default function PlanMap({ cards, sal, sources, trace, askCount = {}, sno
     }
     return out;
   }, [nodes, hubAt.x, hubAt.y, scale]);
-  // One id per node in use, machine nodes included: `trace.live` is what's
-  // being called right now. Its identity changes every render, so key on ids.
+  // Key on node ids: `trace.live` (calls in flight) is a new object every render.
   const liveKey = Object.keys(trace.live || {}).sort().join(" ");
   const ripples = useMemo(() => (liveKey ? liveKey.split(" ") : [])
     .map((id) => nodes.find((n) => n.id === id)).filter(Boolean)
@@ -221,8 +203,7 @@ export default function PlanMap({ cards, sal, sources, trace, askCount = {}, sno
     if (n.machine || e.button !== 0) return;
     drag.current = { id: n.id, x: e.clientX, y: e.clientY, on: false };
   };
-  // Read at drop time through refs, so the window listeners subscribe once
-  // rather than on every render (`cards` is a fresh object each one).
+  // Read at drop time through refs so the window listeners subscribe once (`cards` is new each render).
   const latest = useRef({ cards, sal, onPin });
   latest.current = { cards, sal, onPin };
   useEffect(() => {
@@ -240,8 +221,7 @@ export default function PlanMap({ cards, sal, sources, trace, askCount = {}, sno
       if (!d?.on) return;
       document.body.classList.remove("pin-dragging");
       setGhost(null);
-      // The click this release is about to fire isn't one; the next press
-      // (down, below) starts a fresh gesture and lifts it.
+      // Swallow the click this release fires; the next press lifts it.
       suppressClick.current = true;
       // The drop targets: the prompt, the console sheet (any height), Kestrel.
       const over = document.elementFromPoint(e.clientX, e.clientY);
@@ -269,8 +249,7 @@ export default function PlanMap({ cards, sal, sources, trace, askCount = {}, sno
       if (tapped !== n.id) { setTapped(n.id); onHot(n.id); return; }
     }
     setTapped(null);
-    // The vault is the one machine node you can open: it's the way into
-    // your notes.
+    // The vault is the one openable machine node.
     if (n.id === "vault") onVault();
     else if (!n.machine) onOpen(n.id);
   }, [tapped, onHot, onOpen, onVault]);
@@ -281,9 +260,7 @@ export default function PlanMap({ cards, sal, sources, trace, askCount = {}, sno
   const hub = trace.waiting || anyWaiting ? "asking" : agents.length ? "working" : unread ? "replied" : "idle";
   const hotNode = nodes.find((n) => n.id === hot);
 
-  // ---- Kestrel dots. A tab's dot and each of its subagents are bodies in the
-  // one motion loop (dotMotion.js). One that's finished stays drawn as a ghost
-  // until the loop has flown it home.
+  // ---- Kestrel dots: bodies in the one motion loop (dotMotion.js); a finished one stays a ghost until flown home.
   const dots = useMemo(() => agents.flatMap((a) => [
     { id: a.id, tab: a, node: a.node, held: a.waiting },
     ...a.subagents.map((s) => ({ id: `${a.id}/${s.id}`, tab: a, node: s.node, sub: true, parent: a.id })),
@@ -368,8 +345,7 @@ export default function PlanMap({ cards, sal, sources, trace, askCount = {}, sno
                   else if (!n.machine) { e.preventDefault(); onOpen(n.id); }
                 }}>
                 <circle r={34} className="hit" />
-                {/* A healthy history is nothing to look at: the ring comes up
-                    for a broken source, the node under the pointer, or the key. */}
+                {/* The ring shows only for a broken source, the hovered node, or the key. */}
                 {n.recent != null && (n.broken || keyed || hot === n.id) && Array.from({ length: 24 }, (_, i) => {
                   // right-aligned: the newest sync is always the last segment
                   const ch = n.recent[n.recent.length - 24 + i];
@@ -415,11 +391,7 @@ export default function PlanMap({ cards, sal, sources, trace, askCount = {}, sno
           </text>}
         </g>
 
-        {/* Kestrel dots: one per tab with a turn in flight, circling Kestrel
-            while it thinks and flying out along a line to circle the node its
-            newest call is on. A subagent it has out is a smaller dot, circling
-            it or off at the node of its own newest call. Click one to go to
-            its tab. dotMotion.js owns each one's transform. */}
+        {/* Kestrel dots (click goes to the tab); dotMotion.js owns each transform. */}
         {[...dots, ...ghosts.filter((g) => !dots.some((d) => d.id === g.id))].map((d) => {
           const a = d.tab, gone = !dots.includes(d);
           const open = gone ? {} : {
@@ -442,8 +414,7 @@ export default function PlanMap({ cards, sal, sources, trace, askCount = {}, sno
           );
         })}
 
-        {/* Top layer: the full summary of the node under the pointer, drawn
-            last so no neighbour can cover it. Kept on the map near edges. */}
+        {/* Top layer: the hovered node's full summary, drawn last so no neighbour covers it. */}
         {hotNode?.summary && (() => {
           const text = clip(hotNode.summary, Math.floor((box.w - 16) / LABEL_CH));
           return (

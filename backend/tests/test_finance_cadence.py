@@ -1,15 +1,7 @@
-"""finance.refresh()'s once-a-day legs.
+"""finance.refresh()'s once-a-day legs (recurring, liabilities): a sync_state marker per (leg, item) holds each to one run per day_key.
 
-The transactions cursor is incremental and cheap, so it runs every poller
-cycle. `/transactions/recurring/get` and `/liabilities/get` are not: they
-re-fetch the whole set, and neither dataset moves faster than daily, so on a
-300s cycle they were spending ~570 identical calls a day. A sync_state marker
-keyed per (leg, item) holds them to one run per day_key.
-
-What must not regress: the marker is set only when a fetch actually landed.
-Marking on failure would park a broken leg until tomorrow, and would break the
-reconnect path — POST /api/plaid/sync resets a login_required/needs_consent
-item and expects the very next refresh to re-pull it, not to wait out the day.
+The marker is set only when a fetch landed: marking on failure would park a broken leg and break the reconnect path.
+Design: DESIGN.md → §18 Finance (Plaid).
 """
 
 import pytest
@@ -19,9 +11,7 @@ from app.providers import finance, plaid
 
 @pytest.fixture
 def calls(dbfile, monkeypatch):
-    """refresh() reduced to its Plaid calls: one sandbox item, the transaction
-    cursor and net-worth snapshot stubbed out, every /endpoint hit appended to
-    the returned list so a test can count them across cycles."""
+    """refresh() reduced to its Plaid calls: one sandbox item; returns the list of /endpoints hit."""
     seen: list[str] = []
     item = {"item_id": "itm_1", "access_token": "tok", "status": "ok"}
 
@@ -66,8 +56,7 @@ def test_a_new_day_key_makes_the_legs_due_again(calls, freeze_day):
 
 
 def test_the_marker_is_per_item(calls, monkeypatch):
-    """Two banks are two markers — one item's successful leg must not satisfy
-    the other's, or a second-linked account never pulls liabilities."""
+    """One marker per item: a second-linked bank still pulls liabilities."""
     seen, item = calls
     finance.refresh()
     seen.clear()
@@ -79,8 +68,7 @@ def test_the_marker_is_per_item(calls, monkeypatch):
 
 
 def test_a_failed_leg_is_not_marked_and_retries_next_cycle(calls, monkeypatch):
-    """A 500 from Plaid must not cost the day's data. The failing leg stays
-    due; the leg that worked stays done."""
+    """A 500 leaves the failing leg due and the successful one done."""
     seen, _ = calls
 
     def api(path, _payload):
@@ -97,9 +85,7 @@ def test_a_failed_leg_is_not_marked_and_retries_next_cycle(calls, monkeypatch):
 
 
 def test_needs_consent_item_leaves_liabilities_due(calls, monkeypatch):
-    """_sync_liabilities short-circuits on needs_consent without calling out.
-    That's a skip, not a success, so the marker stays unset and POST
-    /api/plaid/sync's status reset takes effect on the next refresh."""
+    """A needs_consent skip is not a success: the marker stays unset so POST /api/plaid/sync's reset re-pulls."""
     seen, item = calls
     monkeypatch.setattr(plaid, "list_items", lambda env: [
         {**item, "status": "needs_consent"}])
@@ -120,10 +106,7 @@ def test_no_syncable_items_touches_nothing(calls, monkeypatch):
 
 
 def test_reconnect_sync_answers_after_the_sync_ran(calls, monkeypatch):
-    """POST /api/plaid/sync runs the refresh before it answers, so the widget
-    loads what it wrote. It used to be a background task the widget polled
-    for, and a reconnect's item already had last_synced_at, so the poll gave
-    up before the sync had run."""
+    """POST /api/plaid/sync runs the refresh before answering, so the widget loads what it wrote."""
     from app.routes import plaid as routes
     seen, _ = calls
     out = routes.sync()

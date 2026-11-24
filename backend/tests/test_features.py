@@ -1,9 +1,6 @@
-"""providers/features — the cross-provider day matrix. It's pure SQL/
-python over the other providers' cache tables, so the tests seed those tables
-directly and assert the derivation. The contract that matters: passthrough
-tables are renamed straight through, raw-event tables aggregate the same way
-their own provider does, an absent source is a GAP (no row) not a 0, tasks fold
-on day_key (4am rollover), and the metric filter picks one feature's series."""
+"""providers/features: tests seed the source cache tables and assert the derived day matrix.
+
+Design: DESIGN.md → §11 Feature matrix."""
 
 import math
 import statistics
@@ -22,29 +19,24 @@ def _rng(start=DAY, end=DAY):
 
 def _seed(con):
     with con:
-        # weather_days: passthrough with a rename (tmax -> weather_tmax).
         con.execute("INSERT INTO weather_days (day, metric, value, refreshed_at)"
                     " VALUES (?, 'tmax', 90.0, ?)", (DAY, NOW))
-        # health_days: passthrough, same name.
         con.execute("INSERT INTO health_days (day, metric, value, refreshed_at)"
                     " VALUES (?, 'sleep_hours', 7.5, ?)", (DAY, NOW))
         con.execute("INSERT INTO health_days (day, metric, value, refreshed_at)"
                     " VALUES (?, 'hrv', 50.0, ?)", (DAY, NOW))
-        # messages: 2 sent, 1 received, 2 distinct real handles (the '' handle
-        # must not count, matching messages.get's `if r["handle"]`).
+        # 2 sent, 1 received; the '' handle must not count as a contact.
         for guid, frm, handle in [("g1", 1, "a@x.com"), ("g2", 1, "b@x.com"),
                                   ("g3", 0, "a@x.com"), ("g4", 0, "")]:
             con.execute(
                 "INSERT INTO messages (guid, day, ts, handle, is_from_me, refreshed_at)"
                 " VALUES (?, ?, ?, ?, ?, ?)",
                 (guid, DAY, f"{DAY}T12:00:00", handle, frm, NOW))
-        # tasks: one done at noon on DAY, one done at 2am the NEXT civil date —
-        # which day_key's back onto DAY (4am rollover). Both count -> 2.
+        # One done at noon on DAY, one at 2am the next civil date (day_key folds it onto DAY).
         con.execute("INSERT INTO tasks (title, status, created_at, completed_at)"
                     " VALUES ('a', 'done', ?, ?)", (NOW, f"{DAY}T12:00:00"))
         con.execute("INSERT INTO tasks (title, status, created_at, completed_at)"
                     " VALUES ('b', 'done', ?, '2026-07-21T02:00:00')", (NOW,))
-        # an open task must not count.
         con.execute("INSERT INTO tasks (title, status, created_at) VALUES ('c', 'open', ?)",
                     (NOW,))
 
@@ -59,13 +51,10 @@ def test_passthrough_rename_and_aggregation(dbfile):
     con = db.connect()
     _seed(con)
     feats = _matrix(con)
-    # rename: the weather metric surfaces under its feature name, not 'tmax'.
     assert feats["weather_tmax"] == 90.0
     assert "tmax" not in feats
-    # passthrough, same name.
     assert feats["sleep_hours"] == 7.5
     assert feats["hrv"] == 50.0
-    # message aggregation matches messages.get.
     assert feats["msgs_sent"] == 2.0
     assert feats["msgs_received"] == 2.0
     assert feats["contacts"] == 2.0  # '' handle excluded
@@ -121,7 +110,6 @@ def test_hr_var_day_is_stdev_of_hourly_means(dbfile):
             70, 74, 95, 110, 57, 60, 64, 105, 68, 62, 58, 80]  # full 24h day
     _seed_hours(con, DAY, vals)
     feats = _matrix(con)
-    # population stdev of the day's hourly means, matching _hr_var_rows.
     assert feats["hr_var_day"] == round(statistics.pstdev(vals), 2)
 
 
@@ -133,8 +121,7 @@ def test_hr_var_day_partial_wear_is_gap(dbfile):
 
 
 def test_hr_var_day_tagged_health_domain():
-    # so cross_domain correlations drop the mechanical hr_var_day ~ resting_hr /
-    # ~ hrv pairs while keeping genuine cross-signal ones.
+    # cross_domain must drop the mechanical hr_var_day ~ resting_hr / hrv pairs.
     assert features.FEATURE_DOMAIN["hr_var_day"] == "health"
 
 
@@ -180,8 +167,7 @@ def test_genre_variety_is_one_when_evenly_spread(dbfile):
 
 
 def test_genre_variety_gaps_below_the_coverage_floor(dbfile):
-    """Half the day untagged: the spread would describe which artists Last.fm
-    happens to know, not what was played."""
+    """Half the day untagged: the spread would describe Last.fm's coverage, not the plays."""
     con = db.connect()
     _seed_plays(con, DAY, ["A", "B", "C", "D", "E", "F"])
     _seed_tags(con, {"a": ["rock"], "b": ["jazz"]})   # 2 of 6 -> 33%
@@ -198,16 +184,13 @@ def test_genre_variety_gaps_on_a_thin_day(dbfile):
 
 
 def test_genre_variety_is_tagged_spotify_not_lastfm():
-    """It's computed off the same `plays` rows as listen_min/novelty, so it has
-    to share their domain or correlations() will pair it with them and report
-    the play count correlating with itself."""
+    """Same `plays` rows as listen_min/novelty, so it must share their domain (no self-correlation)."""
     assert features.FEATURE_DOMAIN["genre_variety"] == "spotify"
 
 
 # ---------- correlations ----------
 
 def test_corr_pvalue_matches_t_table():
-    # two-tailed t-test anchors for Pearson r (df = n-2).
     assert abs(features._corr_p(0.5, 30) - 0.0049) < 5e-4
     assert abs(features._corr_p(0.361, 30) - 0.05) < 5e-3   # the df=28 crit value
     assert features._corr_p(0.0, 50) == 1.0                 # no correlation
@@ -221,9 +204,7 @@ def test_pearson_perfect_and_constant():
 
 
 def _seed_series(con, first="2026-01-01", days=24):
-    """`days` consecutive days where listen_min is an exact negative linear
-    function of sleep_hours (so they correlate at r=-1), each in its own
-    source table — a genuinely cross-domain pair."""
+    """`days` days where listen_min is an exact negative linear function of sleep_hours (r=-1)."""
     last = None
     with con:
         for i in range(days):
@@ -256,7 +237,6 @@ def test_correlations_min_n_floor_and_focus(dbfile):
     end = _seed_series(con, days=15)  # below the default floor
     con.close()
     assert features.correlations(end, window_days=60, min_n=20) == []
-    # focus keeps only pairs touching the named feature
     hit = features.correlations(end, window_days=60, min_n=10, focus="listen_min")
     assert hit and all("listen_min" in (c["a"], c["b"]) for c in hit)
 
@@ -266,7 +246,6 @@ def test_correlations_cross_domain_drops_same_source(dbfile):
     with con:
         for i in range(24):
             d = (date.fromisoformat("2026-01-01") + timedelta(days=i)).isoformat()
-            # two health metrics -> same domain, must be dropped when cross_domain
             con.execute("INSERT INTO health_days (day, metric, value, refreshed_at)"
                         " VALUES (?, 'sleep_hours', ?, ?)", (d, 6.0 + i * 0.1, NOW))
             con.execute("INSERT INTO health_days (day, metric, value, refreshed_at)"
@@ -277,8 +256,7 @@ def test_correlations_cross_domain_drops_same_source(dbfile):
     assert ("hrv", "sleep_hours") in {(c["a"], c["b"]) for c in within}
     cross = features.correlations(end, window_days=60, min_n=20, cross_domain=True)
     assert cross == []  # the only pair is within-domain
-    # both are health, so both are keyed on the civil date: the key stays
-    # absent, and the brief pays no tokens for the common case.
+    # same basis -> the key stays absent (the brief pays no tokens for the common case)
     assert all("cross_basis" not in c for c in within)
 
 
@@ -286,12 +264,10 @@ def test_correlations_cross_domain_drops_same_source(dbfile):
 
 
 def test_every_domain_has_a_day_basis():
-    """A new domain must say which notion of a day its rows are keyed on, or
-    correlations() silently stops flagging every pair that touches it."""
+    """A new domain must declare its day basis, or correlations() stops flagging its pairs."""
     missing = {dom for dom in features.FEATURE_DOMAIN.values()
                if dom not in features.DOMAIN_DAY_BASIS}
     assert not missing
-    # and the derived per-feature map then covers every feature
     assert set(features.FEATURE_DAY_BASIS) == set(features.FEATURE_DOMAIN)
 
 
@@ -309,13 +285,7 @@ def test_correlations_marks_cross_basis_pairs(dbfile):
 
 
 def _seed_fixes(con, day, n, *, minutes_apart=60, lat=None, lon=None):
-    """n fixes on `day`, at home unless a coordinate is given.
-
-    Spacing is a parameter because the gate reads it: n fixes spaced at or
-    beyond MAX_GAP_MIN cover (n-1) * MAX_GAP_MIN minutes, while the same n
-    bunched together cover almost nothing. _covering_fixes below is the count
-    that clears the floor at this spacing.
-    """
+    """n fixes on `day`, at home unless a coordinate is given. Spacing matters: the gate reads coverage minutes."""
     from app.config import HOME_LAT, HOME_LON
     lat, lon = (HOME_LAT if lat is None else lat), (HOME_LON if lon is None else lon)
     with con:
@@ -342,9 +312,7 @@ def _seed_location_days(con, day, now=NOW):
 
 
 def test_thin_location_day_is_a_gap_not_a_day_indoors(dbfile):
-    """One fix computes 0 places / 0 min at home, which is byte-for-byte a day
-    spent indoors. location.summary() already refuses such a day; the matrix
-    has to agree or the correlations read a coverage gap as staying home."""
+    """One fix computes 0 places / 0 min at home, identical to a day indoors; the matrix must refuse it like location.summary()."""
     con = db.connect()
     _seed_location_days(con, DAY)
     _seed_fixes(con, DAY, 1)  # below location.SUMMARY_MIN_FIXES
@@ -354,8 +322,7 @@ def test_thin_location_day_is_a_gap_not_a_day_indoors(dbfile):
 
 
 def test_covered_location_day_passes_through(dbfile):
-    """The gate must not swallow a day that really was recorded — including a
-    genuine 0, which above the floor is an observation."""
+    """A genuinely recorded day passes the gate, including a real 0."""
     con = db.connect()
     _seed_location_days(con, DAY)
     _seed_fixes(con, DAY, _covering_fixes())
@@ -365,12 +332,9 @@ def test_covered_location_day_passes_through(dbfile):
 
 
 def test_a_burst_of_fixes_never_reaches_the_matrix(dbfile):
-    """The matrix has to refuse a burst for the same reason the card does, and
-    it matters more here: location clears CORR_MIN_N, so these days land in
-    pairs that Patterns shows rather than in an empty row."""
+    """A burst of fixes (one minute apart) is refused: coverage, not count."""
     con = db.connect()
     _seed_location_days(con, DAY)
-    # Four times the fixes a covering day needs, one minute apart.
     _seed_fixes(con, DAY, _covering_fixes() * 4, minutes_apart=1)
     feats = _matrix(con)
     for gated in ("time_at_home_min", "places", "entropy"):
@@ -378,11 +342,9 @@ def test_a_burst_of_fixes_never_reaches_the_matrix(dbfile):
 
 
 def test_location_gate_does_not_leak_to_other_passthroughs(dbfile):
-    """The health/weather pollers run server-side whether or not anything
-    happens, so their zeros are observations and must never be gated on
-    location's fixes."""
+    """Health/weather zeros are observations; never gated on location's fixes."""
     con = db.connect()
-    _seed(con)  # health_days seeded, no location_points at all
+    _seed(con)
     feats = _matrix(con)
     assert feats["sleep_hours"] == 7.5
 
@@ -392,17 +354,13 @@ def test_location_gate_does_not_leak_to_other_passthroughs(dbfile):
 
 
 def test_late_source_reaches_an_already_computed_day(dbfile):
-    """get()'s backfill test is per day, so a day that had *any* feature row
-    was never revisited and a later-arriving source stayed invisible — as a
-    gap, i.e. as the source having no data, which is the reading the data was
-    supposed to correct. The location backfill hit exactly this."""
+    """A source landing after a day was computed must reach that day (get() backfills only never-computed days)."""
     con = db.connect()
-    _seed(con)          # health/messages/tasks, but no location
+    _seed(con)
     feats = _matrix(con)
     assert "places" not in feats
 
-    # Age the computed day, as the nightly refresh would have left it, so the
-    # source below genuinely lands *after* the features were computed.
+    # Age the day so the source below lands after the features.
     con = db.connect()
     with con:
         con.execute("UPDATE features SET refreshed_at = '2026-07-21T03:55:00'"
@@ -415,8 +373,7 @@ def test_late_source_reaches_an_already_computed_day(dbfile):
 
 
 def test_stale_sweep_converges(dbfile):
-    """One recompute must settle it: _compute_days stamps features later than
-    the source that triggered the sweep, or every read recomputes forever."""
+    """One recompute settles the day, or every read recomputes forever."""
     con = db.connect()
     _seed(con)
     con.close()
@@ -427,8 +384,7 @@ def test_stale_sweep_converges(dbfile):
 
 
 def test_stale_sweep_survives_a_missing_table(dbfile):
-    """An absent source table is skipped, not an OperationalError that takes
-    every other source's detection down with it."""
+    """An absent source table is skipped, not an OperationalError for every other source."""
     con = db.connect()
     _seed(con)
     with con:
@@ -438,8 +394,7 @@ def test_stale_sweep_survives_a_missing_table(dbfile):
 
 
 def test_stale_sweep_survives_half_a_joined_source(dbfile):
-    """The lastfm arm needs `plays` *and* `artist_tags` — a one-table presence
-    check would have built a join against a table that isn't there."""
+    """The lastfm arm needs both `plays` and `artist_tags`."""
     con = db.connect()
     _seed(con)
     with con:
@@ -452,12 +407,7 @@ def test_stale_sweep_survives_half_a_joined_source(dbfile):
 
 
 def test_late_tags_reach_an_already_computed_day(dbfile):
-    """artist_tags is keyed by artist, so its arrival has to be noticed through
-    the plays that reference it. Tags are fetched lazily one artist at a time,
-    so on a long history nearly every day's genre_variety was computed before
-    the tags it rests on existed — 284 of 365 days on the real DB. Both halves
-    of _genre_rows move underneath: the entropy, and the coverage gate that had
-    been keeping the day out as a gap entirely."""
+    """Late artist_tags (lazily fetched; 284 of 365 days predated them) reach a computed day via the plays that reference them."""
     con = db.connect()
     _seed_plays(con, DAY, ["A", "B", "C", "D", "E", "F"])
     feats = _matrix(con)
@@ -465,8 +415,7 @@ def test_late_tags_reach_an_already_computed_day(dbfile):
 
     con = db.connect()
     with con:
-        # *After* the plays (NOW), so the plays arm is settled and the tags
-        # below are the only thing that can bring the day back.
+        # After the plays, so only the tags below can flag the day.
         con.execute("UPDATE features SET refreshed_at = '2026-07-22T11:00:00'"
                     " WHERE day = ?", (DAY,))
     _seed_tags(con, {"a": ["rock"], "b": ["rock"], "c": ["jazz"], "d": ["jazz"],
@@ -475,8 +424,7 @@ def test_late_tags_reach_an_already_computed_day(dbfile):
 
 
 def test_late_calendar_sync_reaches_an_already_computed_day(dbfile):
-    """`events` rows carry no timestamp of their own; calendar_days holds the
-    per-day sync stamp, on the same civil date the features key on."""
+    """`events` has no timestamp; calendar_days' per-day sync stamp flags the day."""
     con = db.connect()
     _seed(con)
     feats = _matrix(con)
@@ -484,8 +432,7 @@ def test_late_calendar_sync_reaches_an_already_computed_day(dbfile):
 
     con = db.connect()
     with con:
-        # *After* every source _seed wrote (NOW), so calendar_days below is the
-        # only thing that can flag the day.
+        # After every seeded source, so only calendar_days can flag the day.
         con.execute("UPDATE features SET refreshed_at = '2026-07-22T11:00:00'"
                     " WHERE day = ?", (DAY,))
         con.execute(
@@ -501,8 +448,7 @@ def test_late_calendar_sync_reaches_an_already_computed_day(dbfile):
 
 
 def test_a_timed_event_over_a_day_is_not_load(dbfile):
-    """calendar.SPAN_SQL: a retreat or a mis-dated hold clamped to the day
-    still read as 24h busy on each day it touched."""
+    """calendar.SPAN_SQL: a multi-day event clamped to the day must not read as 24h busy."""
     con = db.connect()
     with con:
         for eid, summary, s, e in (
@@ -519,16 +465,11 @@ def test_a_timed_event_over_a_day_is_not_load(dbfile):
 
 
 def test_late_task_completion_folds_on_day_key_not_civil_date(dbfile):
-    """The tasks arm re-does _tasks_rows' 4am fold in SQL, so a 2am completion
-    has to mark the *previous* day stale — the day whose tasks_done would
-    change — and not the civil date it happened on. Both days are computed
-    here, so a civil-date fold would flag the wrong one rather than none.
-    DAY_ROLLOVER_HOUR is interpolated into that SQL; this pins the result
-    against db.day_key so the two can't drift."""
+    """A 2am completion marks the previous day stale (the SQL fold must agree with db.day_key)."""
     con = db.connect()
     _seed(con)
     nextday = (date.fromisoformat(DAY) + timedelta(days=1)).isoformat()
-    with con:   # give nextday a feature row of its own, so it *could* be flagged
+    with con:   # nextday gets its own feature row so it could be flagged wrongly
         con.execute("INSERT INTO weather_days (day, metric, value, refreshed_at)"
                     " VALUES (?, 'tmax', 88.0, ?)", (nextday, NOW))
     con.close()
@@ -547,11 +488,7 @@ def test_late_task_completion_folds_on_day_key_not_civil_date(dbfile):
 
 
 def test_trigger_stamped_task_is_comparable_with_features(dbfile):
-    """A task's stamp comes from the tasks_touch trigger as
-    datetime('now','localtime') — space-separated, so it sorts *before* every
-    ISO-T stamp of the same date and a task updated at 14:22 read as older than
-    features computed at 00:00. Only weather is seeded, older than the features,
-    so the tasks arm is the only thing that can flag the day."""
+    """The tasks_touch trigger's space-separated stamp must compare correctly with ISO-T feature stamps."""
     assert f"{DAY} 14:22:46" < f"{DAY}T00:00:00"    # the trap, as a string fact
     con = db.connect()
     with con:
@@ -572,8 +509,7 @@ def test_trigger_stamped_task_is_comparable_with_features(dbfile):
 
 
 def test_touch_trigger_really_writes_a_space_separated_stamp(dbfile):
-    """The premise the arm's replace() rests on — pinned separately so a change
-    to the trigger shows up here rather than as a silently dead normalization."""
+    """Pins the premise of the arm's replace(): the trigger writes a space-separated stamp."""
     con = db.connect()
     with con:
         con.execute("INSERT INTO tasks (title, status, source, created_at)"
@@ -604,19 +540,14 @@ def _seed_calendar(con, day, *, synced=NOW, event=True):
 
 
 def test_rebuild_keeps_features_the_calendar_can_no_longer_answer_for(dbfile):
-    """calendar._sync keeps a rolling window, so an old day's `events` rows are
-    gone while `features` is the only record left of that day's load. Rebuilding
-    the day — for any reason, a late tag is enough — would delete them and
-    republish the day as having had no events. On the real DB this cost 34 of 45
-    calendar days before the guard existed."""
+    """A day scrolled out of calendar's window keeps its features on rebuild (34 of 45 days were lost before the guard)."""
     con = db.connect()
     _seed(con)
     _seed_calendar(con, DAY)
     feats = _matrix(con)
     assert feats["calendar_events"] == 1.0
 
-    # The day scrolls out of the window: events pruned, and with them the
-    # calendar_days marker that said the day was ever fetched.
+    # The day scrolls out of the window: events and the calendar_days marker pruned.
     con = db.connect()
     with con:
         con.execute("DELETE FROM events WHERE day = ?", (DAY,))
@@ -630,9 +561,7 @@ def test_rebuild_keeps_features_the_calendar_can_no_longer_answer_for(dbfile):
 
 
 def test_a_synced_day_with_no_events_is_still_a_real_gap(dbfile):
-    """The guard must not freeze a day the calendar *can* answer for: a day
-    inside the window whose events were all cancelled has to lose the feature,
-    or a deleted event would live in the matrix forever."""
+    """A synced day whose events were all cancelled loses the feature (the guard doesn't freeze it)."""
     con = db.connect()
     _seed(con)
     _seed_calendar(con, DAY)
@@ -648,9 +577,7 @@ def test_a_synced_day_with_no_events_is_still_a_real_gap(dbfile):
 
 
 def test_carried_forward_day_does_not_recompute_forever(dbfile):
-    """The rows are preserved, so their refreshed_at would have stayed older
-    than every source and left the day permanently stale — recomputing on every
-    read. They're re-stamped instead."""
+    """Carried-forward rows are re-stamped, or the day stays stale and recomputes on every read."""
     con = db.connect()
     _seed(con)
     _seed_calendar(con, DAY)
@@ -659,8 +586,7 @@ def test_carried_forward_day_does_not_recompute_forever(dbfile):
     with con:
         con.execute("DELETE FROM events WHERE day = ?", (DAY,))
         con.execute("DELETE FROM calendar_days WHERE day = ?", (DAY,))
-        # Age the day below the seeded sources, so the read below really does
-        # rebuild it and really does take the carry-forward path.
+        # Age the day below the sources so the read takes the carry-forward path.
         con.execute("UPDATE features SET refreshed_at = '2026-07-21T03:55:00'")
     assert features._stale_days(con, [DAY]) == {DAY}
     con.close()
@@ -675,18 +601,14 @@ def test_carried_forward_day_does_not_recompute_forever(dbfile):
 
 
 def test_domain_features_covers_every_declared_feature():
-    """_DOMAIN_FEATURES is derived from FEATURE_DOMAIN so a new feature can't be
-    left out of the carry-forward set for its source."""
+    """_DOMAIN_FEATURES covers every FEATURE_DOMAIN feature."""
     flat = {f for feats in features._DOMAIN_FEATURES.values() for f in feats}
     assert flat == set(features.FEATURE_DOMAIN)
     assert set(features._RETENTION_GATES) <= set(features._DOMAIN_FEATURES)
 
 
 def test_new_arms_converge_in_one_sweep(dbfile):
-    """Same contract as test_stale_sweep_converges, for the three joined arms:
-    one recompute must settle them, or every read recomputes forever. The
-    calendar arm matters most — _sync re-stamps its whole window each poll
-    whether or not an event changed."""
+    """test_stale_sweep_converges for the three joined arms; calendar matters most (_sync re-stamps its window every poll)."""
     con = db.connect()
     _seed(con)
     _seed_plays(con, DAY, ["A", "B", "C", "D", "E", "F"])

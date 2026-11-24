@@ -23,9 +23,7 @@ import { NEEDS, errorSummary } from "../lib/salience";
 import { genericAsk } from "../lib/asks.js";
 import { report } from "../lib/report";
 
-// Desk order: the tiebreak within a rank band, and the layout everything
-// falls back to before any card has reported. The brief isn't in here — it
-// summarises everything below it, so it leads whatever the day holds.
+// Desk order: the tiebreak within a rank band and the pre-report layout. The brief isn't here: it leads the day.
 export const DESK = [
   ["calendar", "Calendar"],
   ["courses", "Office hours"],
@@ -51,16 +49,9 @@ export const DESK = [
 export const DESK_IDS = DESK.map(([id]) => id);
 export const CARD_NAME = Object.fromEntries(DESK);
 
-// Every card's data, fetched once at the top of the app.
-// A widget that fetches its own data and reports its own salience from inside
-// its render means nothing can know what a card holds without drawing
-// it. So each widget file exports a `useXCard()` — the fetch, the refresh
-// subscription, the level and the fold line — and its component is a view
-// over what that hook returns, so the desk can rank, summarise and later list
-// a card's asks without mounting it, and opening a card never refetches.
-//
-// Keyed by desk id. The object is a constant, so the hooks run in the same
-// order on every render.
+// Every card's data, fetched once at the top of the app: each widget exports `useXCard()` (fetch,
+// refresh subscription, level, fold line) and its component is a view over it, so the desk can rank
+// and list asks without mounting a card. Keyed by desk id; the constant object keeps hook order stable.
 const HOOKS = {
   calendar: useCalendarCard,
   courses: useCoursesCard,
@@ -87,12 +78,8 @@ const HOOKS = {
 // Throws already reported, so a card that fails on every render posts once.
 const reported = new Set();
 
-// A hook runs in the app's render, outside any card's ErrorBoundary, so a
-// payload it can't read would blank the whole page — console included. Each
-// hook therefore makes all of its React hook calls first and derives after;
-// a throw can only come from the derivation, by which point the hook order is
-// already complete, and catching it here keeps the rest of the app alive. The
-// card then renders as an error, as a boundary would show it.
+// Hooks run outside any ErrorBoundary: an unreadable payload would blank the page, console included.
+// So each hook makes all its React calls first and derives after, and a throw is caught here.
 // (`cardHook`, not `use`: rules-of-hooks reads a bare `use()` as React's own.)
 function guard(id, cardHook) {
   let card;
@@ -112,9 +99,7 @@ function guard(id, cardHook) {
   return { ...card, asks: asksFor(id, card) };
 }
 
-// The list's rows for one card. The list is exactly the cards that need you,
-// so a card at any other level has none, whatever its hook built; one that
-// needs you but built none (or is broken) gets a single row that opens it.
+// A card's rows in the needs-you list: none at any other level; a needs-you card with none built gets one opening row.
 function asksFor(id, card) {
   if (card.level !== NEEDS) return [];
   if (card.error) return [genericAsk(id, CARD_NAME[id], card.summary, true)];
@@ -127,11 +112,8 @@ export function useCards() {
   return cards;
 }
 
-// What each card last had to say: { id: { level, summary } }. A card whose
-// fetch is out has a null level; it keeps its last word rather than going
-// blank, so a card that reloads (the calendar switching days clears its
-// payload) doesn't hop bands and back. Idempotent, so writing during render
-// is safe. A card that hasn't reported yet is simply absent.
+// { id: { level, summary} }. A card mid-fetch (null level) keeps its last word so it doesn't hop
+// bands; idempotent, so writing during render is safe; unreported cards are absent.
 export function useLastWord(cards) {
   const ref = useRef({});
   for (const id of DESK_IDS) {

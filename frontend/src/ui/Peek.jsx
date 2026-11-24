@@ -1,16 +1,7 @@
-// What a reference points at, shown on hover, so "f997" or a citation glyph
-// can be read without opening anything. Clicks stay with what's inside: a pill
-// still opens its card, a note link still opens Obsidian.
-//
-// `load` runs once the pointer has settled, not on render: an answer can carry
-// a dozen references and most are never hovered. It returns what to show, or
-// null for nothing. It should cache, as lib/cite.js does; this re-asks on every
-// hover.
-//
-// Portaled and position:fixed because references sit inside scrolling panes
-// that would clip a card. It takes no pointer events, so it can't sit between
-// the pointer and the text under it, and it leaves on any scroll rather than
-// float away from its anchor.
+// Hover preview of what a reference points at; clicks stay with the child.
+// `load` runs once the pointer settles (not on render: most refs are never hovered), returns what to
+// show or null, and should cache (lib/cite.js does); this re-asks every hover.
+// Portaled, position:fixed (panes would clip it), no pointer events, leaves on any scroll.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTimeout } from "../lib/timers.js";
 import { createPortal } from "react-dom";
@@ -48,8 +39,7 @@ export default function Peek({ load, off = false, children }) {
   useEffect(() => { if (off) hide(); }, [off, hide]);
   useEffect(() => () => { asked.current += 1; }, []);
 
-  // Under the reference, or over it when there's no room below. Measured from
-  // the anchor's box and the card's offset size, neither of which this moves.
+  // Under the reference, or over it with no room below; measured from boxes this doesn't move.
   useLayoutEffect(() => {
     if (!body) return;
     const a = wrap.current.getBoundingClientRect();

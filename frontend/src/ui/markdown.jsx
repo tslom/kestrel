@@ -1,6 +1,5 @@
-// The markdown renderer for console output, apart from Console.jsx: it holds
-// no state and knows nothing about the component, and BriefWidget needs the
-// inline half of it too.
+// Stateless markdown renderer for console output (inline pass + block pass); BriefWidget uses the inline half.
+// Design: DESIGN.md → `frontend/src/ui/markdown.jsx`.
 import { lazy, Suspense } from "react";
 import VaultLink from "./VaultLink.jsx";
 import Cite from "./Cite.jsx";
@@ -12,17 +11,9 @@ import PathLink from "./FileLink.jsx";
 import { WIKILINK_SRC, NOTE_PATH_SRC } from "../lib/obsidian";
 import { FILE_PATH_SRC, looksLikePath } from "../lib/paths";
 
-// KaTeX was over a third of the page's JS, and only a turn with TeX in it
-// needs it — so it loads on the first formula, not with the desk. Until it
-// lands the source shows raw, in the same dress math.jsx gives a formula
-// KaTeX can't parse.
-//
-// The load must not reject. lazy() caches a rejection and rethrows it on every
-// render, so one failed import takes the page down for good: a window open
-// across a rebuild asks for a chunk that build deleted, and the first formula
-// blanks the desk until the app is restarted. A miss
-// costs the typesetting and nothing else. There's no retry: this page's chunk
-// is gone from the server, so only a reload (⌘R) brings KaTeX back.
+// KaTeX loads on the first formula (a third of the page's JS); raw source shows until then.
+// The load must not reject: lazy() caches a rejection and rethrows every render, blanking the desk.
+// No retry: a stale chunk is gone from the server; only ⌘R brings it back.
 const RAW_TITLE = "KaTeX didn't load — reload (⌘R) to typeset this";
 const RAW_MATH = {
   MathInline: ({ tex }) => <code className="md-math-raw" title={RAW_TITLE}>{tex}</code>,
@@ -55,73 +46,30 @@ function MathBlock({ tex }) {
   );
 }
 
-// Console output is plain text, so URLs in it are dead unless we make them
-// anchors. target="_blank" is what the native window hands off to the system
-// browser, so links behave the same in the .app as in a tab.
+// target="_blank" is what the native window hands off to the system browser.
 const URL_RE = /(https?:\/\/[^\s<>()[\]{}"']+[^\s<>()[\]{}"'.,;:!?])/g;
 
-// Claude answers in markdown, so the marks showed up raw in the transcript.
-// Handle the inline ones that actually turn up — code, bold, italic, strike,
-// [text](url). Order matters: code and explicit links come first so their
-// innards aren't re-formatted, and the lookarounds keep snake_case and 3*4*5
-// out of it. Block syntax is a separate pass, below.
-//
-// The three note forms (wikilink, [text](note.md), and a bare path) go here
-// rather than in a pass of their own for the same reason: one matcher means a
-// path inside a link's href, or inside a code span, is claimed by the outer
-// construct and never linkified twice.
-// Math goes in the same matcher for the same reason the note forms do: a
-// formula is full of _, *, and \[ \], and every one of them is a mark this
-// pass would otherwise chew on. Claimed whole here, its innards are handed to
-// KaTeX untouched — and a backticked $x$ still loses to the code span, which
-// is leftmost.
-//
-// $$ before $ so the display form wins at a shared index. The inline form
-// wants both ends tight against non-space and no digit after the closer, or
-// "$5 to $10" reads as math; \(…\) is the other spelling of the same thing.
+// One inline matcher (order matters: code and explicit links first, so their innards aren't
+// re-formatted; the lookarounds keep snake_case and 3*4*5 out). Notes, paths and math live in it
+// so the outer construct claims them whole. Blocks are a separate pass, below.
+// $$ before $; the inline form needs tight non-space ends and no digit after the closer ("$5 to $10").
 const MATH_DISPLAY_SRC = "\\$\\$([^\\n]+?)\\$\\$";
 const MATH_INLINE_SRC = "\\$(?!\\s)((?:\\\\.|[^$\\\\\\n])+?)(?<!\\s)\\$(?!\\d)";
 const MATH_PAREN_SRC = "\\\\\\(([^\\n]+?)\\\\\\)";
 
-// A citation the console wrote: `[cite:e7a3f1]`, resolved by ui/Cite.jsx.
-//
-// Deliberately NOT anchored to the three kind letters. It was, until a live
-// session read an email with `brief=false`, found a row whose only handle was
-// the raw Gmail id, and wrote `[cite:1a0c5286b39d182b]` — which the narrow
-// pattern declined, so the raw syntax landed in the prose looking like the
-// renderer had broken. The backend now stamps refs on that read too, but the
-// general case stands: whatever the model puts in a `[cite:…]`, the reader
-// should see a citation that doesn't resolve, never the markup. Cite.jsx
-// renders anything unref-shaped as dead without asking the network.
-//
-// It sits after the code span and before everything else for the same reason
-// the note forms do: claimed whole here, it can't be chewed on by the italic
-// or link passes, and a ref is not something to re-format.
+// `[cite:e7a3f1]`, resolved by ui/Cite.jsx. Deliberately loose (not anchored to the kind letters):
+// whatever the model puts in a `[cite:…]` must render as a dead citation, never raw markup.
 const CITE_SRC = "\\[cite:([^\\]\\s]{1,64})\\]";
 
-// A citation into a document, and a page embed written mid-sentence (alone on
-// its line it's a block — PAGE_LINE below). Both say where in the document:
-// `[cite:d3f9a1#p12 "the quoted words"]`. Ahead of CITE_SRC, which would
-// otherwise decline the space and leave the markup in the prose. The ref is
-// left loose for the reason CITE_SRC's is; Cite.jsx judges it.
+// `[cite:d3f9a1#p12 "quote"]` or a mid-sentence page embed (alone on a line it's PAGE_LINE).
+// Ahead of CITE_SRC, which would decline the space; the ref is loose and Cite.jsx judges it.
 const DOC_CITE_SRC = '\\[(?:cite|page):([^\\]\\s#]{1,64})#p(\\d{1,4})(?:\\s+"([^"\\]\\n]{1,300})")?\\]';
 
-// The constructs below the math were added after replaying every console
-// reply on record through this renderer and
-// listing what came out raw — plus the CommonMark/GFM forms the model is
-// known to write that hadn't turned up yet. A bold run's body steps over
-// code spans whole, or **`char**`** closes on the stars inside the code.
-//
-// The lookahead keeps the two alternatives disjoint, and it isn't optional.
-// With both able to match a code span, every span is a coin flip the regex
-// retries when the closer never comes, 2.6× per span: an unclosed ** with 22
-// code spans on its line takes 10s on the main thread, and an
-// unclosed ** is what every bold line looks like while it streams. A boundary
-// can't catch a hang.
+// A bold/strike body steps over code spans whole (**`char**`** must not close inside the code).
+// The lookahead keeps the alternatives disjoint: if both match a code span the regex backtracks
+// 2.6x per span (22 spans on an unclosed ** = 10s), and every streaming bold line is unclosed.
 const SPAN = "(?:`[^`\\n]+`|(?!`[^`\\n]+`)[^\\n])+?";
-// A Brain fact by id, as the console's <brain> block hands them out: f997 or
-// [f997]. Last in the matcher, so a link or a path that contains one keeps it;
-// the lookarounds leave a hex colour, f-150 and f997x alone.
+// A Brain fact id (f997 or [f997]); last in the matcher; lookarounds skip hex colours, f-150, f997x.
 const FACT_SRC = "(?<![\\w/#.\\-])(\\[f\\d{3,4}\\]|f\\d{3,4})(?![\\w\\-])";
 const FACT_CODE = /^\[?f(\d{3,4})\]?$/;
 const factId = (ref) => Number(ref.replace(/\D/g, ""));
@@ -134,8 +82,7 @@ const INLINE_SRC = [
   `!?${WIKILINK_SRC}`,
   "!\\[([^\\]\\n]*)\\]\\((https?:\\/\\/[^)\\s]+)\\)",
   "\\[([^\\]\\n]+)\\]\\((https?:\\/\\/[^)\\s]+)\\)",
-  // [text](path): a note, or any file (lib/paths.js, FileLink.jsx). The bang
-  // of an ![image](path) rides along; it's a link like the rest.
+  // [text](path): a note or any file (lib/paths.js, FileLink.jsx); an ![image](path) bang rides along.
   "!?\\[([^\\]\\n]+)\\]\\((?!https?:)([^)\\s]+)\\)",
   MATH_DISPLAY_SRC,
   MATH_INLINE_SRC,
@@ -163,8 +110,7 @@ const HTML_TAG = { b: "strong", i: "em", u: "u", s: "del", sub: "sub", sup: "sup
 export function renderInline(line, keyBase) {
   const out = [];
   let last = 0;
-  // fresh matcher per call — bold/italic recurse into their own contents, and
-  // a shared /g regex would have its lastIndex clobbered by the inner pass
+  // fresh matcher per call: bold/italic recurse, which would clobber a shared /g lastIndex
   const re = new RegExp(INLINE_SRC, "g");
   for (let m; (m = re.exec(line)); ) {
     const [full, code2, code, docRef, docPage, docQuote, cite, wiki, wikiAlias, imgAlt, imgSrc,
@@ -174,9 +120,7 @@ export function renderInline(line, keyBase) {
     if (m.index > last) out.push(line.slice(last, m.index));
     const key = `${keyBase}-${m.index}`;
     if (code2 !== undefined) out.push(<code key={key}>{code2}</code>);
-    // A backticked path is how the console names a file most of the time, so
-    // the code span becomes the link rather than losing to it — the monospace
-    // stays, which is what makes it read as a path in the first place.
+    // A backticked path or fact id becomes the link, keeping its monospace.
     else if (code !== undefined)
       out.push(FACT_CODE.test(code)
         ? <FactRef key={`${key}-${code}`} id={factId(code)}><code>{code}</code></FactRef>
@@ -187,11 +131,9 @@ export function renderInline(line, keyBase) {
       out.push(<Cite key={`${key}-${docRef}-${docPage}`} refId={docRef}
                      page={Number(docPage)} quote={docQuote} />);
     else if (cite !== undefined)
-      // The ref rides in the key: these keys are character offsets, and two
-      // answers routinely put a marker at the same offset, which made React
-      // reuse one Cite for a different citation. See the reset in Cite.jsx.
+      // The ref rides in the key: offsets collide across answers and React reused one Cite (see Cite.jsx).
       out.push(<Cite key={`${key}-${cite}`} refId={cite} />);
-    // ![[embed]] is Obsidian's embed; here it's a link like any other.
+    // ![[embed]] renders as a plain link.
     else if (wiki !== undefined)
       out.push(<VaultLink key={key} target={wiki}>{wikiAlias ?? wiki}</VaultLink>);
     else if (imgSrc !== undefined)
@@ -203,8 +145,7 @@ export function renderInline(line, keyBase) {
       out.push(looksLikePath(noteHref) || noteHref.endsWith(".md")
         ? <PathLink key={`${key}-${noteHref}`} path={noteHref}>{noteText}</PathLink>
         : noteText);
-    // $$…$$ mid-sentence is rare — a standalone one is a block, below — but
-    // when it happens the model meant the display form, so keep it.
+    // $$…$$ mid-sentence means the display form (a standalone one is a block, below).
     else if (mathBig !== undefined) out.push(<MathBlock key={key} tex={mathBig} />);
     else if (mathTex ?? mathParen)
       out.push(<MathInline key={key} tex={mathTex ?? mathParen} />);
@@ -234,8 +175,7 @@ export function renderInline(line, keyBase) {
   return out;
 }
 
-// A prompt you wrote stays literal text, but the formula typed into it should
-// read as one. Only what looks like math, since prompts are full of $HOME.
+// A user prompt stays literal text except formulas; only math-looking spans count ($HOME isn't).
 const MATHISH = /[\\^{}=+]/;
 
 // `known`: formulas the math field wrote, which count however plain ($y$).
@@ -248,8 +188,7 @@ export function userMathSpans(text, known) {
   return spans;
 }
 
-// `onEdit(span)`, when given, makes each formula a button — the composer's
-// preview, where clicking a drawn formula opens it again in the math field.
+// `onEdit(span)`, when given, makes each formula a button (the composer preview reopens it in the math field).
 export function renderUserMath(text, onEdit, known) {
   const spans = userMathSpans(text, known);
   if (!spans.length) return text;
@@ -267,17 +206,11 @@ export function renderUserMath(text, onEdit, known) {
   return out;
 }
 
-// Block-level markdown. Monospace hid this for a while: a bullet list is
-// legible as raw text, so leaving blocks alone looked fine until the model
-// answered with a table, whose columns only line up if something lays them
-// out. This walks the lines once, groups the runs that belong together, and
-// leaves anything unrecognised as the pre-wrapped text it already was.
+// Block-level pass: walks the lines once, groups runs, leaves anything unrecognised as pre-wrapped text.
 const FENCE = /^\s*(```|~~~)/;
 const FENCE_LANG = /^\s*(?:```|~~~)\s*([\w-]+)/;
 const STUDY_KINDS = new Set(["quiz", "cards"]);
-// Only a real doc ref makes a block: anything looser falls through to the
-// inline pass, where Cite renders it as a (dead) pill rather than a page
-// that can never load.
+// Only a real doc ref makes a block; looser falls through to the inline pass as a dead Cite pill.
 const PAGE_LINE = /^\s*\[page:(d[0-9a-f]{5,10})#p(\d{1,4})(?:\s+"([^"\]\n]{1,300})")?\]\s*$/;
 const TABLE_ROW = /^\s*\|.*\|\s*$/;
 const TABLE_RULE = /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/;
@@ -285,13 +218,9 @@ const HR = /^\s*([-*_])[ \t]*(?:\1[ \t]*){2,}$/;   // --- and - - - both count
 const LIST_ITEM = /^(\s*)(?:[-*+]|(\d+)[.)])\s+(.*)$/;
 const HEADING = /^\s*(#{1,6})\s+(.*)$/;
 const CHECKBOX = /^\[([ xX])\]\s+(.*)$/;
-// A wrapped list item: the lines after the marker line, indented under it.
-// Notes hard-wrap, so without this every bullet's second line broke out of
-// the list as a stray paragraph.
+// A wrapped list item (indented lines after the marker); notes hard-wrap.
 const CONTINUATION = /^\s+\S/;
-// Blockquotes, and Obsidian's callouts riding on them: `> [!important] Title`
-// opens a titled box, and the rest of the quote is its body. The fold marker
-// (+/-) is accepted and ignored — there's no collapsing here.
+// Blockquotes and Obsidian callouts (`> [!important] Title`); the fold marker (+/-) is ignored.
 const QUOTE = /^\s*>/;
 const CALLOUT = /^\[!([\w-]+)\][+-]?\s*(.*)$/;
 const CALLOUT_TONE = {
@@ -300,22 +229,17 @@ const CALLOUT_TONE = {
   help: "warm", faq: "warm",
   danger: "bad", error: "bad", failure: "bad", fail: "bad", missing: "bad", bug: "bad",
 };
-// A display formula is a block, not a run of text: it gets its own line, and
-// it may take several. Both openers the model uses, and both shapes — closed
-// on the same line ($$…$$, which is what the proofs actually emit) or left
-// open for the lines that follow.
+// A display formula is a block: both openers, closed on one line or left open over several.
 const MATH_OPEN = /^\s*(\$\$|\\\[)/;
 const MATH_CLOSE = { "$$": /\$\$\s*$/, "\\[": /\\\]\s*$/ };
 
-// `\|` is a literal pipe — how Obsidian writes a [[note\|alias]] inside a
-// table — so it neither splits the row nor survives into the cell.
+// `\|` is a literal pipe ([[note\|alias]] in a table): it neither splits the row nor survives.
 const cells = (row) =>
   row.trim().replace(/^\|/, "").replace(/(?<!\\)\|$/, "").split(/(?<!\\)\|/)
     .map((c) => c.trim().replace(/\\\|/g, "|"));
 
 function renderTable(rows, key) {
-  // The first row is only a header if a rule follows it; the model sometimes
-  // emits a bare grid, and that should still line up.
+  // The first row is a header only if a rule follows; a bare grid still lines up.
   const ruled = rows.length > 1 && TABLE_RULE.test(rows[1]);
   const align = ruled
     ? cells(rows[1]).map((c) =>
@@ -340,16 +264,13 @@ function renderTable(rows, key) {
   );
 }
 
-// Nested bullets are normal in these answers, so indentation has to survive:
-// each deeper run becomes a list inside the item above it. `cur` is a shared
-// cursor so the recursion and its caller agree on how much was consumed.
+// Deeper indentation becomes a nested list; `cur` is a shared cursor so recursion and caller agree on consumption.
 function renderList(items, cur, key) {
   const base = items[cur.i].indent;
   const ordered = items[cur.i].ordered != null;
   const start = ordered ? Number(items[cur.i].ordered) : undefined;
   const nodes = [];
-  // A run ends when the marker switches at this level — "- a" then "1. b" is
-  // two lists, not one, and merging them silently renumbered the second.
+  // A run ends when the marker kind switches ("- a" then "1. b" is two lists; merging renumbered the second).
   const mine = (it) => it.indent > base || (it.ordered != null) === ordered;
   while (cur.i < items.length && items[cur.i].indent >= base && mine(items[cur.i])) {
     if (items[cur.i].indent > base) {
@@ -375,12 +296,8 @@ function renderList(items, cur, key) {
   );
 }
 
-// The same text, the same elements. The console re-renders its whole log on
-// every keystroke in the prompt and every streamed token, and in a long chat
-// re-parsing each message (and re-typesetting its math) is the lag.
-// Handing React back the identical element objects lets
-// it skip those subtrees outright. Output depends on nothing but the text, so
-// the cache is safe; bounded, oldest out first.
+// Same text, same element objects, so React skips the subtree (the console re-renders its log per keystroke/token).
+// Output depends only on the text, so the cache is safe; bounded, oldest out first.
 const MD_CACHE_MAX = 600;
 const mdCache = new Map();
 export function renderMarkdownCached(text) {
@@ -424,8 +341,7 @@ export function renderMarkdown(text) {
       const body = [];
       // closed only by the same marker: a ``` inside a ~~~ block is content
       for (i++; i < lines.length && FENCE.exec(lines[i])?.[1] !== fence[1]; i++) body.push(lines[i]);
-      // A quiz or a deck of cards: interactive, because a quiz written as
-      // prose gives its answers away. Unclosed = still streaming.
+      // Quiz/cards are interactive (prose would give the answers away); unclosed = still streaming.
       if (STUDY_KINDS.has(lang))
         blocks.push(<StudyBlock key={`c${i}`} kind={lang} source={body.join("\n")}
                                 closed={i < lines.length} renderInline={renderRich} />);
@@ -456,9 +372,7 @@ export function renderMarkdown(text) {
         if (closed) body.push(lines[i].replace(close, ""));
       }
       const tex = body.join("\n").trim();
-      // An unclosed formula at the end of the text is a turn still streaming:
-      // half a \frac is a parse error, and flashing KaTeX's red mark on every
-      // token is worse than showing the source until the closer lands.
+      // Unclosed = still streaming: show source rather than flash KaTeX's red parse mark per token.
       blocks.push(closed
         ? <MathBlock key={`m${i}`} tex={tex} />
         : <pre key={`m${i}`} className="md-math-raw">{tex}</pre>);
@@ -521,10 +435,7 @@ export function renderMarkdown(text) {
   return blocks;
 }
 
-// A quiz question or card face is usually one line, but a code question
-// carries its snippet as a ``` fence inside the JSON string — and through the
-// inline pass alone that showed as backticks with the lines run together.
-// Anything with a line break gets the block pass.
+// Quiz/card text with a line break (a ``` snippet in the JSON string) needs the block pass.
 function renderRich(text, key) {
   return text.includes("\n")
     ? <div key={key} className="md-rich">{renderMarkdown(text)}</div>

@@ -6,19 +6,14 @@ import { sessionPin } from "../lib/pills.js";
 
 const clip = (s, n = 40) => { const t = s.replace(/\s+/g, " ").trim(); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
 
-// Past sessions, in the two places the console offers them: the resume panel
-// under the bar (every session, or a transcript search), and the standby list
-// in an idle log. Both read /api/sessions through the one loader below; they
-// are open at different moments (the standby list is gone once a turn lands),
-// and fetchJSON coalesces the rare load where both ask in the same tick.
+// Past sessions in two places: the resume panel (all, or transcript search) and the idle-log standby
+// list. Both read /api/sessions through one loader; fetchJSON coalesces a same-tick double ask.
 
 // who said the matching line, for search results in the resume panel
 const SPEAKER = { user: "you", text: "claude", tool: "tool" };
 
-// Newest first, or the ones whose transcript mentions `q`. Never throws: a
-// failed read is an empty list, which each place words for itself.
-// `project`: a dev tab's repo, whose sessions are its own (the ones the
-// terminal's `claude --resume` lists there); absent, the vault's.
+// Newest first, or those whose transcript mentions `q`. Never throws (a failed read is an empty list).
+// `project`: a dev tab's repo (what `claude --resume` lists there); absent, the vault's.
 function listSessions(q = "", project = null) {
   const p = project ? `project=${encodeURIComponent(project)}` : "";
   const url = q ? `/api/sessions/search?q=${encodeURIComponent(q)}${p ? `&${p}` : ""}`
@@ -28,9 +23,7 @@ function listSessions(q = "", project = null) {
     .catch(() => []);
 }
 
-// Age of a past session, for the standby list. Nothing else in the app
-// formats a relative time — the "1d"s on the desk arrive precomputed from the
-// backend — so this stays local rather than moving into time.js for one user.
+// Age for the standby list; the desk's "1d"s come precomputed, so this stays local.
 function ago(mtime) {
   const mins = Math.max(0, (Date.now() - mtime * 1000) / 60000);
   if (mins < 60) return `${Math.round(mins)}m`;
@@ -38,20 +31,13 @@ function ago(mtime) {
   return `${Math.round(mins / 1440)}d`;
 }
 
-/**
- * The resume panel. Mounted only while open, so closing it is what resets the
- * search box — the next open starts on the full list.
- */
+/** The resume panel; mounted only while open, so closing resets the search. */
 export function SessionsPanel({ onResume, onClose, project = null }) {
-  // null until the first read lands, so opening the panel doesn't flash "no
-  // past sessions" at you while the list is still on its way.
+  // null until the first read lands (no "no past sessions" flash).
   const [sessions, setSessions] = useState(null);
   const [query, setQuery] = useState("");
 
-  // The list and the search share a row shape, so this one effect fills the
-  // panel either way: empty box = every session, newest first; typed = the
-  // ones whose transcript mentions it. Debounced, and the in-flight response
-  // is dropped on the next keystroke so a slow one can't overwrite a fast one.
+  // One effect fills the panel (empty = all, typed = transcript matches); debounced, and a stale in-flight response is dropped.
   const q = query.trim();
   useDebounce((stale) => {
     listSessions(q, project).then((d) => { if (!stale()) setSessions(d); });
@@ -101,11 +87,7 @@ export function SessionsPanel({ onResume, onClose, project = null }) {
   );
 }
 
-/**
- * Standby. An idle console is ~40% of the window holding one line, so it
- * offers the way back into recent work instead of a void. Mounted only while
- * the log is idle — the moment a real turn lands this stops being rendered.
- */
+/** Standby: an idle console offers recent work instead of a void; mounted only while the log is idle. */
 export function RecentSessions({ onResume, project = null }) {
   const [recent, setRecent] = useState([]);
 

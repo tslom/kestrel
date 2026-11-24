@@ -1,10 +1,8 @@
 """Documents the console can point into (app/docs.py).
 
-What matters is the chain from a dropped PDF to a citation that lands: the
-worker keeps every page in its slot (so page 12 is page 12), the drop keeps
-the file and mints a `d…` ref that resolves like any other citation, the
-prompt carries that ref outside the untrusted fence, and the bytes come back
-by ref and only by ref.
+The chain from a dropped PDF to a citation that lands: pages keep their slots, the
+drop mints a `d…` ref, the prompt carries it outside the untrusted fence, and bytes
+come back by ref only.
 """
 import pytest
 from fastapi import FastAPI
@@ -15,10 +13,7 @@ from app.providers import attachments
 
 
 def make_pdf(pages: list[str]) -> bytes:
-    """A real PDF with one line of Helvetica text per page ("" = blank page).
-
-    Built by hand because pypdf reads text but can't write it, and nothing
-    else that could is (or should be) a dependency."""
+    """A real PDF with one Helvetica line per page ("" = blank); hand-built since pypdf can't write text."""
     objs: list[bytes] = []
     n = len(pages)
     kids = " ".join(f"{3 + 2 * i} 0 R" for i in range(n))
@@ -65,8 +60,7 @@ def api(dbfile, docs_dir):
 
 
 def test_the_worker_keeps_every_page_in_its_slot():
-    """A blank page keeps its place: dropping it would make every later
-    citation one page early, which the highlight would then fail to find."""
+    """A blank page keeps its place, or every later citation is a page early."""
     out = attachments._extract_local(
         make_pdf(["Pipelining overview", "", "Hazards and stalls"]),
         "application/pdf")
@@ -76,9 +70,7 @@ def test_the_worker_keeps_every_page_in_its_slot():
 
 
 def test_a_long_document_does_not_wedge_the_pipe():
-    """Per-page text runs past the 64KB pipe buffer. The parent used to read
-    stdout only after the child exited, so a child blocked on a full pipe sat
-    until the wall clock killed a parse that had already finished."""
+    """Page text past the 64KB pipe buffer must not block the child (the parent drains stdout while it runs)."""
     pages = [f"page {i} " + "lorem ipsum " * 300 for i in range(60)]
     out = attachments._extract_local(make_pdf(pages), "application/pdf")
     assert out["status"] == "ok"
@@ -164,8 +156,7 @@ def test_read_pages(dbfile, docs_dir):
 
 
 def test_doc_pages_restates_the_ref_outside_the_fence(dbfile, docs_dir):
-    """A live session read pages 31-43 through doc_pages and cited none of
-    them; the result carried the text but not how to point at it."""
+    """The doc_pages result carries the ref and `[page:ref#pN]` form outside the fence, so replies can cite."""
     import asyncio
     from app import console_tools as ct
     kept = docs.keep("lec.pdf", "application/pdf", b"%PDF-fake", ["a", "b"])
@@ -178,9 +169,7 @@ def test_doc_pages_restates_the_ref_outside_the_fence(dbfile, docs_dir):
 
 
 def test_doc_pages_opens_a_pdf_on_disk_by_path(dbfile, docs_dir, tmp_path, monkeypatch):
-    """Handouts read with pdftotext had no ref, so the reply couldn't show a
-    page. By path, the file is kept like a drop — same ref as
-    dropping the same bytes — and the result is citable."""
+    """By path, the file is kept like a drop (same ref as dropping the bytes), so it is citable."""
     import asyncio
     from app import console_tools as ct
     home = tmp_path / "home"
@@ -211,8 +200,7 @@ def test_doc_pages_opens_a_pdf_on_disk_by_path(dbfile, docs_dir, tmp_path, monke
 
 
 def test_the_ref_rides_outside_the_fence():
-    """The ref is ours; the page text is the file's. A document that prints
-    `ref="d…"` in its own text is still inside the untrusted fence."""
+    """The ref is ours, the page text the file's: a document printing `ref="d…"` stays inside the untrusted fence."""
     prompt = console.build_prompt({"text": "quiz me", "context": [{
         "kind": "file", "label": "lec4.pdf", "data": "[p1]\nCaches",
         "doc": {"ref": "d3f9a1", "pages": 1}}]})

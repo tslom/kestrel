@@ -1,9 +1,7 @@
 """Citations: the ref a console sentence carries back to its source.
 
-The thing under test is not really "does a hash come out" — it is the three
-properties the feature is only worth having if it has: the ref is stable
-across sessions, a ref nobody handed out does not resolve, and a ref whose row
-has since gone resolves to "gone" rather than to nothing or to something else.
+Pins three properties: a ref is stable across sessions, one nobody handed out
+does not resolve, and one whose row is gone resolves to "gone".
 """
 from app import citations, db
 
@@ -33,9 +31,7 @@ def test_ref_is_stable_and_resolves(dbfile):
     _seed(con)
     ref = citations.remember("email", "1a0c509c", "Registrar: Room change",
                              "2026-08-01", con)
-    # Minted twice is minted once: the ref is a function of what it points at,
-    # so a second read of the same email in a later session reuses it rather
-    # than issuing a parallel handle for the same row.
+    # The ref is a function of its target: a second read reuses it.
     again = citations.remember("email", "1a0c509c", "Registrar: Room change",
                                "2026-08-01", con)
     con.close()
@@ -54,7 +50,7 @@ def test_invented_ref_does_not_resolve(dbfile):
     con = db.connect()
     _seed(con)
     con.close()
-    # The whole validation story: nothing was handed out, so nothing resolves.
+    # Nothing was handed out, so nothing resolves.
     assert citations.resolve("e00000") is None
     assert citations.resolve("ezzzzz") is None      # not even ref-shaped
     assert citations.resolve("") is None
@@ -87,8 +83,7 @@ def test_collision_lengthens_rather_than_steals(dbfile, monkeypatch):
     second = citations.remember("email", "OTHER", "second", "2026-08-01", con)
     con.close()
     assert first == "eaaaaa"
-    # The second target must not have taken the first one's ref — a transcript
-    # already holding `eaaaaa` keeps pointing at the email it was written for.
+    # A transcript already holding `eaaaaa` keeps pointing at its email.
     assert second != first
     assert len(second) > len(first)
     assert citations.resolve(first)["id"] == "1a0c509c"
@@ -106,8 +101,7 @@ def test_event_ref_is_per_occurrence(dbfile):
     a = citations.remember("event", "2026-08-01/ev1", "Advising", "2026-08-01", con)
     b = citations.remember("event", "2026-08-08/ev1", "Advising", "2026-08-08", con)
     con.close()
-    # One recurring event, two instances, two refs — "your advising Tuesday"
-    # and "your advising next Tuesday" are different citations.
+    # Two instances of a recurring event get two refs.
     assert a != b
     assert citations.resolve(a)["day"] == "2026-08-01"
     assert citations.resolve(b)["day"] == "2026-08-08"
@@ -130,8 +124,7 @@ def test_provider_cite_hooks_mint_refs(dbfile):
     _seed(con)
     con.close()
 
-    # Each provider is handed a row in the shape its own get() emits, not the
-    # DB shape — that mismatch is exactly what cite() exists to absorb.
+    # Rows are in each provider's get() shape, not the DB shape (cite() absorbs the gap).
     e = email_provider.cite({"id": "1a0c509c", "day": "2026-08-01",
                              "received": "2026-08-01T10:35",
                              "from": "Registrar", "subject": "Room change"})
@@ -144,16 +137,13 @@ def test_provider_cite_hooks_mint_refs(dbfile):
     assert citations.resolve(v)["title"] == "Advising"
     assert citations.resolve(m)["detail"] == "bring the charger"
 
-    # An aggregate row has no one message behind it and must decline, rather
-    # than pointing a pill at whichever row happened to be first.
+    # An aggregate row has no one message behind it: decline.
     assert msg_provider.cite({"day": "2026-08-01", "value": 12}) is None
     assert email_provider.cite({"day": "2026-08-01", "value": 3}) is None
 
 
 def test_brief_lines_carry_their_ref(dbfile):
-    """The ref has to ride the row the model actually reads. If it only
-    existed in the DB, citing would require a second call and would not
-    happen."""
+    """The ref rides the row the model actually reads."""
     from app.providers import email as email_provider
     from app import console_tools
 
@@ -182,14 +172,7 @@ def test_with_refs_passes_through_uncitable_sources(dbfile):
 
 
 def test_full_read_carries_refs_too(dbfile):
-    """The `brief=false` path needs refs as much as the brief one.
-
-    Found live: asked for a detail out of an email, the console went
-    `brief=false` for the body fields, got rows whose only handle was the raw
-    Gmail id, and cited that — `[cite:1a0c5286b39d182b]` in the prose. The
-    brief line was the only thing carrying a ref and was the one thing that
-    read had not asked for.
-    """
+    """The `brief=false` path carries refs too (else the model cited the raw Gmail id)."""
     from app import console_tools
     from app.providers import email as email_provider
 
@@ -204,8 +187,7 @@ def test_full_read_carries_refs_too(dbfile):
     shaped = console_tools._cited(email_provider, out)
     ref = shaped["data"][0]["cite"]
     assert citations.resolve(ref)["id"] == "1a0c509c"
-    # The provider's own row is not mutated — some providers hand back rows
-    # their caches still hold.
+    # The provider's row is not mutated (caches still hold some).
     assert "cite" not in out["data"][0]
 
 

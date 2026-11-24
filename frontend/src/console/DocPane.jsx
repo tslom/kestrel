@@ -1,21 +1,9 @@
-// The document beside the chat: the handout the reply is talking about, open
-// at the page it's talking about.
-//
-// Built for a study tab running full screen: a reply says "the handout's
-// recursive definition of factorial…", and with the handout in another
-// window, following along means switching away or printing it.
-// Inline `[page:]` embeds show the one slide an answer chose; this is the
-// whole document, scrollable, and every citation in the reply moves it.
-//
-// What opens it (Console.jsx): the first doc reference in the newest reply,
-// on its own, unless the pane was closed; and any cite, page embed or quiz
-// slide clicked, always. The quote, when there is one, is found the same way
-// a citation card finds it (lib/pdf.js `locate`), so a page number that's
-// off by one still lands on the words, and the verdict goes back to the pill.
-//
-// Pages draw lazily — a 200-slide deck is 200 canvases otherwise — at the
-// pane's width, into placeholders already sized from each page's own
-// viewport, so scrolling to page 40 lands on page 40 before it has drawn.
+// The document beside the chat, at the page the reply is talking about (for a full-screen study tab);
+// `[page:]` embeds show one slide, this is the whole scrollable document and every citation moves it.
+// Opens (Console.jsx) on the newest reply's first doc reference unless closed, and always on a clicked
+// cite/page embed/quiz slide. The quote is found as a citation card does (lib/pdf.js `locate`, so an
+// off-by-one page still lands) and the verdict goes back to the pill. Pages draw lazily (200-slide decks)
+// at the pane's width into placeholders pre-sized from each viewport, so scrolling lands before drawing.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Icon from "../ui/icons.jsx";
 import { loadDoc, loadDocUrl, drawPage, locate, fileUrl } from "../lib/pdf";
@@ -70,11 +58,9 @@ function Sheet({ doc, n, width, size, rects, root, sheetRef }) {
   );
 }
 
-// `view` = { ref, page, quote, seq, onVerdict } — seq changes on every
-// request, so asking for the page already shown scrolls back to it.
+// `view` = { ref, page, quote, seq, onVerdict }; seq changes per request so re-asking scrolls back.
 export default function DocPane({ view, docs, recent = [], onPick, onClose, onCover, onSplit }) {
-  // What's loaded, with which document it is: another one reads as not yet
-  // loaded until its own answer lands, so nothing needs resetting by hand.
+  // Loaded state is keyed by document: another one reads as not loaded, no manual reset.
   const docKey = view.file ? `file:${view.file.path}` : `ref:${view.ref}`;
   const [loaded, setLoaded] = useState(null);   // { key, doc, sizes, err }
   const mine = loaded?.key === docKey ? loaded : null;
@@ -90,8 +76,7 @@ export default function DocPane({ view, docs, recent = [], onPick, onClose, onCo
   const sheets = useRef([]);
   const pending = useRef(null);               // a page to scroll to once laid out
 
-  // Names for the picker (and the title): `recent` already has most; the
-  // rest are resolved once per ref.
+  // Picker/title names: `recent` has most; the rest resolve once per ref.
   const [resolved, setResolved] = useState({});
   const asked = useRef(new Set());
   const nameOf = (r) => recent.find((d) => d.ref === r)?.name ?? resolved[r];
@@ -120,15 +105,12 @@ export default function DocPane({ view, docs, recent = [], onPick, onClose, onCo
     return () => { live = false; };
   }, [docKey]);   // eslint-disable-line react-hooks/exhaustive-deps -- docKey is view.ref / view.file's path, which is all the load reads
 
-  // Where this request lands: the cited page, or wherever the quote really
-  // is. Without a quote it's the cited page, known now; with one it's
-  // locate()'s answer, kept with the request it answers.
+  // Where this request lands: the cited page, or locate()'s answer for a quote (kept with its request).
   const request = `${docKey}\u0000${view.seq}`;
   const cited = doc ? Math.min(Math.max(1, view.page || 1), doc.numPages) : null;
   const hit = !doc ? null : !view.quote ? { page: cited, rects: [], status: "none" }
     : found?.request === request ? found : null;
-  // A layout effect, declared before the scroll below, so a request with no
-  // quote scrolls in the same commit that brings it.
+  // Layout effect before the scroll below, so a quote-less request scrolls in its own commit.
   useLayoutEffect(() => {
     if (doc && !view.quote) pending.current = cited;
   }, [doc, view.seq]);   // eslint-disable-line react-hooks/exhaustive-deps -- seq is what makes a repeat request scroll again; the rest is the request
@@ -156,8 +138,7 @@ export default function DocPane({ view, docs, recent = [], onPick, onClose, onCo
     setCurrent(p);
   }, [doc, sizes, width, view.seq, found]);
 
-  // Side by side needs room for both: a console under 760px wide (a phone,
-  // a sheet half up) gets the pane over the log instead of a sliver of each.
+  // Under 760px wide the pane covers the log instead of a sliver of each.
   const self = useRef(null);
   useEffect(() => {
     const host = self.current?.closest(".console") || self.current?.parentElement;
@@ -168,8 +149,7 @@ export default function DocPane({ view, docs, recent = [], onPick, onClose, onCo
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once on mount; onCover is a callback prop whose identity changes every parent render
   }, []);
 
-  // Draw at the pane's width, in steps, so dragging a window edge doesn't
-  // redraw every page on every pixel.
+  // Draw at the pane's width in steps (a window drag must not redraw every page per pixel).
   useEffect(() => {
     const el = scroller.current;
     if (!el) return;

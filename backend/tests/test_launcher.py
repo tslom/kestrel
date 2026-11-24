@@ -1,8 +1,6 @@
-"""The launcher's staleness check — the thing that kept serving an old bundle.
+"""The launcher's staleness check, backend reload and run-script template; the window and process-group reap aren't testable headless.
 
-The .app serves frontend/dist, so a build that never ran is invisible until
-you notice the UI is a commit behind. These pin the rule that decides when to
-rebuild; the window and the process-group reap aren't testable headless.
+Design: DESIGN.md → `tests/test_launcher.py`.
 """
 import subprocess
 from pathlib import Path
@@ -111,11 +109,7 @@ def test_node_modules_churn_does_not_trigger_a_build(tmp_path, monkeypatch):
 
 
 def test_reap_refuses_when_we_are_not_the_group_leader(monkeypatch):
-    """The safety interlock: signalling an inherited group kills the shell.
-
-    pytest runs in the terminal's process group, so this is the real
-    condition, not a simulated one.
-    """
+    """Signalling an inherited process group kills the shell; pytest's own group is the real condition."""
     import os
     assert os.getpgid(0) != os.getpid(), "test needs an inherited group"
     killed = []
@@ -139,12 +133,7 @@ def test_reap_never_signals_itself(monkeypatch):
 
 
 # -------------------------------------------------------- the backend server
-#
-# The .app used to run uvicorn on a thread, where --reload is impossible: the
-# flag is read only by uvicorn.run(), and the reloader restarts its target
-# process, which in-process is the window. These pin the subprocess shape that
-# replaced it — silent regressions again, since a window with a stale server
-# looks exactly like a window with a live one.
+# Pins the subprocess shape that makes uvicorn --reload possible (it is silent when wrong).
 
 class _Proc:
     def __init__(self, rc=None):
@@ -171,8 +160,7 @@ def _spawned(monkeypatch):
 
 
 def test_the_server_inherits_the_windows_notification_pipe(monkeypatch):
-    """Banners go through the window process, which is the bundle (#80): the
-    server gets the pipe's write end by fd and by name, and nothing else does."""
+    """Banners go through the window process (#80): the server gets the pipe's write end by fd and by name, nothing else does."""
     seen = {}
 
     def fake_popen(cmd, **kw):
@@ -204,8 +192,7 @@ def test_the_pipe_reader_posts_each_line_and_survives_a_bad_one():
 
 
 def test_the_backend_starts_without_uvicorns_reloader(monkeypatch):
-    """--reload restarts the instant a file changes — under a dev tab whose
-    turn is running inside this server. `Backend` reloads instead."""
+    """Plain --reload restarts mid-turn under a dev tab; `Backend` reloads instead."""
     seen = _spawned(monkeypatch)
     assert seen["cmd"][1:4] == ["-m", "uvicorn", "app.main:app"]
     assert "--reload" not in seen["cmd"]
@@ -230,8 +217,7 @@ class _Server(_Proc):
 
 
 def _backend(monkeypatch, turns):
-    """A Backend over fake servers, with /api/console/busy answering `turns`
-    in order and every wait instant."""
+    """A Backend over fake servers; /api/console/busy answers `turns` in order, waits are instant."""
     started = []
     monkeypatch.setattr(launch_app, "_start_backend",
                         lambda fd=None: started.append(_Server()) or started[-1])
@@ -298,8 +284,7 @@ def test_an_edit_under_app_restarts_the_server(tmp_path, monkeypatch):
 
 
 def test_the_server_runs_under_the_venv_not_the_bundle_stub(monkeypatch):
-    """sys.executable inside the .app is the copied stub that gives this
-    process its name and icon; the reloader spawns children with it."""
+    """Reloader children spawn with the .app's stub executable, which carries its name and icon."""
     stub = "/Applications/Kestrel.app/Contents/MacOS/Kestrel"
     monkeypatch.setattr(launch_app.sys, "executable", stub)
     assert launch_app._backend_python() != stub
@@ -319,8 +304,7 @@ def _unreachable(monkeypatch):
 
 
 def test_health_gives_up_as_soon_as_the_backend_dies(monkeypatch):
-    """An import error in app/ exits uvicorn immediately — waiting out the
-    full timeout on a socket that will never open just delays the message."""
+    """An import error exits uvicorn at once; don't wait out the timeout."""
     _unreachable(monkeypatch)
     slept = []
     monkeypatch.setattr(launch_app.time, "sleep", slept.append)
@@ -337,26 +321,15 @@ def test_health_keeps_polling_while_the_backend_lives(monkeypatch):
 
 
 # ------------------------------------------------- the generated app bundle
-#
-# The run script is written by make-app.sh into a gitignored bundle, so it has
-# no other coverage — and both bugs below were silent: nothing failed, the app
-# just quietly did the wrong thing. Asserting on the template is crude, but it
-# is the only thing standing between a one-token edit and another silent
-# regression.
+# make-app.sh's run script is gitignored and uncovered otherwise; both bugs below were silent.
 
 def _run_script():
-    """make-app.sh's run-script template, as it will be written.
-
-    The heredoc escapes runtime expansions (`\\$STUB`) to keep them out of the
-    generator's own substitution, so match on the resolved text rather than on
-    the escaping, which is incidental.
-    """
+    """make-app.sh's run-script template as written; match resolved text, not the `\\$STUB` heredoc escaping."""
     return MAKE_APP.read_text().replace("\\$", "$")
 
 
 def test_the_generated_launch_is_unbuffered():
-    """Python block-buffers stdout through the log redirect, so a crash
-    flushes nothing — the log read empty exactly when it was needed."""
+    """Python block-buffers stdout through the log redirect, so a crash flushed nothing."""
     script = _run_script()
     assert script.count("-u launch_app.py") == 2, (
         "both the bundled-interpreter and the venv fallback paths must pass "
@@ -364,13 +337,7 @@ def test_the_generated_launch_is_unbuffered():
 
 
 def test_the_bundle_carries_its_own_interpreter():
-    """Identity comes from the running executable, not from Info.plist.
-
-    CoreFoundation resolves the venv's python symlink to the real framework
-    binary and walks up from there, landing in Python.framework's own
-    Python.app — which is why the app was called "Python", showed the generic
-    rocket, and registered as org.python.python.
-    """
+    """App identity comes from the running executable, not Info.plist."""
     script = _run_script()
     assert 'cp "$STUB_SRC" "$MACOS/Kestrel"' in script
     assert 'exec "$STUB" -u launch_app.py' in script, (
@@ -379,9 +346,7 @@ def test_the_bundle_carries_its_own_interpreter():
 
 
 def test_a_broken_interpreter_copy_falls_back():
-    """The stub is linked against an exact Cellar path, so `brew upgrade
-    python@3.12` leaves a copy that cannot load. Launching as "Python" beats
-    not launching at all."""
+    """The stub links an exact Cellar path; a `brew upgrade` leaves a copy that can't load."""
     script = _run_script()
     assert '"$STUB" -c "" 2>/dev/null' in script, "the copy must be probed"
     assert "source .venv/bin/activate" in script, "…with the venv as fallback"
@@ -401,9 +366,7 @@ def _fail(msg):
 
 
 def test_two_reloads_mid_build_build_once(tmp_path, monkeypatch):
-    """⌘R reruns the build check (a window left open across a commit served
-    the launch-time dist forever). A second ⌘R while the first build runs
-    waits for it, then finds the dist current, instead of building again."""
+    """⌘R reruns the build check; a second ⌘R during a build waits, then finds dist current."""
     import threading
     import time
     fe = tmp_path / "frontend"

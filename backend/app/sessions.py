@@ -1,9 +1,7 @@
-"""List Claude Code sessions for this vault.
+"""Claude Code sessions for this vault: JSONL under ~/.claude/projects/<munged-cwd>/.
 
-Claude Code persists sessions as JSONL under ~/.claude/projects/<munged-cwd>/.
-The web console resumes via the SDK's `resume` option against the SAME store,
-so sessions started in the terminal show up here and vice versa — /resume,
-but in the browser.
+The console resumes via the SDK's `resume` against the same store, so terminal and browser sessions
+are one list. Read-only; the transcript is the source of truth.
 """
 
 import json
@@ -16,8 +14,7 @@ from .config import VAULT_PATH
 
 CLAUDE_PROJECTS = Path.home() / ".claude" / "projects"
 
-# What a `!` command tells the model (console.shell_prompt). That wrapper is
-# written for Claude, so it's read back here into what you actually did.
+# The wrapper console.shell_prompt sends for a `!` command, read back into what the user ran.
 _SHELL_TURN = re.compile(
     r"The user ran this themselves with a ! command in the console\.\n"
     r"<bash-input>(?P<command>.*?)</bash-input>\n"
@@ -31,17 +28,13 @@ def _shell_turn(text: str) -> dict | None:
 
 
 def project_dir(cwd: Path | None = None) -> Path:
-    # Claude Code munges the cwd path into a directory name by replacing
-    # path separators (and dots) with '-'. A dev tab's cwd is its repo, so its
-    # sessions are the repo's — the same list `claude --resume` shows there.
+    # Claude Code names the dir by replacing path separators and dots with '-'.
     munged = str(cwd or VAULT_PATH).replace("/", "-").replace(".", "-")
     return CLAUDE_PROJECTS / munged
 
 
 def _session_dirs(cwd: Path | None = None) -> list[Path]:
-    """Where a project's sessions are: its own directory, and for a repo, one
-    per dev-tab worktree (console_worktree), since Claude Code files a
-    session under its cwd and a tab's cwd is its worktree."""
+    """A project's session dirs: its own, plus one per dev-tab worktree (sessions file under cwd)."""
     main = project_dir(cwd) if cwd else project_dir()
     dirs = [main] if main.exists() else []
     if cwd is not None:
@@ -62,9 +55,7 @@ def _session_file(session_id: str, cwd: Path | None = None) -> Path:
 
 
 def list_sessions(limit: int | None = None, cwd: Path | None = None) -> list[dict]:
-    """Newest first. `limit=None` lists every session in the store — the vault
-    accumulates a few dozen a month and the previews are cheap (each stops at
-    the first user message), so the browser gets the whole back-scroll."""
+    """Newest first. `limit=None` lists every session (a few dozen a month; previews stop at the first user message)."""
     files = sorted(((p.stat().st_mtime, p) for d in _session_dirs(cwd)
                     for p in d.glob("*.jsonl")), reverse=True)
     if limit is not None:
@@ -100,15 +91,9 @@ def strip_context(text: str) -> str:
     return text[idx + len(marker):].strip() if idx != -1 else text
 
 
-# What a tool call is *about*, in one line. Both callers that show tool calls
-# — the live websocket stream and this replay — used to format them separately,
-# and the live one dumped the raw JSON input, so a session looked nothing like
-# itself once you resumed it. One formatter, both callers.
-# Ordered by how much the argument says about the call. The tail of the list
-# is the vault MCP tools' own vocabulary: a task has a `title`, an event a
-# `summary`, a draft a `subject`. Without them every one of those calls read
-# as `title=pay tuition` — the key spelled out, from the fallback branch
-# below — in the tool log and in the turn's change summary alike.
+# One formatter for tool calls, shared by the live stream and this replay.
+# Ordered by how much the argument says; the tail is the vault MCP tools' vocabulary
+# (`title`, `summary`, `subject`), else the fallback branch prints `title=...`.
 _DETAIL_KEYS = ("command", "script", "pattern", "query", "url", "file_path",
                 "notebook_path", "path", "prompt", "description",
                 "summary", "title", "subject", "name")
@@ -116,8 +101,7 @@ _PATH_KEYS = ("file_path", "notebook_path", "path")
 
 
 def _short_path(text: str) -> str:
-    """Paths are read for their tail. Drop the vault/home prefix everything
-    shares, and keep the last two segments of whatever is left."""
+    """Drop the shared vault/home prefix and keep the last two segments."""
     for prefix in (f"{VAULT_PATH}/", f"{Path.home()}/"):
         if text.startswith(prefix):
             text = text[len(prefix):]
@@ -137,9 +121,7 @@ def result_text(content) -> str:
 
 
 def tool_desc(inp, width: int = 140) -> str:
-    """The call's own one-line account of itself (Bash's `description`), or
-    "". The console leads with it: "List the vault's generated notes" reads
-    faster than the find pipeline that does it."""
+    """The call's own one-line account of itself (Bash's `description`), or ""; the console leads with it."""
     if not isinstance(inp, dict) or not isinstance(inp.get("description"), str):
         return ""
     out = " ".join(inp["description"].split())
@@ -172,14 +154,10 @@ def tool_detail(inp, width: int = 110) -> str:
 
 def rewind_point(session_id: str, message_uuid: str,
                  cwd: Path | None = None) -> dict:
-    """Where to resume so the conversation ends just before one of your
-    messages: that message's parent in the transcript.
+    """Where to resume so the conversation ends just before a message: its parent in the transcript.
 
-    `--resume-session-at X` keeps everything up to *and including* X
-    (checked: resumed at a prompt's own uuid, the model still knew
-    what that prompt said), so the cut goes one record earlier. A message
-    with no parent was the first, and "before it" is a new session —
-    `at` None. `found` False: no such message in this session."""
+    `--resume-session-at X` keeps everything up to and including X, so the cut is one record
+    earlier. `at` None: the message was first (a new session). `found` False: not in this session."""
     if any(s in session_id for s in ("/", "\\", "..")):
         return {"found": False, "at": None}
     path = _session_file(session_id, cwd)
@@ -200,8 +178,7 @@ def rewind_point(session_id: str, message_uuid: str,
 
 
 def transcript_size(session_id: str | None, cwd: Path | None = None) -> int | None:
-    """Bytes in a session's transcript now: where a turn starting now begins
-    (console_link's cut). 0 for one not written yet."""
+    """Bytes in a session's transcript now (console_link's cut point). 0 if not written yet."""
     if not session_id or "/" in session_id or ".." in session_id:
         return None
     try:
@@ -216,9 +193,7 @@ DELEGATE_TOOLS = ("__delegate", "__fan_out", "__shortlist")
 
 def session_transcript(session_id: str, limit: int | None = None,
                        cwd: Path | None = None, until: int | None = None) -> list[dict]:
-    """Replay a past session's JSONL as console entries (user / assistant text /
-    tool calls) so the browser can show the back-scroll when you resume it —
-    the SDK's `resume` restores the model's context but not the visible log.
+    """Replay a past session's JSONL as console entries (the SDK's `resume` restores context, not the log).
     `limit=None` replays the whole session; a limit keeps the last N entries."""
     # session_id is a bare uuid stem; reject anything with path separators
     if "/" in session_id or "\\" in session_id or ".." in session_id:
@@ -230,9 +205,7 @@ def session_transcript(session_id: str, limit: int | None = None,
     scripts: dict[str, dict] = {}     # run_script entries awaiting their result
     try:
         with path.open(encoding="utf-8") as fh:
-            # `until`: only what was written before that byte, i.e. before the
-            # turn a reloaded page is about to be replayed (console_link).
-            # Bytes, not characters: the cut is a file size.
+            # `until`: bytes (a file size), not characters.
             lines = (fh.buffer.read(until).decode("utf-8", "replace").splitlines()
                      if until is not None else fh)
             for line in lines:
@@ -240,9 +213,7 @@ def session_transcript(session_id: str, limit: int | None = None,
                     rec = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                # Only conversation records: an `api-request-blob` carries a
-                # `message` with role "user" too, and read as one its
-                # "Tool loaded." landed in the log as something you said.
+                # Only conversation records: an `api-request-blob` also carries a user-role `message`.
                 if rec.get("type") not in (None, "user", "assistant"):
                     continue
                 msg = rec.get("message") or {}
@@ -254,8 +225,7 @@ def session_transcript(session_id: str, limit: int | None = None,
                                 and b.get("tool_use_id") in scripts):
                             scripts.pop(b["tool_use_id"])["result"] = (
                                 result_text(b.get("content"))[:8000])
-                    # A background task's notification is the CLI talking,
-                    # not you: a compact row (task_notes), not a bubble of XML.
+                    # A background task notification is the CLI talking: a compact row (task_notes).
                     notes, raw = task_notes.parse(text_blocks(content))
                     out.extend({"kind": "tasknote", **n} for n in notes)
                     text = strip_context(raw)
@@ -269,9 +239,7 @@ def session_transcript(session_id: str, limit: int | None = None,
                         out.append({"kind": "shell", "output": shell["output"],
                                     "code": shell["code"]})
                 elif role == "assistant":
-                    # Which model wrote it: the log marks where that changes,
-                    # and a reply's retry menu says what answered. The CLI's
-                    # own error turns say "<synthetic>", which is no model.
+                    # Which model wrote it; the CLI's own error turns say "<synthetic>", which is no model.
                     model = msg.get("model")
                     by = ({"model": model} if isinstance(model, str) and model
                           and not model.startswith("<") else {})
@@ -285,20 +253,15 @@ def session_transcript(session_id: str, limit: int | None = None,
                         if b.get("type") == "text" and b.get("text", "").strip():
                             out.append({"kind": "text", "text": b["text"], **by})
                         elif b.get("type") == "tool_use":
-                            # id: an Agent call's subagent is found by it
-                            # (subagent_run), live and here alike.
+                            # id: subagent_run finds an Agent call's subagent by it.
                             entry = {"kind": "tool", "name": b.get("name", "tool"),
                                      "detail": tool_detail(b.get("input")),
                                      "desc": tool_desc(b.get("input")),
                                      "id": b.get("id")}
-                            # A script and its result are shown whole, live
-                            # and here alike (console_code).
-                            # An Agent call's input (its prompt, model, type)
-                            # is what its card shows, as it does live.
+                            # raw: an Agent call's card shows its input (prompt, model, type).
                             if entry["name"] in ("Agent", "Task"):
                                 entry["raw"] = json.dumps(b.get("input"), default=str)[:2000]
-                            # A delegate call's row (who was sent, the brief,
-                            # what came back) reads off the same two fields.
+                            # Scripts (console_code) and delegate rows are shown whole from raw.
                             if entry["name"].endswith(("__run_script", *DELEGATE_TOOLS)):
                                 entry["raw"] = json.dumps(b.get("input"), default=str)[:25_000]
                                 scripts[b.get("id")] = entry
@@ -313,16 +276,11 @@ SUBAGENT_CALLS = 300      # newest kept; a long research agent makes hundreds
 
 def subagent_run(session_id: str, tool_use_id: str,
                  cwd: Path | None = None) -> dict | None:
-    """What the subagent one Agent call started has done: its tool calls, in
-    order, and the last thing it wrote (its report, once it's finished).
+    """What the subagent one Agent call started has done: its tool calls and its last text.
 
-    The Agent tool runs subagents in the background, and their calls never
-    reach the parent's stream — the CLI writes them to their own transcript,
-    `<session>/subagents/agent-<id>.jsonl`, with a `.meta.json` beside it
-    naming the Agent call (`toolUseId`) that started it. So this reads the
-    file rather than waiting for messages that don't come (#77). None when no
-    subagent of that call is on disk (yet: the meta lands a moment after the
-    call, so the page asks again)."""
+    Subagent calls never reach the parent's stream; the CLI writes `<session>/subagents/agent-<id>.jsonl`
+    with a `.meta.json` naming the Agent call (`toolUseId`). None when not on disk yet (the meta lands
+    a moment after the call; the page asks again)."""
     if any(c in session_id + tool_use_id for c in "/\\") or ".." in session_id:
         return None
     sub = _session_file(session_id, cwd).with_suffix("") / "subagents"
@@ -344,8 +302,7 @@ def subagent_run(session_id: str, tool_use_id: str,
     last_text = ""
     path = sub / meta_path.name.replace(".meta.json", ".jsonl")
     try:
-        # How long since it last wrote: a subagent that died with its session
-        # is never marked finished, and this is how the page stops asking.
+        # Time since last write: a subagent that died with its session is never marked finished.
         idle = max(0, int(time.time() - path.stat().st_mtime))
     except OSError:
         idle = None
@@ -387,8 +344,7 @@ def subagent_run(session_id: str, tool_use_id: str,
 
 
 def _snippet(text: str, q: str, width: int = 90) -> str:
-    """One line of context centred on the first hit, elided on whichever side
-    was cut, so a match reads as a line rather than a wall of transcript."""
+    """One line of context centred on the first hit, elided where cut."""
     flat = " ".join(text.split())
     idx = flat.lower().find(q)
     if idx == -1:
@@ -402,14 +358,8 @@ def search_sessions(query: str, limit: int = 50,
                     per_session: int = 3, cwd: Path | None = None) -> list[dict]:
     """Case-insensitive substring search across every session, newest first.
 
-    A hit carries the same id/mtime/preview a listing row does — so the browser
-    can resume straight from a search result — plus the lines that matched, so
-    you can see *why* it matched. Tool calls are searched by name and detail,
-    which is what finds the session where you touched a given file.
-
-    `limit` caps matching sessions, not files scanned; `per_session` caps the
-    snippets kept per session, while `match_count` reports the true total.
-    """
+    A hit is a listing row plus matching snippets; tool calls are searched by name and detail.
+    `limit` caps matching sessions; `per_session` caps snippets, `match_count` is the true total."""
     q = query.strip().lower()
     if not q:
         return []
@@ -430,14 +380,8 @@ def search_sessions(query: str, limit: int = 50,
 
 
 def _first_user_text(path: Path) -> str | None:
-    """The first thing the user actually typed, for the listing row's preview.
-
-    Goes through the same text_blocks/strip_context the transcript uses: a
-    console message arrives with an <attached_context> widget dump in front of
-    it, so reading the raw first block previewed every pinned widget's JSON
-    instead of the question. A message that is *only* attached context leaves
-    nothing behind, so keep looking at the next one.
-    """
+    """The first thing the user actually typed (preview). Strips <attached_context> like the transcript does;
+    a message that is only context is skipped for the next."""
     try:
         with path.open(encoding="utf-8") as fh:
             for line in fh:

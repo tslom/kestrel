@@ -37,11 +37,7 @@ export function useFinanceCard() {
         setBalances(null); setSpend(null); setError(null);
         return;
       }
-      // A month rather than a week, because the card now says whether today's
-      // outflow is unusual and seven days can't support that claim. Same
-      // this-month/last-month fallback the trends card uses, and for the same
-      // reason: it's the only anchored window long enough, and on the 3rd it
-      // is three days long. Both spans resolve server-side from db.day_key().
+      // A month, not a week: "today's outflow is unusual" needs the baseline (same fallback as the trends card).
       const [bal, cur] = await Promise.all([
         fetchJSON("/api/finance?metric=balances"),
         fetchJSON("/api/finance?range=this-month&metric=spend"),
@@ -71,18 +67,12 @@ export function useFinanceCard() {
   const connected = status?.configured && items.length > 0;
 
   const currency = balances?.[0]?.currency;
-  // finance.py's spend metric is zero-filled up to today, so the last day of
-  // the series is today's outflow and a zero in it is a real zero — a day you
-  // didn't spend, not a day the bank didn't answer. That's what makes this
-  // series safe to use as a baseline where health's would not be.
+  // The spend series is zero-filled to today: a zero is a real zero, so it is safe as a baseline.
   const spendToday = spend?.length ? spend[spend.length - 1].value : null;
   const spendWeek = spend?.length
     ? spend.slice(-7).reduce((sum, d) => sum + d.value, 0) : null;
   const CARD_METRICS = [
-    // Money is skewed hard by construction — most days near zero, rent once a
-    // month — which is exactly the distribution the median/MAD scorer and the
-    // rarity gate were chosen for. A mean-and-stdev test here would call the
-    // week after payday normal and the rest of the month a drought.
+    // Skewed by construction (rent once a month): the median/MAD scorer fits, mean/stdev would not.
     { key: "spend", label: "Spent today", worse: "up", floor: 150,
       fmt: (v) => fmtMoney(v, currency) },
   ];
@@ -92,10 +82,7 @@ export function useFinanceCard() {
     : [];
   const hit = spendToday != null ? lead(readings) : null;
 
-  // Balances don't change on a day you didn't spend, and they're one click
-  // away in the quiet line — a bank that needs reconnecting is the only thing
-  // here that wants you, and now an unusual day's spending is the only other
-  // thing that earns the "today" band.
+  // Only a bank needing reconnect, or an unusual day's spending, earns the "today" band.
   const level = !status ? null
     : reconnect ? NEEDS
     : !connected ? QUIET
@@ -270,14 +257,8 @@ export default function FinanceWidget({ card, onPin }) {
               ))}
             </ul>
           )}
-          {/* Not a bare "spent this week $X" footer — a number with nothing
-              to read it against. The card says whether today's outflow is
-              unusual for you, and stays silent when it isn't. */}
+          {/* Says whether today's outflow is unusual, silent otherwise; the week total rides that line. */}
           {spendToday != null && balances?.length > 0 && (
-            // The week total rides the quiet line rather than sitting under it
-            // in its own paragraph: on an ordinary day the card said "spent
-            // today $0.00" and "spent this week $285.94" on two separate
-            // lines, which is two lines spent on one unremarkable fact.
             <Lede hit={hit} readings={readings} label="money"
               tail={spendWeek != null ? `${fmtMoney(spendWeek, currency)} this week` : null} />
           )}

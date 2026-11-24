@@ -1,28 +1,9 @@
 """The phone door: answer a waiting card from the phone.
 
-The one exception to localhost-only, and built so it stays small. DESIGN.md →
-Security posture → "The phone door" has the reasoning; the shape is:
-
-* **A second server, not more routes on the first.** `door` listens on
-  127.0.0.1:8791 and is what `tailscale serve` is pointed at. The main app on
-  :8788 is remote code execution by design (console, terminal, db_query,
-  files), so it is never proxied, and what a phone can reach is this file's
-  route list and nothing else (`DOOR_ROUTES`, held by test_phone.py). It runs
-  in the backend's process because a card's answer has to reach the session
-  waiting on it, which is in memory (console_link).
-* **Still bound to loopback.** Tailscale Serve terminates TLS on the tailnet
-  address and proxies here. Nothing of Kestrel's binds beyond 127.0.0.1.
-* **Two keys, both needed.** The tailnet login Serve stamps on each request
-  (`Tailscale-User-Login`, which Serve strips if a client sends it), and a
-  device token from pairing. A device has two scopes: see open cards, and
-  answer one. Nothing else is reachable with any token.
-* **Off until switched on** in Settings → Phone. Off, the port isn't open.
-
-The push (app/webpush.py) goes out when a card has waited PUSH_AFTER_S with
-nobody at the desk. It names the tab and never the card's contents.
-
-A sleeping Mac answers nothing, and nothing is queued for it: an answer names
-a card's request id, and one that is no longer open is refused.
+The one exception to localhost-only: a second server on 127.0.0.1:8791 (what
+`tailscale serve` points at), never routes on :8788. Its whole route list is
+`DOOR_ROUTES` (held by test_phone.py). Two keys: the owner's tailnet login and a
+paired device token. Off until switched on. Design: DESIGN.md → The phone door.
 """
 from __future__ import annotations
 

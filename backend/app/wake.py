@@ -1,55 +1,9 @@
-"""The scheduled wake, so the prediction is still true when it fires.
+"""The scheduled wake: wake the machine shortly before each alarm so a poll cycle can revise it.
 
-Steps 1-4 built a channel that reaches a shut laptop: the reconciler writes a
-future-dated alarm to a surface iCloud syncs, and the phone fires it hours later
-with nothing of ours running. That model carries an assumption it never states —
-that the alarm written before the lid closed is still *correct* when it goes off.
-
-It often isn't. alarms.py is a reconciler rather than an emitter for one reason:
-a prediction can be revised, so a flight that slips must drag its alarm with it.
-But revision only happens on a poll cycle, and a poll cycle only happens while
-the machine is awake. The eight hours before a 6am alarm are precisely the hours
-it is asleep, which makes the argument for a reconciler quietly stop holding
-exactly when it matters most. The phone would fire a 5:40am check-in for a flight
-that moved to noon, and every mechanism built to prevent that was unconscious.
-
-So: ask the OS to wake the machine a little before each alarm. One cycle runs,
-the sources are re-read, the alarm is amended or withdrawn, and it goes back to
-sleep. That is the whole feature.
-
-**This is a reconciler too, for a new reason.** `pmset schedule` is append-only
-global state that outlives the process. Appending a wake every poll cycle would
-leave hundreds of duplicate events by morning, so the desired set is diffed
-against what is actually scheduled — the same shape as alarms.py, arrived at from
-a different direction.
-
-**The OS is the source of truth, not a table.** This is the one place alarm delivery does
-*not* persist its own record, and the contrast is the point. alarms.py must keep
-`external_id`, because a Reminders item is invisible from here and losing the
-handle strands an alarm on the phone forever. A scheduled wake has no such
-problem: `pmset -g sched` lists exactly what is scheduled, so a table could only
-ever drift from it. Reading the OS also means a wake left behind by an older
-build, or one the user cancelled by hand, is reconciled rather than
-double-counted. No migration; nothing to back up.
-
-**Scheduling needs root; reading does not.** `pmset schedule` checks euid and
-refuses ("This operation must be run as root") even for an admin user — the
-rights database's `system.preferences.energysaver` entry, which is class `user`
-and group `admin`, governs the Energy Saver pane through the Admin framework and
-is never consulted by this binary. So the two write verbs go through `sudo -n`
-against a sudoers drop-in scoped to `/usr/bin/pmset schedule`, and `-g sched`
-stays unprivileged. `-n` never prompts: with no rule installed the writes fail
-the same way any other pmset failure does, which the next paragraph is about.
-
-**A failed wake is safe, twice over.** The alarm is already on the phone and
-fires with nothing of ours running, so a wake that never happens costs
-*freshness*, never the alert itself. And if the machine wakes somewhere with no
-network — in a bag, tethered to nothing — every provider fails, every source
-returns `unknown`, and step 1's three-state protocol *holds* the existing alarms
-rather than withdrawing them. A wake that accomplishes nothing degrades to
-exactly the behaviour of not having woken at all. Both properties are inherited
-rather than designed here, which is why this step can afford to fail soft
-everywhere.
+A reconciler over `pmset -g sched` (the OS is the source of truth; no table), diffed against
+the desired wake set since `pmset schedule` is append-only global state. Writes need root via
+`sudo -n` (sudoers drop-in); the read does not. A failed wake costs freshness, never the alarm.
+Design: DESIGN.md → Reaching the user (§21).
 """
 
 from __future__ import annotations
@@ -64,23 +18,16 @@ from .config import (WAKE_COALESCE_MIN, WAKE_DRY_RUN, WAKE_ENABLED,
                      WAKE_HORIZON_HOURS, WAKE_LEAD_MIN, WAKE_MAX_EVENTS,
                      WAKE_OWNER, WAKE_TOLERANCE_MIN)
 
-_PMSET = "/usr/bin/pmset"   # absolute: it is what the sudoers rule names, and a
-                            # NOPASSWD rule matching a bare word off $PATH is the
-                            # classic way to hand out more than was intended.
-_TIMEOUT = 10           # pmset answers immediately or something is very wrong
-_TYPE = "wake"          # never `wakeorpoweron`: a machine that was shut *down*
-                        # was shut down on purpose, and booting it from a bag is
-                        # a different and much ruder act than waking it.
+_PMSET = "/usr/bin/pmset"   # absolute: the sudoers rule names this path
+_TIMEOUT = 10
+_TYPE = "wake"          # never `wakeorpoweron`: don't boot a machine shut down on purpose
 
-# pmset is asymmetric about years and the man page only documents the input
-# side: it *accepts* "MM/dd/yy HH:mm:ss" and *prints* MM/dd/yyyy. Writing the
-# 4-digit form back is not worth the risk of it being read as year 2 0 2 6.
+# pmset accepts "MM/dd/yy HH:mm:ss" but prints MM/dd/yyyy; write the 2-digit form.
 _WRITE_FMT = "%m/%d/%y %H:%M:%S"
 _READ_FMT = "%m/%d/%Y %H:%M:%S"
 
 # ` [0]  wake at 08/11/2026 18:35:17 by 'com.apple.alarm...' User visible: true`
-# Unanchored at the end because of that trailing field. Repeating events print
-# in a separate block with no `[N]` index, so they cannot match this.
+# Repeating events print without a `[N]` index, so they can't match.
 _SCHED_RE = re.compile(
     r"^\s*\[\d+\]\s+(?P<type>\w+)\s+at\s+"
     r"(?P<when>\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2})\s+by\s+'(?P<owner>[^']*)'")
@@ -103,16 +50,9 @@ class WakePlan:
 # ------------------------------------------------------------------ the OS
 
 def _run(args: list[str], *, root: bool = False) -> str:
-    """`root=True` only for the two verbs that need it. `pmset schedule` checks
-    euid before it does anything — the rights database's `energysaver` entry
-    governs the Energy Saver pane through the Admin framework and never reaches
-    this binary — while `-g sched` reads fine as the logged-in user. Privilege
-    is asked for per-call rather than in one blanket wrapper so the read path
-    keeps working on a machine where the sudoers drop-in was never installed.
-
-    `sudo -n` never prompts: with no rule in place this fails immediately with
-    "a password is required", which apply() logs and retries, exactly like any
-    other pmset failure. A missed wake costs freshness, never the alarm.
+    """`root=True` only for the two write verbs; `-g sched` stays unprivileged so a
+    machine without the sudoers drop-in can still read. `sudo -n` fails fast with no
+    rule installed, which apply() logs and retries.
     """
     cmd = ["sudo", "-n", _PMSET] if root else [_PMSET]
     proc = subprocess.run([*cmd, *args], capture_output=True, text=True,
@@ -125,13 +65,8 @@ def _run(args: list[str], *, root: bool = False) -> str:
 def scheduled(*, now: datetime) -> list[datetime]:
     """Our own future wake events, soonest first.
 
-    Filtered to WAKE_OWNER on the way in, which is the only thing standing
-    between this module and the system's own scheduled events. Everything
-    downstream — including every cancel — reads from this list, so a bug that
-    reached another owner's event would have to get past this line first.
-
-    Past events are dropped rather than cancelled. pmset reaps them on its own,
-    and a wake whose time slid by while the machine was asleep is already spent.
+    The WAKE_OWNER filter is all that stands between this module (every cancel reads from
+    this list) and the system's own events. Past events are dropped, not cancelled.
     """
     out = _run(["-g", "sched"])
     found = []
@@ -143,11 +78,7 @@ def scheduled(*, now: datetime) -> list[datetime]:
             when = datetime.strptime(m.group("when"), _READ_FMT)
         except ValueError:
             continue        # a format we don't know is not one we should cancel
-        # pmset prints a wall clock with no zone; it means local time on this
-        # machine. `naive.astimezone()` reads it as local and attaches the offset
-        # in force *on that date* — which is what makes it comparable to an
-        # alarm's fire_at, an instant. Stamping `now`'s offset instead would be
-        # an hour out for any wake on the far side of a DST boundary.
+        # Naive local wall clock: astimezone() attaches the offset in force on that date (DST-safe).
         when = when.astimezone()
         if when > now:
             found.append(when)
@@ -160,9 +91,7 @@ def _schedule(at: datetime) -> None:
 
 
 def _cancel(at: datetime) -> None:
-    """Cancel one event by exact type/date/owner. `pmset schedule cancelall`
-    exists and is deliberately never used: it would take the calendar travel
-    engine's wake and Do Not Disturb's with it."""
+    """Cancel one event by exact type/date/owner; never `cancelall` (it would take other owners' wakes)."""
     _run(["schedule", "cancel", _TYPE,
           at.astimezone().strftime(_WRITE_FMT), WAKE_OWNER], root=True)
 
@@ -170,16 +99,9 @@ def _cancel(at: datetime) -> None:
 # ---------------------------------------------------------------- the desire
 
 def desired(con, *, now: datetime) -> list[datetime]:
-    """When to wake, derived from the alarms table the reconciler just wrote.
+    """When to wake: a lead before every future alarm in the horizon, from the alarms table.
 
-    Every future alarm inside the horizon wants a cycle to run shortly before
-    it. Which alarm a given wake belongs to is not recorded anywhere, because it
-    doesn't matter: a cycle refreshes *all* of them, so wakes are only ever a
-    set of times.
-
-    A wake time already in the past is dropped rather than clamped to now. It
-    means the alarm fires within the lead window, and the cycle that would have
-    checked it is the one running this instant.
+    Wakes are only a set of times (a cycle refreshes all alarms). Past wake times are dropped, not clamped.
     """
     horizon = now + timedelta(hours=WAKE_HORIZON_HOURS)
     lead = timedelta(minutes=WAKE_LEAD_MIN)
@@ -198,22 +120,14 @@ def desired(con, *, now: datetime) -> list[datetime]:
         if at > now:
             times.append(at)
 
-    # Scheduled emails want the machine awake *at* send_at, not a lead ahead
-    # of it — an earlier alarm wake doesn't keep the lid-shut machine up long
-    # enough to cover them, so they join after coalescing, not inside it.
+    # Scheduled emails need the machine awake *at* send_at, so they join after coalescing.
     from .email_schedule import wake_times
     sends = wake_times(con, now=now, horizon=horizon)
     return sorted(set(_coalesce(sorted(times)) + sends))[:WAKE_MAX_EVENTS]
 
 
 def _coalesce(times: list[datetime]) -> list[datetime]:
-    """Collapse wakes within WAKE_COALESCE_MIN of each other to the earliest.
-
-    Keeping the *earliest* is the only safe direction: it is the one that lands
-    before every alarm in the cluster, and a cycle run then covers the later
-    ones too. Keeping the latest would wake the machine after the first alarm
-    had already fired on the phone.
-    """
+    """Collapse wakes within WAKE_COALESCE_MIN to the earliest (the later alarms get covered too)."""
     window = timedelta(minutes=WAKE_COALESCE_MIN)
     kept: list[datetime] = []
     for at in times:
@@ -225,13 +139,8 @@ def _coalesce(times: list[datetime]) -> list[datetime]:
 # ---------------------------------------------------------------- the diff
 
 def plan(want: list[datetime], have: list[datetime]) -> WakePlan:
-    """Pure diff, with a deadband. No clock and no IO — same reasoning as
-    alarms.plan(): this is where the decision to *cancel* is made.
-
-    Matching is nearest-first within the tolerance rather than positional,
-    because a single new alarm early in the list would otherwise shift every
-    subsequent pairing and churn the whole set.
-    """
+    """Pure diff with a deadband. Matching is nearest-first within tolerance, not positional,
+    so one new early alarm doesn't churn every pairing."""
     tolerance = timedelta(minutes=WAKE_TOLERANCE_MIN)
     p = WakePlan()
     unmatched = sorted(have)
@@ -252,15 +161,8 @@ def plan(want: list[datetime], have: list[datetime]) -> WakePlan:
 # ---------------------------------------------------------------- apply
 
 def apply(p: WakePlan) -> dict:
-    """Cancel first, then add. A cancel that fails leaves an event that wakes
-    the machine for no reason, which is noise; an add that fails leaves an alarm
-    unrefreshed, which is the thing this step exists to prevent. Doing the
-    cheap-to-lose half first means a mid-batch failure costs the lesser one.
-
-    Every failure is left on the floor and retried next cycle, exactly as in
-    alarms.deliver() — the whole set is recomputed from the OS each time, so
-    there is no partial state for a later cycle to be confused by.
-    """
+    """Cancel first, then add: a failed cancel is only noise, a failed add leaves an alarm
+    unrefreshed. Failures are retried next cycle (the set is recomputed from the OS)."""
     out = {"added": 0, "cancelled": 0, "failed": 0}
     for at in p.cancel:
         try:
@@ -281,9 +183,7 @@ def apply(p: WakePlan) -> dict:
 
 def reconcile(con=None, *, dry_run: bool | None = None,
               now: datetime | None = None) -> dict:
-    """One wake-reconcile cycle. Runs after alarms.reconcile(), which is what
-    populates the table this reads — reconciling first would schedule wakes for
-    the previous cycle's alarms."""
+    """One wake-reconcile cycle; runs after alarms.reconcile(), which populates the table it reads."""
     if not WAKE_ENABLED:
         return {"enabled": False}
     dry_run = WAKE_DRY_RUN if dry_run is None else dry_run

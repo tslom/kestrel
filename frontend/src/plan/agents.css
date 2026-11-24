@@ -1,7 +1,5 @@
-/* The agent visualizer (plan/AgentLayer.jsx). Each agent is a fixed
-   element whose transform the layer sets to the place its tool call touches;
-   the glide is the transition here. Dark first: the hues are Apple's dark-mode
-   system colours, and the glow is additive on dark. */
+/* The agent visualizer (plan/AgentLayer.jsx): the layer sets each agent's transform; the glide
+   is the transition here. Dark first: Apple's dark-mode hues, additive glow. */
 
 .agent-layer { position: fixed; inset: 0; z-index: 45; pointer-events: none; }
 .cx-agent {
@@ -18,8 +16,7 @@
               0 0 32px 8px color-mix(in srgb, var(--hue) 28%, transparent);
   animation: ag-breathe 2.4s ease-in-out infinite;
 }
-/* the trail: sibling dots sent to the same point on slower transitions, so
-   on a move they string out behind the orb and settle into it */
+/* the trail: dots sent to the same point on slower transitions, so they string out behind the orb */
 .ag-trail {
   position: fixed; left: -4px; top: -4px; width: 8px; height: 8px; border-radius: 50%;
   background: var(--hue); transform: translate(-60px, -60px);
@@ -50,8 +47,7 @@
 .ag-tag {
   position: absolute; display: flex; flex-direction: column; max-width: 260px; padding: 4px 9px 5px;
   border-radius: 9px; white-space: nowrap;
-  /* tinted by the agent's hue: a neutral near-black is the same colour as a
-     dark card and the label vanished into it */
+  /* hue-tinted: a neutral near-black vanishes into a dark card */
   background: color-mix(in srgb, var(--hue) 16%, rgba(8, 8, 10, 0.96)); color: #fff;
   -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--hue) 55%, transparent), 0 8px 22px rgba(0, 0, 0, 0.55);

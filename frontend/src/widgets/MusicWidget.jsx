@@ -8,17 +8,8 @@ import Icon from "../ui/icons.jsx";
 import { dragPin } from "../lib/drag.js";
 import { fmtDur } from "../lib/time.js";
 
-// Music card, on the lede form.
-//
-// This card had the most on it and the least at stake: four stat cells, the
-// top track, a genre mix with a coverage caveat, the last thing played, and a
-// rolling-week sparkline with a top artist — all of it about whether you put
-// music on. Listening is something you did, never something you have to do,
-// so it reports HAS or QUIET and earns even that.
-//
-// The top track survives the cut where the genre mix and the last-played line
-// don't, because it's the one line here a person actually reads. The rest —
-// plays browser, genres, ranges, the week — is the sheet's.
+// Music card, lede form. Listening is never something you have to do, so it reports HAS or QUIET,
+// never NEEDS. The top track is the one line a person reads; the rest is the sheet's.
 const CARD_METRICS = [
   { key: "listen_min", label: "Listened", worse: null, floor: 90, fmt: fmtDur },
   { key: "plays", label: "Tracks", worse: null, floor: 25,
@@ -29,11 +20,8 @@ export function useMusicCard() {
   const { data: sum, error, reload, busy: refreshing } = useWidgetData("/api/spotify/summary");
 
   const today = sum?.today;
-  // Both readings share one baseline series of daily minutes: the backend
-  // keeps per-day totals, not per-day play counts, so `plays` is scored
-  // against minutes scaled by today's own minutes-per-track. Approximate, and
-  // labelled as a track count only in the rest line — it exists so a day of
-  // forty half-finished skips can still lead, which minutes alone would miss.
+  // One baseline series of daily minutes (no per-day play counts), so `plays` is scored against
+  // minutes scaled by today's minutes-per-track: approximate, so a day of forty skips can still lead.
   const perTrack = today?.plays ? today.listen_min / today.plays : null;
   const readings = sum?.connected
     ? CARD_METRICS.map((m) => ({

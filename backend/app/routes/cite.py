@@ -1,24 +1,9 @@
-"""Citation resolution — the read face of `app/citations.py`.
+"""Citation resolution, the read face of `app/citations.py`: a lookup, not a search.
 
-One endpoint, and it is a lookup, not a search: the console wrote
-`[cite:e7a3f1]` into a sentence, the frontend wants to know what that is, and
-the answer is either the row the ref was minted over or nothing.
-
-The 404 is load-bearing and is not an error condition. A ref that was never
-handed out is, with overwhelming likelihood, one the model invented, and the
-frontend renders that as a dead marker rather than a link. Logging it as a
-server fault would bury a real signal ("the console is citing things it did
-not read") under noise, so it returns cleanly.
-
-`found: false` is the third answer and the one worth keeping separate: the ref
-is real, the row behind it is gone — a provider cache re-synced past it, or a
-message deleted. The pill still says what it was, because "the email that said
-this is no longer in the cache" and "the console made this up" should not look
-alike on screen.
-
-Bodies never come through here. An email citation resolves to its metadata and
-its snippet; the body is `/api/email/{id}/body`, which fetches live from Gmail
-and stores nothing, and the pill only asks for it when it is opened.
+404 = never handed out (likely invented; the frontend renders a dead marker,
+and it is not logged as a fault). `found: false` = real ref, row gone from the
+cache. Bodies never come through here (email bodies: `/api/email/{id}/body`).
+Design: DESIGN.md → Citations — what a sentence was read off.
 """
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse

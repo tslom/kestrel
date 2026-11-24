@@ -1,18 +1,8 @@
-// The map's grounds other than contours (round 4 of the look lab, New
-// Features #28/#46).
-//
-// Each one paints the same thing MapTerrain computes: a height field where
-// every card raises a hill as tall as it needs you, ripples run out from a
-// node a console call touches, and the ground swells under the pointer. Only
-// the drawing differs, so a vote on a ground is a vote on the picture, not on
-// what it says. Contours stay in MapTerrain itself (the default).
-//
-// A painter is `{ fps, paint(ctx, g) }`. `g` carries the field (`field`, `nx`,
-// `ny`, `step`), the pane (`width`, `height`), the eased `hills`, `colors`
-// (read off the map pane, so a ground's own CSS tokens in looks/grounds.css
-// apply), the clock `t`, `working`, and `mem`: an object that lives as long
-// as the ground does, for particles and cached patterns. `fps` is the rate at
-// rest; anything moving runs at MapTerrain's working rate.
+// The map's grounds other than contours (look lab round 4, #28/#46): each paints the same field
+// MapTerrain computes, so a vote is on the picture, not what it says. Contours stay in MapTerrain.
+// A painter is `{ fps, paint(ctx, g) }`; `g`: the field (`field`, `nx`, `ny`, `step`), pane (`width`,
+// `height`), eased `hills`, `colors` (from the map pane, so looks/grounds.css tokens apply), clock `t`,
+// `working`, and `mem` (lives as long as the ground; particles, cached patterns). `fps` is the rest rate.
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const smooth = (a, b, v) => { const x = clamp((v - a) / (b - a), 0, 1); return x * x * (3 - 2 * x); };
@@ -35,8 +25,7 @@ function sampler(g) {
   };
 }
 
-// How much of "wants you" colour a point picks up: the nearest tinted hill's
-// reach, so the hue stays a hint of where to look, as on the contours.
+// How much "wants you" colour a point picks up (the nearest tinted hill's reach).
 function tintAt(hills, x, y) {
   let w = 0, bad = false;
   for (const h of hills) {

@@ -2,16 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useDebounce } from "../lib/timers.js";
 import { rank } from "../lib/fuzzy";
 
-// ⌘K over the desk. Paper material — it drives the vault side, and the console
-// keeps its own ink-side affordances (slash commands, push-to-talk).
-//
-// Two list shapes, because they answer different questions. With no query it's
-// a grouped menu: you opened it to find out what's here, so the groups are the
-// content. Once you type it's one flat ranked list — you already know what you
-// want, and group headers just push it further down the screen.
+// ⌘K over the desk (paper side; the console keeps slash commands and push-to-talk). No query: a
+// grouped menu (the groups are the content). Typing: one flat ranked list (headers just push results down).
 
-// Highlight the characters the query actually matched, so a fuzzy hit can be
-// checked at a glance rather than taken on faith.
+// Highlight the matched characters so a fuzzy hit can be checked at a glance.
 function Title({ text, positions }) {
   if (!positions.length) return text;
   const hit = new Set(positions);
@@ -31,10 +25,8 @@ function Title({ text, positions }) {
   return out;
 }
 
-// `searchNotes(q)`: optional, resolves to extra commands for the vault's
-// notes (the plan view's Notes group). Asked from the second letter, a beat
-// after typing stops, and listed after the ranked commands under their own
-// heading — a note is a destination, never a better match than a command.
+// `searchNotes(q)`: optional, resolves to vault-note commands (Notes group), asked from the second
+// letter after a typing pause and listed after commands under their own heading (never a better match).
 export default function CommandPalette({ commands, searchNotes, onClose }) {
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(0);
@@ -58,10 +50,7 @@ export default function CommandPalette({ commands, searchNotes, onClose }) {
       ?.scrollIntoView({ block: "nearest" });
   }, [sel, q]);
 
-  // Escape lives on the window, like every other panel's does, rather than on
-  // the field's onKeyDown — otherwise it only works while the input happens to
-  // hold focus, and the one key everybody trusts to back out would be the one
-  // key that sometimes doesn't.
+  // Escape on the window, not the field's onKeyDown, so it works without input focus.
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
@@ -74,8 +63,7 @@ export default function CommandPalette({ commands, searchNotes, onClose }) {
       if (!results.length) return;
       setSel((s) => (Math.min(s, results.length - 1) + d + results.length) % results.length);
     };
-    // Ctrl+N/P alongside the arrows: this is a keyboard-first surface and the
-    // hands are already on the home row.
+    // Ctrl+N/P alongside the arrows (keyboard-first).
     if (e.key === "ArrowDown" || (e.ctrlKey && e.key === "n")) return move(1);
     if (e.key === "ArrowUp" || (e.ctrlKey && e.key === "p")) return move(-1);
     if (e.key === "Home") { e.preventDefault(); return setSel(0); }
@@ -101,8 +89,7 @@ export default function CommandPalette({ commands, searchNotes, onClose }) {
           className="cmdk-input"
           autoFocus
           value={q}
-          // Typing re-ranks under the cursor, so the selection comes back to
-          // the top or Enter runs whatever is sitting at the old index.
+          // Typing re-ranks, so selection returns to the top (else Enter runs the old index).
           onChange={(e) => { setQ(e.target.value); setSel(0); }}
           onKeyDown={onKeyDown}
           placeholder={searchNotes ? "Open a view, a card or a note…" : "Open a panel, jump to a card…"}

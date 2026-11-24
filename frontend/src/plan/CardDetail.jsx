@@ -5,16 +5,9 @@ import { CardView } from "../widgets/views.jsx";
 import ErrorBoundary from "../ui/ErrorBoundary.jsx";
 import Icon from "../ui/icons.jsx";
 
-// A card opened into the side column (which widens to a reading width for
-// it): the second of a card's three depths — the node says whether it needs
-// you, this is the card itself, whole, the full view is its sheet. Only a card
-// with a sheet has the third; the rest are complete here (DESIGN.md → Card
-// anatomy). It stacks over the "needs you" list, which stays below it, so
-// closing it is ✕ (or Esc) rather than a way back to somewhere.
-//
-// The card is the same component the rail desk drew, over the same hook
-// result, so opening it never refetches and what it shows can't drift from
-// what ranked it.
+// A card opened into the side column: the second of three depths (node, card, sheet; DESIGN.md →
+// Layout: the plan view, Card anatomy). Same component over the same hook result, so opening never
+// refetches and can't drift from what ranked it. Stacks over the list: close is ✕ or Esc.
 export default function CardDetail({ id, card, level, onClose, onFull, onPin, openSheet }) {
   const band = level === NEEDS ? "needs" : level === HAS ? "has" : "quiet";
   const word = level === NEEDS ? "needs you" : level === HAS ? "today" : "quiet";

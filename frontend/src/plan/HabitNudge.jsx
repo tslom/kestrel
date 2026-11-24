@@ -3,11 +3,7 @@ import { timer } from "../lib/timers.js";
 import { fetchJSON, postJSON } from "../lib/api";
 import { broadcastRefresh } from "../lib/refresh";
 
-// Every few hours while Kestrel is open, a card asks which of today's habits
-// are done (New Features #68). Without it, logging anything takes opening the
-// habits card, so a day's routine goes unlogged unless you happen to look. Only habits not yet checked in today are asked about, and a day with
-// none left asks nothing.
-//
+// Every few hours a card asks which of today's unchecked habits are done (#68); none left asks nothing.
 // The timing, in one place:
 export const HABIT_NUDGE = {
   everyHours: 3,      // at most once per this many hours (launches included)
@@ -41,12 +37,10 @@ export default function HabitNudge() {
 
   useEffect(() => {
     let alive = true;
-    // Only while the window is the one in front: a card that pops up behind
-    // another app is one you meet hours later, already out of date.
+    // Only while the window is in front (a card behind another app is stale by the time you see it).
     const check = () => {
       if (!alive || ask || document.hidden || !document.hasFocus() || !due()) return;
-      // not over something you're in the middle of: the palette, an approval,
-      // the look lab or an open sheet. The next tick asks again.
+      // not over the palette, an approval, the look lab or an open sheet; the next tick retries.
       if (document.querySelector(".cmdk, .card-modal, .look-lab, .plan.full")) return;
       fetchJSON("/api/habits").then((d) => {
         if (!alive) return;
@@ -83,8 +77,7 @@ export default function HabitNudge() {
     return next;
   });
 
-  // The day is the backend's (day_key, 4am rollover), from the same read
-  // that listed the habits — never the browser's date.
+  // The day is the backend's day_key from the same read, never the browser's date.
   function save() {
     if (!picked.size) { setAsk(null); return; }
     setSaving(true);

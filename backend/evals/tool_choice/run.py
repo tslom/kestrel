@@ -3,19 +3,14 @@
     cd backend && .venv/bin/python -m evals.tool_choice.run [--repeat 2] [--only event]
     ... --descriptions evals/tool_choice/candidate.json
 
-`cases.json` holds a message and every tool that's a right first move. Each
-pass batches them and asks the model which tool it would call first, given the
-real system prompt and tool catalog. Nothing runs and nothing is written.
+`cases.json` holds a message and every tool that's a right first move. Each pass
+batches them and asks Haiku which tool it would call first, given the real system
+prompt and tool catalog; nothing runs. A deliberate proxy (~100k Haiku tokens a
+pass against the shared window; weaker is the right way round for guarding
+descriptions). Routing only, not argument correctness.
 
-A proxy, on purpose: Haiku on a text catalog, not Sonnet on live schemas. That's
-~100k Haiku tokens a pass against the shared subscription window, where a real
-replay would be many times that. Weaker and cheaper is the right way round for
-guarding descriptions: what survives Haiku isn't relying on a strong model to
-guess. It measures routing only, not whether a call's arguments are right.
-
-`--descriptions` overlays {tool: text} without touching console_tools.py, so a
-shorter wording can be tried first. See test_tool_eval.py for what `pytest`
-holds without spending anything.
+`--descriptions` overlays {tool: text} without touching console_tools.py.
+test_tool_eval.py holds the free checks.
 """
 import argparse
 import asyncio
@@ -52,17 +47,13 @@ def tool_chars(overlay: dict[str, str]) -> int:
 
 async def judge(batch: list[dict], system: str, gate: asyncio.Semaphore) -> list[str]:
     numbered = "\n".join(f"{i + 1}. {c['p']}" for i, c in enumerate(batch))
-    # Answers are keyed by message number. A bare array was positional, and
-    # Haiku now and then drops a line from it (13 answers for 14): when it
-    # also doubles one elsewhere the count still matches, and every answer
-    # after the slip is scored against the next message, all of the misses
-    # shifted by one. A missing key is a re-ask.
+    # Keyed by message number, not positional: Haiku drops a line now and then and
+    # every later answer would score against the next message. A missing key is a re-ask.
     for _ in range(3):
         async with gate:
             out = await agent.ask(ASK + numbered, model=MODEL, system=system,
                                   thinking={"type": "disabled"})
-        # The first object, not first-{ to last-}: some answers trail a
-        # second one (JSONDecodeError "Extra data").
+        # First object only: some answers trail a second one ("Extra data").
         found = re.search(r"\{.*?\}", out, re.S)
         try:
             keyed = json.loads(found.group(0)) if found else {}
@@ -70,8 +61,7 @@ async def judge(batch: list[dict], system: str, gate: asyncio.Semaphore) -> list
             keyed = {}
         picks = [keyed.get(str(i + 1)) for i in range(len(batch))]
         if isinstance(keyed, dict) and all(isinstance(p, str) for p in picks):
-            # `mcp__vault__food_weigh` is food_weigh: the name as the
-            # session sees it, not a wrong pick.
+            # `mcp__vault__food_weigh` is food_weigh, not a wrong pick.
             return [str(p).removeprefix(f"mcp__{console_tools.SERVER_NAME}__") for p in picks]
     got = sum(isinstance(p, str) for p in picks)
     raise ValueError(f"{got} answers for {len(batch)} messages, three times")

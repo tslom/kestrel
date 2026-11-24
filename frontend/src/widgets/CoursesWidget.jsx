@@ -21,28 +21,17 @@ function Where({ where }) {
   );
 }
 
-// A week that doesn't match the rule. On today's rows the times shown are
-// already the amended ones, so this says *why* they look unfamiliar; in the
-// week view the times are still the standing rule, so this has to carry the
-// date it applies to or it reads as a correction to every week.
+// A week that doesn't match the rule. Today's times are already amended (this says why); the
+// week view shows the standing rule, so `dated` carries the date.
 function Amended({ slot, dated }) {
   const e = slot.exception;
   if (!e) return null;
-  // Off the parsed minutes, not the note's raw `when`: the rest of this card
-  // is a 12-hour clock, and "Sep 1: 14:00-15:00" beside "Tue 1:00 PM" makes
-  // the reader convert one of the two before they can compare them.
+  // From parsed minutes, not the note's raw `when`: the card is a 12-hour clock.
   const what = e.cancelled ? "cancelled"
     : e.start != null ? clockRange(e.start, e.end).inline
     : e.when || "changed";
-  // "cancelled" is the word that stops you leaving the building, so it is
-  // never the one traded away for the reason — a row reading only "away at a
-  // conference" beside a live-looking time is the bug this replaced. An
-  // amended row is the other way round: its time is already correct on the
-  // row, so the reason is the only thing left worth the space.
-  // Hours pulled onto today from another weekday are the one case where the
-  // row can't explain itself: it looks like an ordinary block, and the reason
-  // it's unfamiliar — that it isn't normally held today — is the part worth
-  // the space. It also hints the usual day may now be empty.
+  // "cancelled" is never traded for the reason; an amended row's time is already right, so the
+  // reason is what's left; a moved block says it isn't normally held today.
   const body = dated ? `${shortDay(e.date)}: ${what}`
     : e.cancelled ? what
     : slot.moved_from ? `moved from ${slot.moved_from}`
@@ -58,16 +47,12 @@ function Amended({ slot, dated }) {
 function Slot({ slot, showDay, showCode = true, showWho = true, onPin }) {
   const label = `${slot.code} office hours`;
   const range = slot.start == null ? null : clockRange(slot.start, slot.end);
-  // Struck only on today's rows. `state` is about today, and the week view is
-  // showing the standing rule — striking it there says the hours don't exist,
-  // when what happened is that one date is off.
+  // Struck only on today's rows: `state` is about today, the week view shows the standing rule.
   const struck = slot.state === "past" ? "past"
     : slot.state === "cancelled" && !showDay ? "cancelled" : "";
   return (
     <li className={struck} {...dragPin(label, slot)}>
-      {/* "Can I still walk in" is the only question this card is asked, and a
-          start time alone can't answer it — 2:00 PM says nothing about whether
-          2:40 is too late. The close time is the row's other half. */}
+      {/* "Can I still walk in" needs the close time, not just the start. */}
       {slot.start == null
         ? <EventTime text={slot.when || "TBA"}
             pre={showDay && <span className="course-day">{slot.day} </span>} />
@@ -87,14 +72,9 @@ function Slot({ slot, showDay, showCode = true, showWho = true, onPin }) {
   );
 }
 
-// Office hours are the thing you need at the moment you need them and never
-// otherwise — so the card answers "who's in right now, and who's next" first,
-// and keeps the whole week one click behind that.
-// Approve (writes the override into the course note) or reject, then offer
-// the undo: /undo takes an approved override back out of the note, and either
-// way the proposal is pending again.
-// One line for what a proposal says, shared by the card, the ask and the undo
-// toast. An add's day is when the weekly block starts, not a one-off date.
+// Card answers "who's in now, who's next" first; the week is one click behind.
+// Approve writes the override into the course note; /undo takes it back out (proposal pending again).
+// One line per proposal for the card, the ask and the undo toast; an add's day is when the weekly block starts.
 function proposalText(p) {
   if (p.action === "cancel") return `cancelled ${shortDay(p.day)}`;
   if (p.action === "add") return `new hours ${p.when_str}, from ${shortDay(p.day)}`;
@@ -120,13 +100,9 @@ export function useCoursesCard() {
   const open = data?.open_now ?? [];
   const next = data?.next ?? null;
   const nextRange = next ? clockRange(next.start, next.end) : null;
-  // A bare weekday is only unambiguous inside the coming week. It stopped
-  // being so the moment hours could be called off: with today's block struck
-  // through, "Next · Tue 1:00 PM" named the very block above it as upcoming.
-  // So anything that isn't this week's next-such-day gets its date.
-  // Measured in whole days off the day-key, not in minutes: a cancelled
-  // Tuesday puts the next Tuesday 6 days and 23 hours away, which is under a
-  // week by the clock and a completely different Tuesday to a reader.
+  // A bare weekday is ambiguous once hours can be cancelled (a struck Tuesday makes "Next · Tue"
+  // name itself), so >=7 days out gets its date. Whole days off the day-key, not minutes: next
+  // Tuesday is 6d23h away by the clock.
   const nextDate = next?.at?.slice(0, 10) ?? null;
   const daysOut = nextDate && data
     ? Math.round((new Date(`${nextDate}T12:00:00`) - new Date(`${data.day}T12:00:00`)) / 864e5)
@@ -134,20 +110,12 @@ export function useCoursesCard() {
   const nextDay = daysOut >= 7 ? shortDay(nextDate) : null;
   const ahead = today.filter((s) => s.state !== "past");
   const earlier = today.filter((s) => s.state === "past");
-  // Hours called off for the day stay on the board, because "don't walk over"
-  // is the same decision this card exists to answer — but they are not hours
-  // you can walk into, so they must not make it look like there are any.
+  // Called-off hours stay on the board ("don't walk over") but must not count as live.
   const live = ahead.filter((s) => s.state !== "cancelled");
   const called_off = ahead.filter((s) => s.state === "cancelled");
 
-  // Reference, not a to-do: hours you can still walk into today are content,
-  // a day whose hours have all run out is quiet. The one thing that *does*
-  // ask something of you is a proposed amendment read out of mail —
-  // until you approve or reject it, the card is showing hours that mail says
-  // are wrong, and that is the one state worth interrupting for.
-  // Folded, one open slot can say when it closes — that's the whole decision
-  // ("worth walking over?"). Two can't share one close time, so they fall back
-  // to naming themselves rather than quoting whichever one ends first.
+  // Reference, not a to-do: only a pending mail amendment (hours mail says are wrong) needs you.
+  // One open slot can quote its close time; two can't share one, so they name themselves.
   const proposals = data?.proposals ?? [];
   const level = !data ? null : proposals.length ? NEEDS : live.length ? HAS : QUIET;
   const summary = !data ? ""
@@ -162,9 +130,7 @@ export function useCoursesCard() {
     : next ? `next hours ${next.code} ${next.day} ${fmtClock(next.start)}`
     : "no office hours on file";
 
-  // One row per amendment read out of mail. Confirming here is the same POST
-  // the card's approve button makes; rejecting stays on the card, where the
-  // quote it's based on is shown.
+  // Confirm is the card's approve POST; reject stays on the card, where the quote is shown.
   const approve = (p) => decideProposal(p, true, reload).catch((e) => setError(e.message));
   const asks = proposals.map((p) => ({
     id: `courses:proposal:${p.id}`, card: "courses", tier: OWED, kind: "", deadline: p.day,
@@ -182,14 +148,10 @@ export default function CoursesWidget({ card, onPin }) {
   const { data, error, setError, reload, courses, today, open, next, nextRange,
           nextDay, ahead, earlier, proposals } = card;
   const [week, setWeek] = useState(false);
-  // Which proposal is mid-decision. Both its buttons go disabled rather than
-  // just the one clicked: approving writes to a vault note, and a second
-  // click landing before the reload would be a second write.
+  // Mid-decision proposal: both buttons disable, since approve writes a vault note (no double write).
   const [busy, setBusy] = useState(null);
 
-  // A 409 is the interesting failure — the proposal couldn't be applied (the
-  // note moved, the entry can't be matched), so it stays pending and the
-  // message has to be shown rather than swallowed into a silent no-op.
+  // A 409 means it couldn't be applied (note moved, entry unmatched): stays pending, show the message.
   const decide = (id, approve) => {
     setBusy(id);
     decideProposal(proposals.find((p) => p.id === id), approve, reload)
@@ -212,10 +174,7 @@ export default function CoursesWidget({ card, onPin }) {
       </header>
       {error && <WidgetError error={error} />}
       {!data && !error && <><div className="skel" /><div className="skel w60" /></>}
-      {/* Above the hours, not below: these say the hours underneath are wrong.
-          The quote is the point — every other line is this extractor's
-          reading of that sentence, and the quote is what makes approving a
-          decision rather than a guess. */}
+      {/* Above the hours: they say the hours below are wrong. The quote makes approving a decision, not a guess. */}
       {proposals.map((p) => (
         <div key={p.id} className="oh-proposal">
           <p className="oh-proposal-what">
@@ -247,10 +206,7 @@ export default function CoursesWidget({ card, onPin }) {
       {data && week && courses.length === 0 && (
         <p className="widget-empty">No course notes for {data.term} yet.</p>
       )}
-      {/* Hours that have already run out. This card exists to answer "can I
-          walk in right now" — a slot that ended at 11 can't be walked into,
-          and rendering it at the same weight as one that hasn't is the card
-          making you find the live one. */}
+      {/* Hours already run out fold away so the live one isn't hunted for. */}
       {!week && earlier.length > 0 && (
         <Folded above summary={`${earlier.length} earlier today`} hideLabel="hide earlier"
           open={!ahead.length}>
@@ -264,10 +220,7 @@ export default function CoursesWidget({ card, onPin }) {
           {ahead.map((s, i) => <Slot key={i} slot={s} onPin={onPin} />)}
         </ul>
       )}
-      {/* Expanded, the question is "when are CSCI 170's hours" rather than
-          "who's in today", so the week is grouped by class, not by day — the
-          rows carry the weekday, and a class with none posted has to appear
-          here or it looks like a class you forgot to add. */}
+      {/* Week view groups by class; a class with no hours posted must still appear. */}
       {week && courses.map((c) => (
         <div className="course-block" key={c.code}>
           <p className="course-head">
@@ -283,8 +236,7 @@ export default function CoursesWidget({ card, onPin }) {
             : (
               <ul className="event-list" {...dragPin(`${c.code} office hours`, c.office_hours)}>
                 {c.office_hours.map((s, i) => <Slot key={i} slot={s} showDay showCode={false}
-                    // the instructor's name is already the block's header;
-                    // only a TA's hours need saying whose they are
+                    // the header already names the instructor; only a TA's hours say whose
                     showWho={s.who !== c.instructor} onPin={onPin} />)}
               </ul>
             )}
@@ -298,9 +250,7 @@ export default function CoursesWidget({ card, onPin }) {
           {next.in_min < 720 && ` · in ${fmtDur(next.in_min)}`}
         </p>
       )}
-      {/* Study mode: an exam inside two weeks, read off the syllabus, and how
-          many review items the console has logged for that course. The
-          console's course_context has the rest; this is only the reminder. */}
+      {/* Study mode: an exam inside two weeks plus review counts; course_context has the rest. */}
       {data && !week && (data.study ?? []).filter((s) => s.exam).map((s) => (
         <p className="course-next" key={`exam-${s.code}`}>
           <span className="course-code">{s.code}</span> {s.exam.label}

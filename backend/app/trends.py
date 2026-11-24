@@ -19,11 +19,9 @@ router = APIRouter(prefix="/api")
 
 BASE_METRICS = ("energy",)
 
-# energy = 0-100 readiness score. Each signal scores 0..1 — sleep against a
-# fixed target, resting HR and HRV against your own baseline (median of the
-# trailing BASELINE_DAYS, synced along with the range so the baseline isn't
-# just the displayed days scoring themselves). Missing signals drop out and
-# the weights renormalize; a day with no signals is a null gap, not 0.
+# energy = 0-100 readiness. Signals score 0..1: sleep vs a fixed target, resting HR
+# and HRV vs the median of the trailing BASELINE_DAYS. Missing signals drop out and
+# weights renormalize; no signals = null gap, not 0.
 ENERGY_WEIGHTS = {"sleep_hours": 0.5, "resting_hr": 0.25, "hrv": 0.25}
 BASELINE_DAYS = 30
 SLEEP_TARGET_HOURS = 8.0
@@ -42,16 +40,11 @@ def _score(metric: str, value: float, baseline: float | None) -> float | None:
 def _energy_series(rng: ranges.Range, days: list[str]) -> list[dict]:
     base_start = (date.fromisoformat(rng.start_key)
                   - timedelta(days=BASELINE_DAYS)).isoformat()
-    # One provider read over range + baseline window syncs every health
-    # metric for its cold days (get() backfills whole days, not single
-    # metrics; health_sync markers make this a one-time pull per day).
+    # One read over range + baseline syncs all health metrics for cold days (get() backfills whole days).
     sync_end = min(rng.end_key, db.day_key())
     sync = ranges.parse_range(f"{base_start}..{sync_end}")
-    # The sync only tops up cold days; the score is computed from health_days
-    # either way. Google login lapses (a Testing-mode refresh token lasts ~7
-    # days), and that isn't a reason to withhold the days already here: this
-    # used to 502 for as long as the account was disconnected, and the status
-    # panel already says so with a Connect button.
+    # Sync only tops up cold days; a lapsed Google login (Testing-mode token ~7 days)
+    # must not withhold cached days (the status panel shows Connect).
     try:
         health.get(sync, "sleep_hours")
     except ValueError as e:
@@ -118,10 +111,7 @@ def get_trends(range: str = "this-week", metric: str = "energy"):
     today = db.day_key()
     days = [d for d in rng.days() if d <= today]  # no future points
 
-    # Energy reads the health provider directly rather than through
-    # providers.get(), so the envelope stamping lives here too — otherwise a
-    # backfill that couldn't reach Fitbit would degrade silently on this route
-    # while /api/health next door said so.
+    # Energy bypasses providers.get(), so envelope stamping lives here (else a failed Fitbit backfill degrades silently).
     degraded: list[str] = []
     if metric in BASE_METRICS:
         with offline.collect() as noted:

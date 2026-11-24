@@ -8,14 +8,8 @@ import { CheckList, CheckRow, AddInput } from "../ui/CheckList.jsx";
 import { dragPin } from "../lib/drag.js";
 import { holdDelete, useHeld } from "../lib/undo.js";
 
-// The lists card. It opens on the buy list — that's the one seeded, and the
-// first chip — but a list is a row the user makes, so
-// packing for college or a party each get their own instead of being filed as
-// categories on a list that isn't theirs.
-//
-// One list is shown at a time. All of them arrive in the one /api/lists read
-// (they're a few dozen rows between them), so switching chips is instant and
-// costs no fetch, and the card's height doesn't grow with the number of lists.
+// The lists card: opens on the seeded buy list; user-made lists get their own chip. One list shows at
+// a time; all arrive in one /api/lists read, so switching chips costs no fetch.
 export function useListsCard() {
   const { data, error, reload } = useWidgetData("/api/lists", "lists");
 
@@ -33,11 +27,7 @@ export function useListsCard() {
   const open = lists.reduce((n, l) => n + l.open, 0);
   const busy = lists.filter((l) => l.open > 0);
 
-  // HAS on any open item. "Needs you" is only a blocked turn, a clock, a
-  // broken source, or a person or decision waiting, and a shopping list isn't
-  // due. Folded away as HAS on the old rail desk it drew zero opens; its
-  // "today" line is always visible now, and if the usage sheet shows it back
-  // at zero opens, that's the evidence to revisit.
+  // HAS on any open item; a shopping list is never "needs you". Revisit if the usage sheet shows zero opens.
   const level = !data ? null : open === 0 ? QUIET : HAS;
   const summary = !data ? ""
     : open === 0 ? (lists.length ? "nothing on the lists" : "no lists yet")
@@ -49,16 +39,11 @@ export function useListsCard() {
 
 export default function ListsWidget({ card, onPin }) {
   const { data, error, reload, tick, drop, lists, open } = card;
-  // Which chip is selected — id, or null for "whichever is first". Held by id
-  // rather than index so a list deleted elsewhere doesn't silently select a
-  // different one, and per-mount rather than persisted: the first chip is the
-  // buy list, which is the right place to land on a fresh page.
+  // Selected id (null = first). By id so a delete elsewhere doesn't shift the selection; not persisted.
   const [pick, setPick] = useState(null);
   // "new" while naming a list, "rename" while renaming the open one.
   const [mode, setMode] = useState(null);
-  // A rejected name (duplicates are refused server-side) — said next to the
-  // box that caused it rather than replacing the card the way a failed load
-  // does.
+  // A rejected name (server refuses duplicates), shown by its box, not as a card-level error.
   const [notice, setNotice] = useState(null);
 
   // a list or row whose delete is waiting on the undo toast is already gone here
@@ -92,10 +77,7 @@ export default function ListsWidget({ card, onPin }) {
       .catch((e) => setNotice(String(e.message || e)));
   }
 
-  // Deleting takes the items with it (FK cascade), so the count is in the
-  // toast — "deleted Party" reads harmless when it's eleven things. Held
-  // until the toast goes, like every delete (lib/undo.js holdDelete), in
-  // place of the browser confirm it had.
+  // The FK cascade takes the items too, so the count goes in the toast; held like every delete (lib/undo.js holdDelete).
   function removeList() {
     const { id, name, open: n } = active;
     setPick(null); setMode(null);

@@ -1,32 +1,11 @@
 """The Brain — what Kestrel knows about the user, kept rather than re-asked.
 
-Facts live in app.db (`brain_facts`, `brain_pages`); the vault's BRAIN_DIR is
-a generated, read-only view of them, the tasks.md arrangement. Every fact
-cites where it was learned — a console session, a message, an email, a note —
-with a verbatim quote, so the pages can be rebuilt from the sources at any
-time. The one thing that can't be rebuilt is the user's ruling on a fact
-(`verdict`), which is why a rebuild deletes only unruled ingest rows.
-
-Three ways in:
-  * the console's `brain_note` tool, mid-conversation (told to Kestrel
-    directly → active);
-  * ingest: one model call per batch of sources in a date window, whose
-    proposals pass deterministic checks before anything is written (the cited
-    line exists in this batch, the quote really appears in it, the page slug
-    is well-formed, the claim isn't a known rejection or a duplicate) — the
-    model's output is treated as untrusted until then;
-  * the user, through the Brain card (✓ / ✗ / edit).
-
-Ingest is lazy (the first GET /api/brain after a day has closed) and the
-backfill is the same code walked over past weeks in order, so a fact that
-stopped being true is superseded the way it happened rather than piled up
-beside its replacement. Lint tidies pages afterwards: summaries, merges, which
-facts belong in the always-loaded profile.
-
-Model calls go through agent.ask — subscription CLI, no tools — so injected
-text in a message or email reaches a model with nothing to act with, and the
-worst it can do is propose a fact, which then has to survive the checks and
-waits for a ✓ unless the user said it to Kestrel themselves.
+Facts live in app.db (`brain_facts`, `brain_pages`); the vault's BRAIN_DIR is a generated,
+read-only view. Every fact cites its source with a verbatim quote, so pages rebuild from
+sources; only the user's `verdict` can't, so a rebuild deletes only unruled ingest rows.
+Ways in: the `brain_note` tool, ingest (model output is untrusted until `apply_ops` checks
+it), the Brain card. Model calls go through agent.ask (no tools): injected text can at most
+propose a fact that waits for a ✓. Design: DESIGN.md → The Brain.
 """
 
 import argparse
@@ -58,9 +37,7 @@ TOPICS = ("me", "school", "work", "home", "family", "friends", "relationships",
           "health", "fitness", "money", "interests", "preferences", "routines",
           "goals", "history", "travel", "projects")
 
-# A batch is one model call. ~200k characters of sources is ~50k tokens —
-# room for the brain context and the answer, and small enough that a week of
-# heavy texting splits into a few calls instead of one that loses the middle.
+# One batch = one model call: ~200k chars of sources is ~50k tokens.
 BATCH_CHARS = 200_000
 CONTEXT_CHARS = 60_000
 USER_TURN_CAP = 2000
@@ -69,8 +46,7 @@ NOTE_CAP = 4000
 PROFILE_CHARS = 6000
 INDEX_CHARS = 4000
 STALE_RUN = timedelta(hours=1)
-# Extraction, not reasoning: with the CLI's default thinking, the first dry
-# run spent all 32k output tokens thinking over one week and wrote no JSON.
+# Extraction, not reasoning: default thinking once spent all 32k output tokens and wrote no JSON.
 NO_THINKING = {"type": "disabled"}
 
 
@@ -84,8 +60,7 @@ def slugify(text: str) -> str:
 
 
 def _norm(text: str) -> str:
-    """What the quote check compares: case, whitespace and curly quotes are
-    not evidence of anything, so none of them may fail a real quote."""
+    """What the quote check compares: case, whitespace and curly quotes may not fail a real quote."""
     text = unicodedata.normalize("NFKC", html.unescape(text or ""))
     text = (text.replace("’", "'").replace("‘", "'")
             .replace("“", '"').replace("”", '"'))
@@ -100,8 +75,7 @@ def _page_row(con, slug: str) -> dict | None:
 
 
 def _names_elsewhere(con, slug: str) -> dict[str, str]:
-    """Every name another page answers to (title, alias, a person's first
-    name), lowercased → that page's slug."""
+    """Every name another page answers to (title, alias, a person's first name), lowercased → slug."""
     out = {}
     for r in con.execute("SELECT slug, title, kind, aliases FROM brain_pages WHERE slug<>?",
                          (slug,)):
@@ -115,10 +89,8 @@ def _names_elsewhere(con, slug: str) -> dict[str, str]:
 
 def ensure_page(con, slug: str, title: str | None = None, kind: str | None = None,
                 aliases: list[str] | None = None) -> dict:
-    """The page, created on first mention. Learned aliases only accumulate —
-    a nickname learned once is still a nickname — but never one another page
-    already answers to: "Noni" on Nora's page filed Noelle's texts there,
-    and taking it off didn't stick while the next lint could learn it back."""
+    """The page, created on first mention. Learned aliases only accumulate, but never one another
+    page already answers to (a shared "Noni" misfiled texts, and lint could relearn it)."""
     if not SLUG_RE.match(slug):
         raise ValueError(f"bad page slug {slug!r}")
     kind = kind or ("person" if slug.startswith("people/") else "topic")
@@ -144,9 +116,8 @@ def ensure_page(con, slug: str, title: str | None = None, kind: str | None = Non
 
 def edit_page(con, slug: str, *, title: str | None = None,
               add_aliases: list[str] = (), remove_aliases: list[str] = ()) -> dict:
-    """The user's correction to a page's names. Unlike ensure_page this can
-    take an alias away; adding one another page answers to is refused rather
-    than silently dropped, so the caller knows to move it off that page."""
+    """The user's correction to a page's names. Unlike ensure_page it can remove an alias; adding
+    one another page answers to is refused, not dropped."""
     row = _page_row(con, slug)
     if row is None:
         raise LookupError(f"no brain page {slug}")
@@ -168,9 +139,8 @@ def edit_page(con, slug: str, *, title: str | None = None,
 
 
 def move_fact(con, fact_id: int, page: str) -> dict:
-    """A fact filed on the wrong page, moved as it is — status, verdict and
-    source go with it, unlike re-noting it with `replaces`, which makes an
-    unconfirmed copy and leaves the original behind as history."""
+    """A fact filed on the wrong page, moved as it is (status, verdict, source), unlike re-noting
+    with `replaces`, which makes an unconfirmed copy."""
     row = con.execute("SELECT * FROM brain_facts WHERE id=?", (fact_id,)).fetchone()
     if row is None:
         raise LookupError(f"no fact {fact_id}")
@@ -184,8 +154,7 @@ def move_fact(con, fact_id: int, page: str) -> dict:
 
 
 def _duplicate(con, page: str, claim: str) -> dict | None:
-    """A current fact on this page saying the same thing, or a rejected one —
-    either way, not something to add again."""
+    """A current or rejected fact on this page saying the same thing (don't add again)."""
     want = _norm(claim)
     for r in con.execute("SELECT * FROM brain_facts WHERE page=? AND status IN"
                          " ('active','pending','rejected')", (page,)):
@@ -251,8 +220,7 @@ def set_verdict(con, fact_id: int, verdict: str) -> dict:
                         (old["prior_status"] or "pending", now, old["id"]))
             restored.append(old["id"])
     out = dict(con.execute("SELECT * FROM brain_facts WHERE id=?", (fact_id,)).fetchone())
-    # Said out loud because it's easy to miss: rejecting a stale fact can
-    # revive an even staler one. One review session revived ~50 unseen.
+    # Returned so the caller can say it: rejecting a fact can revive a staler one (~50 in one session).
     out["restored"] = [dict(r) for r in con.execute(
         f"SELECT * FROM brain_facts WHERE id IN ({','.join('?' * len(restored))})", restored)]
     return out
@@ -385,9 +353,8 @@ def _log_md(con) -> str:
 
 
 def render(root: Path | None = None) -> dict:
-    """Write the vault view. Only files whose content changed are touched (the
-    watcher reindexes on every write), and a stale page file is removed only
-    if it is one of ours — `brain: true` in its frontmatter."""
+    """Write the vault view: only changed files (the watcher reindexes on every write); stale
+    files removed only if `brain: true` in their frontmatter."""
     base = (root or VAULT_PATH) / BRAIN_DIR
     want: dict[Path, str] = {}
     with db.session() as con:
@@ -419,8 +386,7 @@ def render(root: Path | None = None) -> dict:
 # ---------- what the console sees ----------
 
 def prompt_block() -> str:
-    """The Brain as it goes into every console session: the profile, then one
-    line per page. Fails soft — a broken brain must not stop the console."""
+    """The Brain as it goes into every console session: profile, then one line per page. Fails soft."""
     try:
         with db.session() as con:
             prof = profile_facts(con)
@@ -472,8 +438,7 @@ def _alias_patterns(con) -> list[tuple[re.Pattern, str]]:
 
 
 def match_pages(text: str, limit: int = 3) -> list[str]:
-    """Pages a message mentions by name — the per-turn half of the prompt
-    injection. Plain matching, no model call."""
+    """Pages a message mentions by name (per-turn injection). Plain matching, no model call."""
     with db.session() as con:
         hits: dict[str, int] = {}
         for pat, slug in _alias_patterns(con):
@@ -512,15 +477,12 @@ class Item:
 
 
 def _wall(iso: str) -> datetime:
-    """A stored timestamp as naive wall-clock time where it happened. Messages
-    and email carry the offset of the zone the user was in; the day_key of a
-    text sent at 11pm in LA is that evening, not the next morning in NC."""
+    """A stored timestamp as naive wall-clock time where it happened (11pm in LA is that evening)."""
     return datetime.fromisoformat(iso).replace(tzinfo=None)
 
 
 def _day_bounds(start: str, end: str) -> tuple[datetime, datetime]:
-    """A day_key window as local datetimes: 04:00 on `start` to 04:00 the
-    day after `end` (the rollover, so a 1am text belongs to the day before)."""
+    """A day_key window as local datetimes: 04:00 on `start` to 04:00 the day after `end`."""
     return (db.day_instant(start, "04:00"),
             db.day_instant((date.fromisoformat(end) + timedelta(days=1)).isoformat(), "04:00"))
 
@@ -574,10 +536,8 @@ def _chat_items(start: datetime, end: datetime) -> list[Item]:
 
 
 def _included_chats(con, since: str) -> dict[str, str]:
-    """chat_guid -> heading, for every chat that counts as a source: all 1:1s,
-    and groups where the user has sent BRAIN_GROUP_MIN_MINE messages since
-    `since` (the user's call — a group they only lurk in is other people's
-    lives)."""
+    """chat_guid -> heading for chats that count: all 1:1s, and groups where the user sent
+    BRAIN_GROUP_MIN_MINE+ messages since `since` (a lurked group is other people's lives)."""
     out: dict[str, str] = {}
     rows = con.execute(
         "SELECT m.chat_guid, c.display_name, COALESCE(c.is_group, 0) AS is_group,"
@@ -682,8 +642,7 @@ def _memory_dir() -> Path:
 
 
 def _memory_items(start: datetime, end: datetime) -> list[Item]:
-    """Claude Code's own auto-memory for console sessions — what the Brain
-    replaces. Read once, as dated sources like any other."""
+    """Claude Code's own auto-memory (what the Brain replaces), read as dated sources."""
     out = []
     mdir = _memory_dir()
     if not mdir.exists():
@@ -805,9 +764,8 @@ Nothing worth recording: {"ops": []}"""
 
 
 def _context(con, source_text: str) -> str:
-    """What the Brain already holds that this batch could touch: every page's
-    name, the facts of topic pages and of the person pages the batch
-    mentions, and the tombstones on those pages."""
+    """What the Brain already holds that this batch could touch: page names, facts of topic pages and
+    mentioned person pages, and tombstones."""
     pgs = pages(con)
     mentioned = {slug for pat, slug in _alias_patterns(con) if pat.search(source_text)}
     lines = ["# Pages"]
@@ -841,9 +799,7 @@ def parse_ops(text: str) -> list[dict]:
     return [o for o in ops if isinstance(o, dict)]
 
 
-# What the prompt forbids and the second dry run recorded anyway — the user's
-# own email address, a "sibling (or close family member)". A rule the model
-# breaks one time in ten is a rule for code.
+# The prompt forbids these but the model still wrote them (~1 in 10), so code enforces.
 _IDENTIFIER = re.compile(
     r"[\w.+-]+@[\w-]+\.[\w.]+"                       # email
     r"|\(?\d{3}\)?[ .-]?\d{3}[ .-]?\d{4}"             # phone
@@ -854,9 +810,7 @@ _HEDGE = re.compile(r"\b(?:likely|possibly|probably|perhaps|may be|might be|or i
                     r"|\(or [^)]*\)", re.I)
 
 
-# The first real backfill filled "routines" with "<user> is in a group chat
-# called '<name>' that includes …" — the batch's own headings read back
-# as facts, a quarter of the page.
+# Batch headings read back as facts ("is in a group chat called ...").
 _CHAT_META = re.compile(r"\bgroup ?chat\b|\bgroup text\b", re.I)
 
 
@@ -871,17 +825,13 @@ def _claim_problem(claim: str) -> str | None:
 
 
 def _as_shown(it: Item) -> str:
-    """The line as the model saw it, speaker and all — a quote that starts
-    'Rowan: Goooo' is quoting what was on the page."""
+    """The line as the model saw it, speaker included."""
     return _norm(f"{it.speaker}: {it.text}")
 
 
 def _quoted_in(it: Item, quote: str, items: list[Item]) -> Item | None:
-    """The item the quote is really from: the cited one if it's there, else
-    the one other item in the batch that contains it. The quote is the
-    evidence and the id is bookkeeping — on the first dry run, a true quote
-    under a neighbouring id was the second most common drop. A quote found in
-    several places, or nowhere, proves nothing and is refused."""
+    """The item the quote is really from: the cited one, else the single other item containing it.
+    The quote is the evidence, the id bookkeeping; found in several places or nowhere is refused."""
     q = _norm(quote)
     if q in _as_shown(it):
         return it
@@ -989,11 +939,8 @@ async def _propose(batch: list[Item], start: str, end: str) -> list[dict]:
 
 async def _ingest_batch(batch: list[Item], start: str, end: str, origin: str,
                         dry_log: Path | None, stats: dict) -> None:
-    """One batch: propose, check, write. A malformed reply is retried once,
-    then the batch is halved — a shorter source list means a shorter answer,
-    and the second dry run's one crash was a long answer with a missing
-    comma. A single item that still can't be answered is skipped and
-    counted, so a year-long backfill doesn't stop on one bad reply."""
+    """One batch: propose, check, write. A malformed reply is retried once, then the batch is
+    halved (shorter list, shorter answer); a single item still failing is skipped and counted."""
     ops = None
     for _ in range(2):
         try:
@@ -1026,9 +973,7 @@ async def _ingest_batch(batch: list[Item], start: str, end: str, origin: str,
 
 async def ingest_window(start: str, end: str, origin: str = "ingest",
                         dry_log: Path | None = None) -> dict:
-    """One window of sources through the model and the checks. `dry_log`
-    appends each batch's raw ops and drops there too — for reading what a
-    prompt change does before trusting it."""
+    """One window of sources through the model and the checks. `dry_log` appends each batch's raw ops and drops."""
     run_id = _start_run(origin, start, end)
     stats = {"items": 0, "batches": 0, "added": 0, "superseded": 0, "dropped": 0}
     try:
@@ -1063,9 +1008,8 @@ def weeks(start: str, end: str) -> list[tuple[str, str]]:
 async def catch_up(origin: str = "ingest", since: str | None = None,
                    until: str | None = None, dry_log: Path | None = None,
                    max_windows: int | None = None) -> list[dict]:
-    """Walk weekly windows from the watermark (or `since`) through `until`
-    (default yesterday — a day is ingested once it's over), oldest first.
-    Resumable: a crash leaves the watermark at the last finished week."""
+    """Walk weekly windows from the watermark (or `since`) through `until` (default yesterday),
+    oldest first. Resumable: a crash leaves the watermark at the last finished week."""
     until = until or (date.fromisoformat(db.day_key()) - timedelta(days=1)).isoformat()
     wm = watermark()
     start = since or ((date.fromisoformat(wm) + timedelta(days=1)).isoformat() if wm else None)
@@ -1184,9 +1128,7 @@ async def lint(full: bool = False) -> dict:
 
 
 def rebuild_reset() -> int:
-    """Forget everything ingest learned that the user hasn't ruled on, so the
-    next catch_up relearns it from the sources. Chat-told and user facts, and
-    every verdict, stay."""
+    """Forget unruled ingest facts so the next catch_up relearns them. Chat-told and user facts and every verdict stay."""
     with db.session() as con, con:
         n = con.execute("DELETE FROM brain_facts WHERE verdict IS NULL AND origin IN"
                         " ('ingest','backfill','lint')").rowcount
@@ -1220,17 +1162,15 @@ async def _lazy() -> None:
                 await lint()
             await asyncio.to_thread(render)
         except agent.AgentError as e:
-            # Written to be shown as-is (a spent usage window, mostly); the
-            # traceback under it was ~60 lines of SDK frames per hit.
+            # Message is meant to be shown as-is; skip the ~60-line SDK traceback.
             log.warning("brain lazy ingest stopped: %s", e)
         except Exception:
             log.exception("brain lazy ingest")
 
 
 def maybe_start() -> bool:
-    """Kick off catch-up if a whole day has closed since the watermark. Only
-    after the backfill has run once — the first year is a deliberate CLI run,
-    not something a page load starts."""
+    """Kick off catch-up if a whole day has closed since the watermark, and only after the first
+    backfill (a deliberate CLI run)."""
     wm = watermark()
     yesterday = (date.fromisoformat(db.day_key()) - timedelta(days=1)).isoformat()
     if wm is None or wm >= yesterday or _lock.locked() or _running():

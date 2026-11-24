@@ -77,7 +77,7 @@ def test_title_asks_once_over_the_digest(store, monkeypatch):
     monkeypatch.setattr(agent, "ask", fake_ask)
     assert asyncio.run(session_digest.title("s3")) == "Tab snooze"
     assert len(seen) == 1 and "make the tabs snooze" in seen[0][0]
-    assert seen[0][1] == "haiku"
+    assert seen[0][1] == "grunt"      # the tier; agent.ask resolves it
 
 
 def test_a_session_pill_is_its_own_block_not_a_widget():

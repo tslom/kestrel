@@ -1,11 +1,6 @@
 """lists.py's user-list routes over the db — the layer the Lists card talks to.
 
-The shopping list became `lists` + `list_items` in v41, which turned four
-routes into seven: the items still add / tick / drop the way they did, but the
-list itself is now a row the user makes, renames and deletes. What's worth
-holding still here is the seam that only exists because of that second layer —
-a deleted list taking its items with it, a duplicate name being refused before
-it can split one list into two chips, and the payload staying one fetch.
+Design: DESIGN.md → `app/lists.py`: user lists, test-pinned.
 """
 
 import pytest
@@ -25,8 +20,7 @@ def _lists(client, **params):
 
 
 def test_shopping_is_seeded_so_the_card_is_never_empty_of_lists(client):
-    """v41 seeds it. A dashboard whose Lists card opened on no lists at all
-    would make the first add a two-step ritual."""
+    """v41 seeds one list."""
     assert [l["name"] for l in _lists(client)] == ["Shopping"]
 
 
@@ -47,8 +41,7 @@ def test_a_list_carries_its_items_and_open_count_in_one_payload(client):
 
 
 def test_lists_hold_their_own_items(client):
-    """The reason any of this exists: a packing list and a buy list side by
-    side, neither leaking into the other."""
+    """Two lists side by side don't leak into each other."""
     shopping = _lists(client)[0]["id"]
     packing = client.post("/api/lists", json={"name": "College packing"}).json()
     client.post(f"/api/lists/{shopping}/items", json={"name": "milk"})
@@ -59,8 +52,7 @@ def test_lists_hold_their_own_items(client):
 
 
 def test_new_lists_land_after_the_ones_already_there(client):
-    """Chip order is creation order, so making a list doesn't reshuffle the
-    row of chips the user already knows."""
+    """Chip order is creation order."""
     for name in ("College packing", "Party"):
         client.post("/api/lists", json={"name": name})
     assert [l["name"] for l in _lists(client)] == ["Shopping", "College packing", "Party"]
@@ -81,8 +73,7 @@ def test_a_rename_cannot_collide_either(client):
 
 
 def test_deleting_a_list_takes_its_items_with_it(client):
-    """FK cascade. Items left behind would be unreachable rows that no chip
-    can show and no id in the UI can name."""
+    """Deleting a list cascades to its items."""
     packing = client.post("/api/lists", json={"name": "College packing"}).json()
     item = client.post(f"/api/lists/{packing['id']}/items",
                        json={"name": "desk lamp"}).json()

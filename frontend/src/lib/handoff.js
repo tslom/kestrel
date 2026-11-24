@@ -1,23 +1,14 @@
-// When a handed-off tab's work is over, and what goes back to the tab that
-// opened it. Plain functions over the console log (Console.jsx's entries), so
-// node can test them (tests/handoff.test.mjs, run by pytest).
-//
-// A turn that ends is not always work that ends. An API error (a network
-// outage, say) ends a turn mid-work; reporting then sends its last line of
-// narration ("error. Now wiring it into the console…") as the outcome, lists
-// it as a finished handoff, and the summary after the user's "continue" goes
-// nowhere, because a brief reports once. So the report waits
-// through any turn that didn't finish the work, and fires on the first one
-// that does.
+// When a handed-off tab's work is over, and what goes back to the tab that opened it: plain functions over the
+// console log (tests/handoff.test.mjs). A turn that ends isn't always work that ends (an API error mid-work would
+// report its last narration line as the outcome, and a brief reports once), so the report waits through any turn
+// that didn't finish the work.
 
-// Room for a real summary. The backend bounds the whole report again
-// (console._bounded, 20k) — this is the cut that keeps it readable.
+// Room for a real summary; the backend bounds the whole report again (console._bounded, 20k).
 export const REPORT_LIMIT = 12000;
 
 // The status word a result entry opens with ("done · 12.0s · 3k in").
 const statusOf = (result) => (result ? result.text.split(" · ")[0] : "cut off");
-// What in the log is the model at work (a turn), as opposed to the window's
-// own lines (status, report, help, btw…), which may follow a result.
+// Entries that are the model at work, as opposed to the window's own lines which may follow a result.
 const WORK = new Set(["text", "tool", "perm", "ask", "shell", "changes", "diff"]);
 
 // "report" when this turn ends the brief's work, else why it doesn't:
@@ -27,9 +18,7 @@ const WORK = new Set(["text", "tool", "perm", "ask", "shell", "changes", "diff"]
 // - "queued": a message still waiting to run is the rest of the work.
 // - "agents": a background subagent is out; its finish wakes the next turn.
 export function briefVerdict(turn, { queued = false, agents = false } = {}) {
-  // A turn nobody typed (a subagent finishing woke it) opens with no user
-  // line, so the slice can hold an earlier turn's result. Only a result that
-  // closes the log counts; work after it with none of its own was cut off.
+  // A turn nobody typed (a subagent woke it) may slice in an earlier turn's result: only a result closing the log counts.
   const at = turn.findLastIndex((e) => e.kind === "result");
   const closes = at >= 0 && !turn.slice(at + 1).some((e) => WORK.has(e.kind));
   const status = closes ? statusOf(turn[at]) : "cut off";
@@ -48,8 +37,7 @@ export const HELD = {
   agents: "a background subagent is still out",
 };
 
-// The log since the brief, split into turns at each user message (or a
-// wake: a turn a child's report started, Console.jsx).
+// The log since the last user message or wake (a turn a child's report started).
 export function lastTurn(entries) {
   return entries.slice(entries.findLastIndex((e) => e.kind === "user" || e.kind === "wake") + 1);
 }
@@ -85,10 +73,7 @@ function breakAfter(text, at, ceil) {
   return at;
 }
 
-// Long text, cut from the middle at breaks, never inside a word, with a line
-// saying how much and where the whole is. The middle because a summary's ends
-// are what matter: what was done opens it, what's left to decide closes it.
-// A head-only cut lands on "## For you to decide\n- **…".
+// Cut from the middle at breaks, never inside a word: a summary's ends matter (done opens it, what's left to decide closes it).
 export function clip(text, limit, where) {
   if (text.length <= limit) return text;
   const headEnd = breakBefore(text, Math.floor(limit * 0.7), Math.floor(limit * 0.5));

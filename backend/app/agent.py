@@ -1,44 +1,10 @@
-"""One way to ask the model a one-shot question.
+"""One way to ask the model a one-shot question: subscription CLI, no tools, one turn, text back.
 
-Five callers wanted the same thing — the brief, email triage, email
-extraction, reply drafts, attachment vision: run the subscription CLI with no
-tools for a single turn and hand back the text. Each carried its own copy of
-the loop, so each also carried its own copy of the loop's one sharp edge.
-
-The edge: when a turn fails, the CLI emits a result message and *then* exits
-non-zero, on purpose, for shell-script consumers. The SDK replaces that bare
-"exit code 1" with the result's error text, and for an API failure that text
-is the result's `subtype` — the literal word "success" (the turn ran; the API
-call inside it didn't). So every caller rendered "Claude Code returned an
-error result: success" at the user, which says nothing and blames the wrong
-thing.
-
-The result message is already in hand and knows what happened: `is_error`
-with an `api_error_status` of 429 means the subscription window is spent, and
-no retry inside that window is going to help. `ask()` translates that and
-raises it instead. Nothing here talks to the API directly — subscription CLI
-only, same posture as before: no tools, one turn, so untrusted text in a
-prompt reaches a model with nothing to act with.
-
-A 429 also trips a breaker. Every caller here is background-ish and retries
-on its own clock — triage every poller cycle, the brain's lazy catch-up, a
-brief someone keeps re-asking for — and each retry inside a spent window
-spawned a whole CLI process just to be told 429 again (104 of them in one
-log). So after a 429, ask() refuses up front with the same message until the
-window's reset, or for a short cooldown when no usage source can say when
-that is. The reset time is trusted only as far as `_reset_hint` trusts it,
-and capped besides (BREAKER_MAX_SECONDS): a wrong reading costs at most one
-probe per cap, never a day of silence. Any successful call clears it.
-
-The breaker waits for the wall; the budget gate stops short of it. Every
-caller here runs on its own unless it says otherwise, and none of that work
-is urgent — triage and extraction catch up next cycle, the brain next open —
-so once a window passes AUTO_PAUSE_PCT they stand down and leave the rest of
-it for the console and for buttons. A path a person asked for (a reply
-draft, a dropped file, Regenerate) runs inside `interactive()`, which the
-gate ignores; the breaker still applies there, since a 429 is a 429.
+Owns the 429 translation (`AgentError`, shown as-is on the desk), the breaker that refuses
+calls until a spent window resets, and the budget gate (`AUTO_PAUSE_PCT`) that pauses
+automatic callers; `interactive()` exempts person-asked paths from the gate, not the breaker.
+Design: DESIGN.md → `app/agent.py`.
 """
-
 import asyncio
 import logging
 import re
@@ -52,19 +18,15 @@ from .config import AUTO_PAUSE_PCT
 
 log = logging.getLogger(__name__)
 
-# How long to stop asking after a 429 that no usage source can date. Short:
-# it only has to absorb the retry storm, not guess the window.
+# Pause after a 429 no usage source can date: short, it only has to absorb the retry storm.
 BREAKER_FALLBACK_SECONDS = 15 * 60
-# The longest a reported reset is believed before one real call probes again.
-# The weekly window's reset can be days out, and the caches behind it can be
-# wrong (or extra usage can be bought) — an hourly probe is cheap insurance.
+# Longest a reported reset is believed before one real call probes (caches can be wrong; extra usage can be bought).
 BREAKER_MAX_SECONDS = 60 * 60
 
 # (until epoch seconds, message) while calls are known to be futile.
 _tripped: tuple[float, str] | None = None
 
-# HTTP status of the failing API call -> what it means to whoever asked. 429
-# is the one you actually hit on a subscription; the rest are worth a retry.
+# HTTP status of the failing API call -> message for the asker; only 429 is futile to retry.
 API_ERRORS = {
     429: "usage limit reached",
     500: "the API errored (500) — worth retrying",
@@ -73,21 +35,14 @@ API_ERRORS = {
 
 
 class AgentError(RuntimeError):
-    """A one-shot call that produced no text. The message is written to be
-    shown as-is — these land in `daily_brief.error` and on the desk."""
+    """A one-shot call that produced no text. The message is shown as-is (`daily_brief.error`, the desk)."""
 
 
 def _reset_at() -> float | None:
-    """When the spent window resets (epoch seconds), when the usage sources
-    can say so.
+    """When the spent window resets (epoch seconds), if the usage sources can say.
 
-    Best-effort on purpose: every source behind console_usage is a cache that
-    can be hours old, and a confidently wrong reset time is worse than no reset
-    time. So only a window that is actually out of budget gets to speak, and
-    only while its reset is still ahead of us — a "rejected" whose reset has
-    already passed is a stale reading of a window that has since rolled over,
-    and repeating its time would promise a deadline that went by this
-    morning."""
+    Best-effort: sources can be hours old and a wrong reset is worse than none, so only a
+    "rejected" window whose reset is still ahead speaks."""
     try:
         # Local import, so tests can patch claude_quota.console_usage.
         from .claude_quota import console_usage
@@ -103,8 +58,7 @@ def _reset_at() -> float | None:
 
 
 def _format_reset(at: float | None) -> str:
-    """" — resets 3:20 PM"; the weekday too once it's far enough out to be
-    another day (the week's window)."""
+    """" — resets 3:20 PM", with the weekday once it's over 12h out."""
     if at is None:
         return ""
     fmt = "%a %-I:%M %p" if at - time.time() > 12 * 3600 else "%-I:%M %p"
@@ -112,18 +66,16 @@ def _format_reset(at: float | None) -> str:
 
 
 def _reset_hint() -> str:
-    """" — resets 3:20 PM", or "" when no source can say (see _reset_at)."""
+    """" — resets 3:20 PM", or "" when no source can say."""
     return _format_reset(_reset_at())
 
 
 # --- the budget gate -----------------------------------------------------------
 
-# Set by interactive(); a ContextVar so it follows the call into
-# asyncio.to_thread and asyncio.run, which both copy the context.
+# A ContextVar so it follows into asyncio.to_thread / asyncio.run (both copy the context).
 _interactive: ContextVar[bool] = ContextVar("agent_interactive", default=False)
 
-# How long one reading of the windows answers the gate. The poller asks per
-# batch, and the CLI cache behind the reading is a multi-MB JSON file.
+# How long one reading answers the gate (the poller asks per batch; the CLI cache is a multi-MB file).
 BUDGET_TTL_SECONDS = 60
 
 # (read at, why or None) — the last reading, and what it said.
@@ -154,13 +106,19 @@ def _budget_windows(fetch: bool) -> list[dict]:
     return usage_snapshot(fetch=fetch).get("windows") or []
 
 
+def _accounts_refusal() -> str | None:
+    """The saved accounts' rules (claude_accounts): when none is inside its
+    rules, this guard is the one that stops. Tests patch this."""
+    from .claude_accounts import refusal
+    why = refusal()
+    return f"automatic model calls paused — {why}" if why else None
+
+
 def over_budget(fetch: bool = True) -> str | None:
     """Why automatic calls are paused right now, or None.
 
-    Fails open: no reading means no pause — the breaker still catches a real
-    429. A window whose reset has passed is void (it rolled over), not full.
-    A stale reading can only be low, since usage climbs until the reset, so
-    trusting it never pauses anything that shouldn't be."""
+    Fails open (the breaker still catches a real 429). A window past its reset is void, not full.
+    A stale reading can only be low, so trusting it never wrongly pauses."""
     global _budget
     now = time.time()
     if _budget is not None and now - _budget[0] < BUDGET_TTL_SECONDS:
@@ -170,8 +128,8 @@ def over_budget(fetch: bool = True) -> str | None:
     except Exception:  # a gate that raises would stop everything
         log.debug("usage windows unavailable for the budget gate", exc_info=True)
         windows = []
-    why = None
-    for w in windows:
+    why = _accounts_refusal()
+    for w in windows if why is None else []:
         limit, pct, at = AUTO_PAUSE_PCT.get(w.get("key")), w.get("percent"), w.get("resets_at")
         if limit is None or not isinstance(pct, (int, float)):
             continue
@@ -191,13 +149,8 @@ def over_budget(fetch: bool = True) -> str | None:
 
 
 def blocked() -> str | None:
-    """Why a call would be refused right now — the breaker's usage-limit
-    message, or (outside interactive()) the budget gate's — else None. For
-    callers that want to skip expensive set-up (gathering context, fetching
-    bodies) before a call that is going to be refused anyway.
-
-    On the event loop the gate reads the cached windows only; off it (the
-    poller's threads, ask()) it may refresh them."""
+    """Why a call would be refused now (breaker, or outside interactive() the budget gate), else None.
+    For skipping expensive set-up. On the event loop it reads cached windows only; off it, it may refresh."""
     global _tripped
     if _tripped is not None:
         until, why = _tripped
@@ -241,10 +194,8 @@ def _why(result) -> str:
         return API_ERRORS.get(status, f"the API returned {status}")
     if result.subtype == "error_max_turns":
         return "the model ran out of turns"
-    # A cut-off the CLI words itself ("You've hit your session limit · resets
-    # 2:10pm", "Failed to authenticate: OAuth session expired") arrives with
-    # no status and subtype "success", the reason only in the result text —
-    # which this used to drop for "the model call failed (success)".
+    # CLI-worded cut-offs ("session limit · resets 2:10pm", "OAuth session expired") come with
+    # no status and subtype "success"; the reason is only in the result text.
     if text := str(result.result or "").strip():
         return text
     return f"the model call failed ({result.subtype})"
@@ -263,20 +214,46 @@ async def ask(prompt: str | AsyncIterable[dict], *, model: str,
               system: str | None = None, thinking: dict | None = None) -> str:
     """One turn, no tools, text back.
 
-    `prompt` is a string, or the SDK's async-iterable message form when the
-    question carries an image (a plain string prompt cannot hold one).
-
-    `thinking` is the SDK's ThinkingConfig, left to the CLI's default when
-    None. A long extraction wants {"type": "disabled"}: on the Brain's first
-    dry run the default spent the whole 32k output budget thinking over a
-    week of texts and never reached the JSON."""
+    `prompt`: a string, or the SDK's async-iterable form when it carries an image. `thinking`:
+    the SDK's ThinkingConfig (None = CLI default; long extractions want {"type": "disabled"}).
+    `model`: any model_catalog name (tier, alias, id); one the account can't run is swapped
+    (logged), and an unknown refusal is learnt and retried once on the fallback."""
     global _tripped
-    # Off the loop, so the gate may refresh its reading without stalling
-    # whatever loop this is (the backend's, for the brain and the brief line).
+    # Off the loop so the gate may refresh its reading without stalling it.
     if (why := await asyncio.to_thread(blocked)) is not None:
         raise AgentError(why)
-    # The SDK is heavy — import lazily, so a backend that never asks anything
-    # never pays for it.
+    from . import model_catalog
+    chosen = model_catalog.pick(model)
+    if chosen.notes:
+        log.warning("model for a one-shot call: %s", "; ".join(chosen.notes))
+    run_on = chosen.model
+
+    for attempt in (1, 2):
+        chunks, result = await _once(prompt, run_on, system, thinking)
+        if result is None or not result.is_error:
+            break
+        said = " ".join([str(result.result or ""), *chunks])
+        if attempt == 1 and model_catalog.refusal_in(said):
+            # Not a spent window: this account may not run this model.
+            alt = await asyncio.to_thread(model_catalog.learn_refusal, run_on or model, said)
+            # An image prompt is an iterator the first try used up; the
+            # next call picks the fallback by itself.
+            if alt and isinstance(prompt, str):
+                log.warning("%s refused on this account; asking %s instead", run_on, alt)
+                run_on = alt
+                continue
+            raise AgentError(said.strip())
+        if _is_limit(result):
+            raise AgentError(_trip())
+        raise AgentError(_why(result))
+    _tripped = None  # a call got through: whatever tripped it has passed
+    return "".join(chunks)
+
+
+async def _once(prompt, model: str | None, system: str | None,
+                thinking: dict | None) -> tuple[list[str], object]:
+    """One query: (text chunks, the ResultMessage or None)."""
+    # Lazy: the SDK is heavy.
     from claude_agent_sdk import (AssistantMessage, ClaudeAgentOptions,
                                   ResultMessage, TextBlock, query)
 
@@ -295,16 +272,8 @@ async def ask(prompt: str | AsyncIterable[dict], *, model: str,
             elif isinstance(msg, ResultMessage):
                 result = msg
     except Exception as e:
-        # The non-zero exit that trails an error result — expected, and less
-        # informative than the result itself, which we already have. Anything
-        # else is a real crash and belongs to the caller.
+        # The non-zero exit that trails an error result is expected; anything else is a real crash.
         if result is None or not result.is_error:
             raise
         log.debug("post-error-result exit, superseded by the result: %s", e)
-
-    if result is not None and result.is_error:
-        if _is_limit(result):
-            raise AgentError(_trip())
-        raise AgentError(_why(result))
-    _tripped = None  # a call got through: whatever tripped it has passed
-    return "".join(chunks)
+    return chunks, result

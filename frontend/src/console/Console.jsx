@@ -13,6 +13,7 @@ import { useDebounce, useTimeout } from "../lib/timers.js";
 import { AskCard, PermCard } from "./Prompt.jsx";
 import UsageChips from "./UsageChips.jsx";
 import CliStatus, { ContextChip } from "./CliStatus.jsx";
+import AccountChip from "./AccountChip.jsx";
 import { McpPanel, RewindButton, TaskPanel } from "./Parity.jsx";
 import { RecentSessions, SessionsPanel } from "./SessionsPanel.jsx";
 import { DiffCard, DiffPane } from "./DiffView.jsx";
@@ -30,6 +31,7 @@ import { createdRef, usePrWatch } from "../lib/prWatch.js";
 import LimitBanner from "./LimitBanner.jsx";
 import { cutWhat, resumeText } from "../lib/interrupted.js";
 import { ModelChip } from "./ModelPicker.jsx";
+import { refreshModels } from "../lib/models.js";
 import { writeAuto } from "../lib/autoResume.js";
 import { cachedDefault, cachedModels, effortKey, effortsFor, findModel, modeKey, modelKey,
          nerdBits, nerdStats, readEnterMode, rememberDefault, rememberModels,
@@ -45,8 +47,7 @@ import FilePane from "./FilePane.jsx";
 import { DocPaneContext, docRefsIn } from "../lib/docPane.js";
 import { FileContext } from "../lib/files.js";
 
-// What a woken parent's model is sent (wake): the reports ride above it as
-// <handoff_report>s, and HANDOFF_APPEND says what to do with them.
+// A woken parent's prompt; the reports ride above it as <handoff_report>s.
 const WAKE_TEXT = "(Nobody typed this: a tab you handed off to reported back, above. "
   + "Carry on from it: message_tab it if something's missing, else tell the user what came of it.)";
 // …and when the PR the tab watches moved (lib/prWatch.js), riding as <pr_watch>.
@@ -60,9 +61,7 @@ const agoShort = (sec) => {
   const m = Math.max(0, Math.round((Date.now() / 1000 - sec) / 60));
   return m < 60 ? `${m}m` : m < 48 * 60 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d`;
 };
-// The window's other tabs that have a conversation to point at, for `@`
-// (#94). Read off the stored tab list rather than passed down, so the
-// memoised panes don't re-render on every tab change for a popup.
+// Other tabs with a conversation, for `@` (#94). Read from the stored list, not props, so memoised panes don't re-render per tab change.
 function otherTabs(self) {
   try {
     const { tabs = [] } = JSON.parse(localStorage.getItem("console_tabs") || "{}");
@@ -76,17 +75,9 @@ function otherTabs(self) {
   } catch { return []; }
 }
 const WS_URL = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/console`;
-// Ordered by how much they ask, loosest of the ordinary three first. "never
-// ask" sits at the bottom rather than next to "auto", which it resembles in
-// name and not in kind: it is the only one where a send or a delete can
-// happen without you.
-//
-// `acceptEdits` ("auto-edit") is left out on purpose. It reads as the
-// cautious middle and isn't: the CLI settles in-workspace Bash writes under
-// it without consulting the backend, so `rm` inside the vault runs cardless
-// while adding a task stops for a click.
-// `auto` is that trade made deliberately and the right way round. Sessions
-// that stored it are migrated by readMode().
+// Ordered by how much they ask; "never ask" sits last (it alone lets a send or delete happen unasked).
+// `acceptEdits` is left out on purpose: the CLI settles in-workspace Bash writes under it without the backend, so `rm` runs cardless.
+// Sessions that stored it are migrated by readMode().
 const HISTORY_MAX = 200;      // prompts kept per folder for Up and Ctrl+R
 const MODES = [
   { value: "auto", label: "auto" },
@@ -94,30 +85,18 @@ const MODES = [
   { value: "plan", label: "plan" },
   { value: "bypass", label: "never ask" },
 ];
-// What the picker calls it vs. what the wire calls it. The select's own value
-// stays short so the toolbar reads cleanly.
+// Picker value vs wire value.
 const BYPASS = "bypassPermissions";
 const wireMode = (m) => (m === "bypass" ? BYPASS : m);
-// After an unexpected close: a backend restart is up again in a second or
-// two, and six tries cover a slow one (~37s) without retrying forever.
+// After an unexpected close: six tries cover a slow backend restart (~37s).
 const RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 10000, 12000];
 
-// The stored mode, current-vocabulary. An unknown value (a retired mode, a
-// half-written key) lands on the default rather than on a blank select.
-//
-// Per tab mode (general / study / dev): each keeps its own, and starts where
-// the backend's console_profiles.DEFAULT_MODE does: general and study auto,
-// dev never ask, including a tab another tab opened (this page sends no mode
-// for it until you pick one). General inherits the key from before modes
-// existed.
+// Per-profile mode, starting at the backend's console_profiles.DEFAULT_MODE (also for a spawned tab until you pick one).
+// readMode: an unknown stored value falls back to the default, not a blank select.
 const MODE_DEFAULT = { general: "auto", study: "auto", dev: "bypass" };
-// Effort is kept per mode like the model (lib/consolePrefs.js); "" is the
-// CLI's own default.
 const styleKey = (profile) => `console_output_style:${profile}`;
 
-// Dev's default is never ask, and used to be auto. A pick is remembered per
-// profile, so an "auto" stored under the old default would keep every new dev
-// tab there regardless — cleared once, so the new default reaches them.
+// A stored per-profile "auto" would pin new dev tabs to the old default; cleared once.
 const DEV_BYPASS_MIGRATED = "console_mode:dev:bypass-default";
 
 function readMode(profile = "general") {
@@ -137,18 +116,15 @@ const BYPASS_WARNING =
   + "email, a message, or an attachment it was summarizing.\n\n"
   + "You still get the list of what changed, but only once the turn is over.\n\n"
   + "Turn it on?";
-// What each change row's verb is: destructive ones are the reason the summary
-// exists, so they are the ones that get a colour.
+// Only destructive verbs get a colour.
 const CHANGE_TONE = {
   deleted: "gone", sent: "gone", rewrote: "over", ran: "ran",
 };
-// 34_100 -> "34.1k". The turn footer gets one line to say what the turn cost,
-// so the counts are readable at a glance or not read at all.
+// 34_100 -> "34.1k" (turn footer is one line).
 const compact = (n) => (n < 1000 ? `${n}`
   : n < 100_000 ? `${(n / 1000).toFixed(1)}k` : `${Math.round(n / 1000)}k`);
 
-// A Desktop file's age, which is how you find the screenshot you just took —
-// every one of them is named "Screenshot <date> at <time>".
+// A Desktop file's age: screenshots all share one name pattern, so age is how you find yours.
 function deskAge(mtime) {
   const s = Date.now() / 1000 - mtime;
   if (s < 60) return "just now";
@@ -157,9 +133,7 @@ function deskAge(mtime) {
   return new Date(mtime * 1000).toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
-// The turn's "still going" line: what the model is doing (the socket's
-// `phase`) and for how long, which is the terminal spinner's job. A bare
-// "working…" for ten seconds reads as stuck; "thinking · 9s" doesn't.
+// The turn's "still going" line: socket `phase` plus elapsed time (a bare "working…" reads as stuck).
 function WorkingLine({ since, phase }) {
   const [, tick] = useState(0);
   useEffect(() => {
@@ -168,26 +142,19 @@ function WorkingLine({ since, phase }) {
   }, []);
   const secs = since ? Math.floor((Date.now() - since) / 1000) : 0;
   const what = phase?.phase === "thinking" ? "thinking"
-    // mcp__vault__tasks_list → tasks_list; the chip that replaces this line
-    // has the full name and its input
+    // mcp__vault__tasks_list → tasks_list
     : phase?.phase === "tool" ? `calling ${phase.name ? phase.name.split("__").pop() : "a tool"}`
     : "working";
   return <p className="status pulse">{what}…{secs >= 1 ? ` · ${secs}s` : ""}</p>;
 }
 
-// Consecutive tool calls are one activity, not N rows: a turn that reads six
-// files should cost six words. Collapsed, the run says how many calls and
-// which tools; while it is still running it says the call in flight instead,
-// because that line is the only sign anything is happening. Expanded, it is
-// the old per-call list, with the full input on hover.
+// Consecutive tool calls collapse to one row: count and tools, or the call in flight while running (DESIGN.md → Console).
 const Entry = ({ draw }) => draw();
 
-// How many user turns the log draws at once, and how many more each "show
-// earlier" adds.
+// User turns drawn at once, and added per "show earlier".
 const TURN_WINDOW = 30;
 
-// A Bash call's whole command, from its raw input when that parses (it's
-// clipped at 2000 chars, and a clipped one doesn't) — else the one-line detail.
+// A Bash call's whole command from its raw input (clipped at 2000 chars, then unparseable), else the one-line detail.
 function bashCommand(t) {
   try {
     const c = JSON.parse(t.raw)?.command;
@@ -210,8 +177,7 @@ function ToolRun({ tools, open, live, onToggle }) {
     else tally.push({ name, n: 1 });
   }
   const current = tools[tools.length - 1];
-  // One call has nothing to summarise — the tally would drop the only fact on
-  // the line (which file), so a lone call keeps reading the way it always did.
+  // A lone call keeps its detail (the tally would drop which file).
   const solo = tools.length === 1;
   return (
     <div className={`activity${open ? " open" : ""}${live ? " live" : ""}`}>
@@ -222,8 +188,7 @@ function ToolRun({ tools, open, live, onToggle }) {
                     : tally.map((t) => `${t.name}${t.n > 1 ? ` ×${t.n}` : ""}`).join(", ")}
       >
         <Icon name={open ? "chevronDown" : "chevronRight"} size={10} />
-        {/* the count is also what pulses while a call is in flight, so a lone
-            call keeps it (as a "1") rather than losing the only sign of life */}
+        {/* the count pulses while a call is in flight, so a lone call keeps it */}
         {(!solo || live) && (
           <span className={`activity-count${live ? " pulse" : ""}`}>{tools.length}</span>
         )}
@@ -265,29 +230,14 @@ function ToolRun({ tools, open, live, onToggle }) {
   );
 }
 
-// `composerTarget`: an element to render the prompt into instead of the pane's
-// foot; `barTarget` likewise for the bar (the plan view's status bar), with
-// `onRaise` lifting a folded sheet when ⋯ opens a panel. `usageInBar`: false when something else shows usage (the plan view's
-// status bar carries one rotating chip).
-//
-// One Console is one tab (`tabId`). Every tab stays mounted — its socket, its
-// turn and its log live on while another is showing — so `active` decides
-// only what a single window can hold one of: the composer, the speakers, the
-// push-to-talk key, ⌘K's "focus the console". `onTitle` reports the tab's
-// first message, which is what its tab is called.
-//
-// `profile` / `project`: the tab's mode and a dev tab's repo (lib/tabs.js).
-// `spawned`: another tab opened this one; `brief` is what it was handed,
-// sent as the first message once (then `onBriefSent`). `onOpenTab` is how
-// this tab's model opens another (console_tools.open_tab): it resolves to
-// { ok, reason } and the answer goes back down the socket. `parent` is the
-// tab a spawned one was opened from: when the brief's turn ends, `onReport`
-// carries its outcome there. `onShowTab` goes to a tab (a report's source).
-// `onTyped(tabId, "engaged")`: the user sent something here themselves.
-// `onTabs({ close, from })` answers console_tools.tabs: { ok, text, closed }.
-// `tabModel` / `tabEffort`: this tab's own model and effort (open_tab gave
-// it them), used instead of the profile's remembered pick; a change made in
-// such a tab stays its own, through `onTabSet(tabId, key, value)`.
+// One Console is one tab (`tabId`); every tab stays mounted (socket, turn, log live on), so `active` gates only
+// single-instance things: composer, speakers, push-to-talk, ⌘K focus.
+// `composerTarget`/`barTarget`: elements to render the prompt/bar into (plan view); `onRaise` lifts a folded sheet.
+// `usageInBar`: false when something else shows usage. `profile`/`project`: mode and a dev tab's repo (lib/tabs.js).
+// `spawned`: opened by another tab; `brief` is sent once as the first message (then `onBriefSent`); `parent` gets
+// `onReport` when that turn ends. `onOpenTab` serves console_tools.open_tab -> { ok, reason }; `onTabs({ close, from })`
+// serves console_tools.tabs -> { ok, text, closed }. `onTyped(tabId, "engaged")`: the user sent something here.
+// `tabModel`/`tabEffort` override the profile's remembered pick; changes stay the tab's own via `onTabSet(tabId, key, value)`.
 export default function Console({ tabId = "main", active = true, onTitle,
                                   profile = "general", project = null, spawned = false,
                                   tabModel = null, tabEffort = null, onTabSet,
@@ -300,13 +250,9 @@ export default function Console({ tabId = "main", active = true, onTitle,
                                   barTarget = null, onRaise,
                                   usageInBar = true, modal = active }) {
   const sessionKey = `console_session:${tabId}`;
-  // A conversation rewind waiting on its first turn: the record to resume the
-  // stored session at (as a fork). Kept across a reload — until a turn lands
-  // the fork has no transcript, and dropping this would resume the whole
-  // conversation you just cut.
+  // Rewind awaiting its first turn: the record to fork-resume at. Survives reload (the fork has no transcript until a turn lands).
   const rewindAtKey = `${sessionKey}:at`;
-  // A spawned tab keeps its own mode, and has none until you pick one — the
-  // backend starts it in the profile's default until then.
+  // A spawned tab's own mode; none until picked.
   const tabModeKey = `console_mode_tab:${tabId}`;
   const storedMode = () => {
     if (!spawned) return readMode(profile);
@@ -318,7 +264,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
   const emit = (ev) => emitTurn({ ...ev, tab: tabId });
   const activeRef = useRef(active);
   activeRef.current = active;
-  // The session id as announced — remembered only once a turn lands in it.
+  // Remembered only once a turn lands in it.
   const announcedRef = useRef(null);
   // The socket's handlers close over the first render; this reaches the current one.
   const onOpenTabRef = useRef(onOpenTab);
@@ -331,14 +277,11 @@ export default function Console({ tabId = "main", active = true, onTitle,
   onTabSetRef.current = onTabSet;
   const mergeCallRef = useRef(null);   // the worktree_merge call in flight, by id
   const [entries, setEntries] = useState([]);
-  // The document beside the chat (DocPane.jsx): what it shows, or null.
-  // `auto` is whether a new reply may open it on its own — off once the
-  // user closes it, back on the next time they open it themselves.
+  // The document beside the chat (DocPane.jsx), or null. `auto`: a new reply may open it; off once the user closes it.
   const [docView, setDocView] = useState(null);
   const [docCover, setDocCover] = useState(false);
   const docAuto = useRef({ on: true, key: null, seq: 0 });
-  // Every document this chat has pointed at, for the pane's picker: asked
-  // for whenever the pane takes a document, so only while it's open.
+  // Documents this chat pointed at, for the picker; fetched only while the pane is open.
   const [recentDocs, setRecentDocs] = useState([]);
   const loadRecentDocs = useCallback(() => fetchJSON("/api/cite/docs/recent")
     .then((r) => setRecentDocs(r.docs || [])).catch(() => {}), []);
@@ -349,21 +292,19 @@ export default function Console({ tabId = "main", active = true, onTitle,
                    onVerdict, seq: ++docAuto.current.seq });
       loadRecentDocs();
     },
-    // A file a reply named (FileLink.jsx), in the same slot: a PDF in
-    // DocPane, anything else viewable in FilePane. One at a time, no split.
+    // A file a reply named (FileLink.jsx): PDF in DocPane, else FilePane. No split.
     file(hit) {
       setDocView2(null);
       setDocView({ ref: `file:${hit.path}`, file: hit, page: 1, seq: ++docAuto.current.seq });
       loadRecentDocs();
     },
   }), [loadRecentDocs]);
-  // A second document under the first (homework under the handout): the
-  // pane splits; each half picks and closes on its own.
+  // A second document splits the pane; each half picks and closes on its own.
   const [docView2, setDocView2] = useState(null);
   function closeDoc() {
-    // A file isn't a document the chat cited: closing it leaves auto-open be.
+    // A file isn't a cited document: closing it leaves auto-open alone.
     if (docView?.file) { setDocView(null); return; }
-    // The lower half moves up rather than the pane closing under it.
+    // The lower half moves up.
     if (docView2) { setDocView(docView2); setDocView2(null); loadRecentDocs(); return; }
     docAuto.current.on = false;
     setDocView(null);
@@ -379,22 +320,18 @@ export default function Console({ tabId = "main", active = true, onTitle,
       if (r.docs?.length) docPane.open({ ref: r.docs[0].ref, page: 1 });
     }).catch(() => {});
   }
-  // A long study chat starts over without losing the thread: the model
-  // writes the carry-over and hands it to a fresh study tab (open_tab).
+  // Long study chat restart: the model writes the carry-over and hands it to a fresh study tab (open_tab).
   const FRESH_TEXT = "This chat is getting long. Start a fresh study tab for me with open_tab "
     + "(mode study). Its brief must stand alone: the course and what I'm studying for, "
     + "what we've covered so far, my weak spots and quiz scores, the documents we've used "
     + "(their paths, so it can open them with doc_pages), exactly where we stopped, and "
     + "what to do next. Then tell me in one line that it's open.";
   const [input, setInput] = useState("");
-  // Typed mid-turn: { id, text, pills }, already with the CLI, which reads
-  // each at the next tool boundary (queued_in) like Claude Code's queue.
+  // Typed mid-turn: { id, text, pills }, already with the CLI (read at the next tool boundary, queued_in).
   const [queued, setQueued] = useState([]);
   const queuedRef = useRef(queued);                   // for the socket handlers
   queuedRef.current = queued;
-  // Held for their own turn when this one ends: { id, text, pills }, the
-  // server's list (app/console_queue.py), so it outlives a reload. Edited,
-  // reordered, steered in or dropped by asking the server (#92).
+  // Held for their own turn: the server's list (app/console_queue.py, survives reload); edits go through the server (#92).
   const [holding, setHolding] = useState([]);
   const holdingRef = useRef(holding);
   holdingRef.current = holding;
@@ -413,39 +350,29 @@ export default function Console({ tabId = "main", active = true, onTitle,
   const stashRef = useRef("");                        // Ctrl+S
   const [mathOpen, setMathOpen] = useState(false);    // Ctrl+M
   const mathRef = useRef("");                         // the formula being typed
-  // The $…$ span in the prompt the field is editing ({start, end, tex}), or
-  // null when it's writing a new one at the caret.
+  // The $…$ span being edited ({start, end, tex}), or null for a new one at the caret.
   const [mathEdit, setMathEdit] = useState(null);
-  // What the field has written, so a plain one like $y$ still draws and
-  // stays clickable (the transcript's own test for "looks like math" skips it).
+  // What the field wrote, so a plain $y$ still draws and stays clickable (the transcript's math test skips it).
   const mathMadeRef = useRef(new Set());
   const lastEscRef = useRef(0);
-  // The next "Resumed session" line is a reconnect nobody asked for (the
-  // backend restarted after a dev turn's edit), so it isn't news.
+  // The next "Resumed session" line is an unasked reconnect (backend restarted after a dev edit): not news.
   const quietResumeRef = useRef(false);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);        // for the socket handlers, pinned to their epoch
   busyRef.current = busy;
-  // What the model is doing before there's text or a chip to show for it
-  // (the socket's `phase`), and when the turn began — the working line's
-  // label and clock.
+  // The socket's `phase` and the turn's start: the working line's label and clock.
   const [phase, setPhase] = useState(null);
   const turnStartRef = useRef(null);
   if (busy && turnStartRef.current == null) turnStartRef.current = Date.now();
   if (!busy) turnStartRef.current = null;
-  // Reply text arrives a few characters per message, and each one used to
-  // re-render the whole log. It collects here and lands once a frame —
-  // or every 100ms when the window is hidden and frames stop.
+  // Reply text arrives a few characters per message; it collects here and lands once a frame (every 100ms when hidden).
   const textBufRef = useRef("");
   const textRafRef = useRef(null);
   const textFallback = useTimeout();
   const retryRef = useRef(0);           // reconnects tried since a session last came up
-  // Whether the next socket may pick up this tab's session where it is on the
-  // backend (console_link) — true for a reload or a dropped socket, false for
-  // a reconnect you asked for (New chat, another session, a model change).
+  // May the next socket attach to this tab's live backend session (console_link)? True for reload/drop, false for an asked-for reconnect.
   const attachRef = useRef(true);
-  // Messages held while an attach rebuilds the log, so nothing live lands
-  // ahead of the replay; and which transcript load is the current one.
+  // Messages held while an attach rebuilds the log (nothing live lands ahead of the replay); and the current transcript load.
   const holdRef = useRef(null);
   const transcriptGenRef = useRef(0);
   const retryTimer = useTimeout();     // the next reconnect, RETRY_DELAYS_MS apart
@@ -454,19 +381,14 @@ export default function Console({ tabId = "main", active = true, onTitle,
   const [sessionId, setSessionId] = useState(() => localStorage.getItem(sessionKey) || null);
   // A dev tab's own git worktree ({ path, branch, base }), from the socket.
   const [worktree, setWorktree] = useState(null);
-  // What a path in a reply is relative to (the worktree the agent works in,
-  // then its repo; the vault is the backend's own fallback), and where a
-  // clicked file opens: this tab's document slot.
+  // What a reply's paths are relative to (worktree, then repo; the backend falls back to the vault); clicked files open in this tab's document slot.
   const fileCtx = useMemo(() => ({
     bases: [worktree?.path, project].filter(Boolean),
     view: (hit) => docPane.file(hit),
   }), [worktree?.path, project, docPane]);
   const [merging, setMerging] = useState(false);
-  // The model and effort this tab starts with: its own when open_tab gave it
-  // them (a queued child keeps them on its tab until it starts), else the
-  // profile's remembered pick, read again at each connect so Settings
-  // reaches a tab when it reconnects. An effort the tab's own model doesn't
-  // take is dropped rather than sent.
+  // Model and effort at start: the tab's own (open_tab), else the profile's pick, re-read at each connect so Settings reaches it.
+  // An effort the model doesn't take is dropped.
   const ownPick = tabModel != null || tabEffort != null;
   const startPick = () => {
     const m = tabModel || localStorage.getItem(modelKey(profile)) || "default";
@@ -478,28 +400,23 @@ export default function Console({ tabId = "main", active = true, onTitle,
     return { model: m, effort: e };
   };
   const [model, setModel] = useState(() => startPick().model);
-  // What "default" resolves to for this mode — the backend says, at start.
+  // What "default" resolves to; the backend says at start.
   const [defaultModel, setDefaultModel] = useState(() => cachedDefault(profile));
   const [mode, setMode] = useState(() => storedMode() || MODE_DEFAULT[profile]);
   const [barMore, setBarMore] = useState(false);   // ⋯: the bar's menu (console/BarMenu.jsx)
   const [moreEl, setMoreEl] = useState(null);
   const closeMore = useCallback(() => setBarMore(false), []);
-  // The diff pane: { files, path, scope, seq } — one turn's files and the
-  // file showing, or the bar's view — or null. `reload` is the open pane's,
-  // for the end of a turn.
+  // The diff pane { files, path, scope, seq }, or null; `reload` is the open pane's, called at turn end.
   const [diffOpen, setDiffOpen] = useState(null);
   const diffSeqRef = useRef(0);
   const diffReloadRef = useRef(null);
-  // The diff pane's line comments: chips in the composer that go with the
-  // next message sent (lib/review.js withComments). Per tab folder in
-  // localStorage, so a reload keeps them; the worktree arrives after mount,
-  // which moves the folder, so they're read per folder rather than once.
+  // Diff line comments: composer chips sent with the next message (lib/review.js withComments), stored per folder in
+  // localStorage; read per folder because the worktree arrives after mount and moves it.
   const [commentStore, setCommentStore] = useState({});
   const commentFolder = worktree?.path || project;
   const comments = useMemo(() => (!commentFolder ? []
     : commentStore[commentFolder] ?? loadComments(commentFolder)), [commentFolder, commentStore]);
-  // Stored in the handler, not a state updater: a send that unmounts the
-  // pane would otherwise leave a sent comment to come back next time.
+  // Stored in the handler, not an updater: a send that unmounts the pane would leave a sent comment behind.
   const setComments = (next) => {
     if (!commentFolder) return;
     saveComments(commentFolder, next);
@@ -507,6 +424,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
   };
   const [rateLimits, setRateLimits] = useState({}); // rate_limit_type -> latest RateLimitInfo
   const [cliVersion, setCliVersion] = useState(null); // the CLI this session runs
+  const [sessionAccount, setSessionAccount] = useState(null); // the Claude account it started on
   const [ctx, setCtx] = useState(null);               // the context window, as /context sees it
   const [tasks, setTasks] = useState([]);             // the CLI's task list (TaskCreate/Update)
   // Subagents at work (AgentStrip); finished ones hide once you send again.
@@ -521,8 +439,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     if (v) localStorage.setItem(limitedKey, JSON.stringify(v)); else localStorage.removeItem(limitedKey);
     emit({ type: "limited", on: !!v });
   };
-  // On mount, before the plan view has subscribed (a child's effects run
-  // first): the bus holds it and replays it to useTurnTrace (lib/turn.js).
+  // Child effects run before the plan view subscribes: the bus holds this and replays it to useTurnTrace (lib/turn.js).
   useEffect(() => {
     // eslint-disable-next-line react-you-might-not-need-an-effect/no-event-handler -- no event: this tells the bus (outside React) once, on mount
     if (limited) emit({ type: "limited", on: true });
@@ -532,16 +449,11 @@ export default function Console({ tabId = "main", active = true, onTitle,
   agentsRef.current = agents;
   const settleAgents = () => setAgentsSeen(new Set(
     agentsRef.current.filter((a) => ["completed", "failed", "stopped", "killed"].includes(a.status)).map((a) => a.id)));
-  // aliases → resolved model, name and effort levels; the last session's
-  // list until this one's arrives (lib/consolePrefs.js)
+  // aliases → resolved model, name, effort levels; the last session's list until this one's arrives (lib/consolePrefs.js)
   const [models, setModels] = useState(() => cachedModels(profile));
-  // The model id the session is actually running, as the stream names it
-  // (the backend's `model` frame); null until it does, after a reconnect too.
+  // The model id actually running (backend `model` frame); null until it arrives, after a reconnect too.
   const [liveModel, setLiveModel] = useState(null);
-  // The same id for the socket's handlers: each reply in the log is tagged
-  // with the model that wrote it, which is what the "model changed" mark
-  // and a reply's retry menu read (a resumed log carries the same tag,
-  // sessions.session_transcript).
+  // Same id for socket handlers: replies are tagged with it (the "model changed" mark and retry menu read it; sessions.session_transcript tags resumed logs).
   const liveModelRef = useRef(null);
   // "Retry with…": the message to send again once the fork's session is up.
   const retryTextRef = useRef(null);
@@ -550,8 +462,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
   const [mcp, setMcp] = useState(null);               // the /mcp panel: null = closed
   const [styles, setStyles] = useState([]);           // output styles the CLI offers
   const [outputStyle, setOutputStyle] = useState(() => localStorage.getItem(styleKey(profile)) || "");
-  // "Code and conversation": the conversation half waits for the files'
-  // `rewound` — a failed file rewind must not cut the conversation anyway.
+  // "Code and conversation": the conversation half waits for the files' `rewound` (a failed file rewind must not cut it).
   const thenConversationRef = useRef(null);
   const rewindConversationRef = useRef(null);
   const [showSessions, setShowSessions] = useState(false);
@@ -563,19 +474,13 @@ export default function Console({ tabId = "main", active = true, onTitle,
     { name: "mcp", description: "MCP servers: status, reconnect, enable/disable (a local panel)",
       argument_hint: "", scope: "builtin", kind: "command" },
   ]);
-  // Which collapsed runs are open, keyed by the flat index of their first
-  // entry — entries are only ever appended, so that key stays put and a run
-  // you opened does not close itself when the next tool call lands.
+  // Open collapsed runs, keyed by the first entry's flat index (entries only append, so an opened run stays open).
   const [openRuns, setOpenRuns] = useState(() => new Set());
   const [acIndex, setAcIndex] = useState(0);
   const [acDismissed, setAcDismissed] = useState(false);
-  // What's hovering the pane: "file" | "context" | false. Two kinds land very
-  // differently — one is read and summarised, the other is already-shaped rows
-  // — so the veil names which before the drop commits to it.
+  // What's hovering the pane: "file" (read and summarised) | "context" (already-shaped rows) | false; the veil names which.
   const [dragging, setDragging] = useState(false);
-  // Voice. `voiceOut` is the only one that has to reach the session: it adds
-  // the prompt rule about writing something speakable, which is fixed when
-  // the session starts, so toggling it reconnects the way model/mode do.
+  // Voice. Only `voiceOut` reaches the session (a prompt rule fixed at start), so toggling it reconnects like model/mode.
   const [voiceCap, setVoiceCap] = useState(null);     // what this machine can do
   const [voiceOut, setVoiceOut] = useState(() => localStorage.getItem("console_voice") === "1");
   const [wakeOn, setWakeOn] = useState(false);
@@ -586,17 +491,14 @@ export default function Console({ tabId = "main", active = true, onTitle,
   const inputRef = useRef(null);
   const acListRef = useRef(null);
 
-  // ⌘K's "focus the console" needs a way in, and the composer's ref is private
-  // to this file (four call sites lean on it). Hand the desk a function rather
-  // than the element, so the ref stays ours.
+  // ⌘K "focus the console": hand the desk a function, not the element, so the composer ref stays private.
   useEffect(() => {
     if (!focusComposer || !active) return;
     focusComposer.current = () => inputRef.current?.focus();
     return () => { focusComposer.current = null; };
   }, [focusComposer, active]);
 
-  // A tab you switch to is a tab you're about to type in. Not on mount: the
-  // window opening shouldn't take focus from wherever it was.
+  // Focus on switching to a tab, not on mount (the window opening mustn't steal focus).
   const mountedRef = useRef(false);
   useEffect(() => {
     // eslint-disable-next-line react-you-might-not-need-an-effect/no-event-handler -- focusing is DOM work on the input only this owns; the switch happens in the parent
@@ -604,10 +506,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     mountedRef.current = true;
   }, [active]);
 
-  // What something outside the pane may do to the turn: answer a waiting
-  // permission card (the plan view's status bar and its list row). Re-set
-  // every render so the answer runs with this render's state; the approval
-  // card itself still shows the answer, the same way a click on it would.
+  // What outside the pane may do to the turn (answer a waiting permission card from the plan view). Re-set every render so it sees this render's state.
   useEffect(() => {
     setConsoleActions(tabId, {
       answer: (requestId, allow) => answerPermission(requestId, { allow }),
@@ -617,13 +516,11 @@ export default function Console({ tabId = "main", active = true, onTitle,
       pin: (label, data) => onPinContext?.(label, data),
       resume: () => resume(),
       resumeWith: (text) => resumeWith(text),
-      // A tab this one handed off to, done with its brief: shown now, and
-      // held for the next send so the model here hears it too.
+      // A handed-off tab's report: shown now, held for the next send so the model hears it.
       report: (r) => {
         reportsRef.current.push(r);
         setEntries((prev) => [...prev, { kind: "report", ...r }]);
-        // Taken by the held-command effect below, once this has rendered and
-        // nothing is running; mid-turn, that's after the turn's end.
+        // Taken by the held-command effect below once idle (mid-turn: after it ends).
         setWakeDue(true);
       },
     });
@@ -632,8 +529,10 @@ export default function Console({ tabId = "main", active = true, onTitle,
   const reportsRef = useRef([]);
   // A report wants a turn of its own (wake, below).
   const [wakeDue, setWakeDue] = useState(false);
-  // The PR this dev tab watches (lib/prWatch.js). Its notes are held like the
-  // reports, and wake the tab the same way.
+  // A model to re-answer with after this turn: the account refused the one asked for (`model_refused`).
+  const [fallbackDue, setFallbackDue] = useState(null);
+  const fallbackRetryRef = useRef(null);
+  // The PR this dev tab watches (lib/prWatch.js); its notes are held and wake the tab like reports.
   const prNotesRef = useRef([]);
   const prw = usePrWatch({
     tabId, project: profile === "dev" ? project : null, worktree: worktree?.path || null,
@@ -646,23 +545,16 @@ export default function Console({ tabId = "main", active = true, onTitle,
   // The socket handler is bound once; it reaches this render's watch through here.
   const prwRef = useRef(prw);
   prwRef.current = prw;
-  // A `gh pr create` this turn: the ref it's found by once the turn ends
-  // ("" for the tree's branch). null: nothing to link.
+  // A `gh pr create` this turn: the ref to find it by at turn end ("" = the tree's branch); null: nothing to link.
   const prLinkDueRef = useRef(null);
 
-  // A handed-off tab starts on its brief, once: `onBriefSent` clears it from
-  // the tab, so a reload resumes the session instead of asking again. A
-  // parent's follow-up (message_tab) arrives the same way, as a new brief:
-  // `briefRef` holds the last one sent, so a different one goes too, and
-  // its turn reports back like the first. A busy tab takes it when its
-  // turn ends.
+  // A handed-off tab sends its brief once (`onBriefSent` clears it, so a reload resumes instead). A parent's follow-up
+  // (message_tab) arrives as a new brief; `briefRef` holds the last one sent so a different one goes too. A busy tab waits for turn end.
   const briefRef = useRef(false);
-  // A resume after a quit (lib/interrupted.js), waiting for the socket and
-  // the turn like a brief does; the state is only there to wake the effect.
+  // A resume after a quit (lib/interrupted.js) waits like a brief; the state only wakes the effect.
   const resumeRef = useRef(null);
   const [resumeAsk, setResumeAsk] = useState(0);
-  // "sent" → "running" → reported, for a brief's turn only: turns the user
-  // starts are their own, and nobody upstream is waiting on them.
+  // "sent" → "running" → reported, for a brief's turn only (nobody upstream waits on the user's own turns).
   const reportRef = useRef(null);
   const briefAtRef = useRef(0);   // where the brief's work starts in the log
   /* eslint-disable react-you-might-not-need-an-effect/no-event-handler, react-you-might-not-need-an-effect/no-derived-state, react-you-might-not-need-an-effect/no-pass-live-state-to-parent -- the trigger is the socket: connected/busy flip in its handlers, and this needs the render after, whose state they can't see */
@@ -674,8 +566,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     }
     if (!brief || briefRef.current === brief) return;
     briefAtRef.current = entries.length;
-    // A ⌘Enter brief is the user's own message (typed, with its pills); a
-    // handed-off one isn't.
+    // A ⌘Enter brief is the user's own typed message; a handed-off one isn't.
     if (sendText(brief, briefPills?.length ? briefPills : false, !spawned)) {
       briefRef.current = brief;
       if (parent) reportRef.current = "sent";
@@ -684,8 +575,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fires on connect, a new brief, a turn ending or a resume; sendText and the refs are read, not watched
   }, [connected, brief, busy, resumeAsk]);
   /* eslint-enable react-you-might-not-need-an-effect/no-event-handler, react-you-might-not-need-an-effect/no-derived-state, react-you-might-not-need-an-effect/no-pass-live-state-to-parent */
-  // Resume what a quit cut off. A handed-off tab that hadn't reported yet
-  // reports when this work ends: the brief's own turn never got to.
+  // Resume what a quit cut off; an unreported handed-off tab reports when this work ends.
   function resumeWith(text) {
     if (parent && !reported && reportRef.current == null) {
       briefRef.current = true;
@@ -695,8 +585,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     resumeRef.current = text;
     setResumeAsk((n) => n + 1);
   }
-  // A reload mid-wait (the brief's turn errored, nothing reported yet) picks
-  // the wait back up, or the report would never come.
+  // A reload mid-wait must pick the wait back up, or the report never comes.
   if (parent && held && !briefRef.current && reportRef.current == null) {
     briefRef.current = true;
     reportRef.current = "sent";
@@ -705,10 +594,8 @@ export default function Console({ tabId = "main", active = true, onTitle,
   useEffect(() => {
     if (reportRef.current === "sent" && busy) reportRef.current = "running";
     if (reportRef.current !== "running" || busy) return;
-    // Not finished yet (lib/handoff.js): stopped, errored, cut off, or with
-    // a queued message or a background subagent still to come. The report
-    // waits for the turn that ends the work, whichever later turn that is,
-    // and the tab says it's held meanwhile, not finished.
+    // Not finished (lib/handoff.js): stopped, errored, cut off, or a queued message/background subagent pending.
+    // The report waits for whichever later turn ends the work; the tab says "held" meanwhile.
     const verdict = briefVerdict(lastTurn(entries), {
       queued: queuedRef.current.some((q) => !q.local) || holdingRef.current.length > 0,
       agents: runningAgents({ agents }).length > 0,
@@ -727,11 +614,8 @@ export default function Console({ tabId = "main", active = true, onTitle,
   }, [busy]);
   /* eslint-enable react-you-might-not-need-an-effect/no-event-handler, react-you-might-not-need-an-effect/no-pass-data-to-parent */
 
-  // The tab is named for what was first asked in it — the same thing the
-  // resume list goes by.
+  // The tab is named for its first ask, as the resume list is.
   const firstAsk = entries.find((e) => e.kind === "user")?.text || null;
-  // The first ask lands by several paths (typed, a resumed transcript, the
-  // socket's replay), so the title follows whichever comes first.
   // eslint-disable-next-line react-you-might-not-need-an-effect/no-pass-live-state-to-parent -- the first ask lands by several paths (above); the parent keeps the title with the tab
   useEffect(() => { onTitle?.(tabId, firstAsk); }, [firstAsk]);   // eslint-disable-line react-hooks/exhaustive-deps -- onTitle is a callback prop; the title follows firstAsk alone
   const voiceRef = useRef(null);        // the mic/speaker controller, built on first use
@@ -743,8 +627,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
   // On load we auto-resume the stored session — show its back-scroll too.
   useEffect(() => {
     const stored = localStorage.getItem(sessionKey);
-    // The window reopening on its tabs isn't a resume anyone asked for
-    // either: the back-scroll says where things stand.
+    // The window reopening isn't a resume anyone asked for either.
     if (stored) { quietResumeRef.current = true; loadTranscript(stored); }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once on mount: the stored session is resumed a single time
   }, []);
@@ -754,9 +637,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     wsRef.current = ws;
     ws.onopen = () => {
       setConnected(true);
-      // Fifteen seconds up counts as recovered: the next drop gets the full retry
-      // budget. Not on open alone, or a socket that dies on arrival every
-      // time would reset it each round and never give up.
+      // 15s up counts as recovered (resets the retry budget); on open alone, a socket dying on arrival would never give up.
       stableTimer.start(() => { retryRef.current = 0; }, 15000);
       const { model: m, effort: e } = startPick();
       setModel(m);
@@ -781,11 +662,8 @@ export default function Console({ tabId = "main", active = true, onTitle,
       }));
       attachRef.current = true;
     };
-    // A close nobody asked for is the backend restarting (an edit under
-    // backend/app; launch_app.py holds that until no turn is running, but a
-    // terminal-run --reload doesn't) — come back on our own and resume,
-    // rather than sitting on "Connecting…" until ⌘R. A session that dies on
-    // arrival every time gives up after a few tries instead of looping.
+    // An unasked close is a backend restart (launch_app.py holds it until no turn runs; a terminal --reload doesn't):
+    // reconnect and resume on our own, giving up after RETRY_DELAYS_MS.
     ws.onclose = (ev) => {
       stableTimer.clear();
       setConnected(false);
@@ -795,9 +673,8 @@ export default function Console({ tabId = "main", active = true, onTitle,
         return;
       }
       cutTurn("Connection lost mid-turn — the reply stopped here, and anything waiting for approval was denied.");
-      // The CLI went with the socket, and what it had queued unread with it.
+      // The CLI, and what it had queued unread, went with the socket.
       unqueuedRef.current(queuedRef.current.filter((q) => !q.local).map((q) => q.id));
-      // Coming back resumes the same session in the same mode: nothing to say.
       quietResumeRef.current = true;
       const tries = retryRef.current++;
       if (tries >= RETRY_DELAYS_MS.length) {
@@ -807,9 +684,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
       retryTimer.start(() => setEpoch((n) => n + 1), RETRY_DELAYS_MS[tries]);
     };
     const handle = (msg) => {
-      // Output means the turn is on disk, so a tab's first turn can be resumed
-      // even if it never finishes. Waiting for its result loses a whole long
-      // first turn to a restart: the tab comes back as a blank session.
+      // Output means the turn is on disk; waiting for the result would lose a long first turn to a restart (blank session).
       if (msg.type === "text_delta" || msg.type === "phase") {
         if (announcedRef.current && !localStorage.getItem(sessionKey))
           localStorage.setItem(sessionKey, announcedRef.current);
@@ -823,19 +698,13 @@ export default function Console({ tabId = "main", active = true, onTitle,
         setPhase({ phase: msg.phase, name: msg.name || null });
         return;
       }
-      // Stop arrived with no turn running on the backend — the turn this page
-      // thinks is live died with an earlier socket. Settle it here, or the Stop
-      // button would be the only control showing and it would do nothing.
+      // Stop with no backend turn: this page's "live" turn died with an earlier socket; settle it or Stop does nothing.
       if (msg.type === "idle") {
         cutTurn(null);
         return;
       }
-      // The CLI names the session at init, before anything is said, but
-      // writes no transcript until a turn starts — and resuming a session with
-      // no transcript fails ("No conversation found"; the CLI exits 1 and the
-      // socket dies). So the id is only *remembered* once a turn has produced
-      // something in it (above, and the result branch), or when it is already
-      // the stored one.
+      // The CLI names the session before any transcript exists, and resuming without one kills the socket ("No conversation found"),
+      // so the id is remembered only once a turn has produced something (above, result branch) or it is already the stored one.
       if (msg.type === "session") {
         setSessionId(msg.id);
         announcedRef.current = msg.id;
@@ -846,15 +715,11 @@ export default function Console({ tabId = "main", active = true, onTitle,
         const wt = { path: msg.path, branch: msg.branch, base: msg.base };
         setWorktree(wt);
         emit({ type: "worktree", worktree: wt });
-        // On the tab itself too (`onWorktree(tabId, "worktree", path)`), so
-        // the window knows this tree is held before the socket's back after
-        // a reload (PlanApp's left-behind list).
+        // Also on the tab, so the window knows the tree is held before the socket is back after a reload (PlanApp's left-behind list).
         onWorktree?.(tabId, "worktree", wt.path);
         return;
       }
-      // The mode the session is actually in — a spawned tab's default, which
-      // nothing stored says.
-      // What the session is running (console.note_model): the bar's chip.
+      // What the session runs (console.note_model): the bar's chip.
       if (msg.type === "model") {
         setLiveModel(msg.model || null);
         liveModelRef.current = msg.model || null;
@@ -868,17 +733,26 @@ export default function Console({ tabId = "main", active = true, onTitle,
       }
       if (msg.type === "mode") {
         setMode(msg.mode === BYPASS ? "bypass" : msg.mode);
+        if ("account" in msg) setSessionAccount(msg.account);
+        // A (re)connect may change the account: refresh what every picker may run (lib/models.js).
+        refreshModels();
         if (msg.default_model) { setDefaultModel(msg.default_model); rememberDefault(profile, msg.default_model); }
-        // A retry's fork has started (this frame closes `start`): ask it the
-        // message the retried reply answered.
+        // A retry's fork has started: ask it the retried reply's message.
         const again = retryTextRef.current;
         retryTextRef.current = null;
         if (again) sendTextRef.current?.(again, false, true);
         return;
       }
-      // This tab's model handing work to a new tab (console_tools.open_tab).
-      // The window decides — it knows how many tabs are working — and the
-      // answer goes back as the tool's result.
+      // The account can't run the requested model (console note_refusal): pickers learn it; re-answered on the fallback after the result.
+      if (msg.type === "model_refused") {
+        refreshModels();
+        setEntries((prev) => [...prev, { kind: "status", text: msg.fallback
+          ? `${msg.text}, and the Claude account in use doesn't have it. Answering again with ${msg.fallback}`
+          : `${msg.text}, and the Claude account in use has no other model known to work` }]);
+        if (msg.fallback) setFallbackDue(msg.fallback);
+        return;
+      }
+      // open_tab: the window decides (it knows how many tabs are working); the answer returns as the tool's result.
       if (msg.type === "open_tab") {
         const answer = onOpenTabRef.current?.({ mode: msg.mode, project: msg.project,
                                                 brief: msg.brief, from: tabId,
@@ -896,9 +770,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
             : `Couldn't open a tab: ${answer.reason}` }]);
         return;
       }
-      // This tab's model listing the window's tabs, maybe closing some
-      // (console_tools.tabs). A close is said in the log: tabs vanishing
-      // from the strip with nothing on screen to say why would read as a bug.
+      // console_tools.tabs: a close is said in the log (tabs vanishing silently would read as a bug).
       if (msg.type === "tabs") {
         const answer = onTabsRef.current?.({ close: msg.close || [], from: tabId })
           || { ok: false, text: "this view has no tabs" };
@@ -921,33 +793,26 @@ export default function Console({ tabId = "main", active = true, onTitle,
         return;
       }
       if (msg.type === "rate_limit") {
-        // Stamped on arrival: the chips weigh it against the polled reading
-        // by age, and the CLI only sends one when a status changes.
+        // Stamped on arrival: chips weigh it against the polled reading by age (the CLI sends one only on a status change).
         const ev = { ...msg, at: Date.now() };
         setRateLimits((prev) => ({ ...prev, [msg.rate_limit_type]: ev }));
         emit({ type: "rate", msg: ev });
         return;
       }
-      // One spoken sentence. It never joins the log — the same words are
-      // already arriving as text_delta; this is the audio for them.
+      // One spoken sentence; never joins the log (the same words arrive as text_delta).
       if (msg.type === "speech") {
-        // One mouth: a tab you aren't looking at reads its reply, it doesn't say it.
+        // One mouth: a background tab doesn't speak.
         if (!activeRef.current) return;
         voice().enqueueSpeech(msg.wav);   // built here, not only by the mic: speakers alone is a setup
         return;
       }
-      // A turn nobody sent: a background command finished and Claude picked
-      // the conversation back up. Lock the input as a send would, and open the
-      // block with what woke it, or the reply reads as an answer to nothing.
-      // Your message that opened the turn an attach is catching up on (or one
-      // you queued into it): the stream never echoes it, so the backend kept it.
+      // A turn nobody sent (a background command finished): lock the input and open the block with what woke it.
+      // The user's message that opened a turn an attach is catching up on: the stream never echoes it, so the backend kept it.
       if (msg.type === "tasknote") {
         setEntries((prev) => [...prev, { ...msg, type: undefined, kind: "tasknote" }]);
         return;
       }
-      // The held list (app/console_queue.py), whole each time; held ones
-      // handed back by a Stop, to the prompt ahead of what's typed; one
-      // steered in from the list, now the CLI's (in at the next step).
+      // The held list (app/console_queue.py), whole each time; a Stop hands held ones back to the prompt; a steered one is now the CLI's.
       if (msg.type === "held") { setHolding(msg.items || []); return; }
       if (msg.type === "held_back") {
         const back = (msg.texts || []).filter(Boolean);
@@ -972,15 +837,13 @@ export default function Console({ tabId = "main", active = true, onTitle,
         setBusy(true);
         setPhase(null);
         emit({ type: "start" });
-        // A queued message's own turn opens with that message (queued_in), and
-        // one a background task woke opens with that task's row (tasknote).
+        // A queued message's turn opens with queued_in; a task-woken one with its tasknote row.
         if (!msg.queued && !msg.quiet)
           setEntries((prev) => [...prev, { kind: "status",
             text: msg.why || "A background task finished" }]);
         return;
       }
-      // A queued message, read by the CLI just now: out of the queue and
-      // into the log, between the steps it came between.
+      // A queued message the CLI just read: out of the queue, into the log between the steps.
       if (msg.type === "queued_in") {
         const q = queuedRef.current.find((x) => x.id === msg.id);
         if (!q) return;
@@ -992,11 +855,9 @@ export default function Console({ tabId = "main", active = true, onTitle,
         unqueuedRef.current(msg.ids || []);
         return;
       }
-      // A four-second provider call is a chip on screen and dead air in the
-      // room, so give the wait a sound of its own.
+      // A slow provider call is silent in the room; give the wait a sound.
       if (msg.type === "tool_use" && voiceOutRef.current) voice().earcon();
-      // The turn as the rest of the window sees it (lib/turn.js — the map's
-      // lines). Emitted here, outside the entries updater, which must stay pure.
+      // The turn as the window sees it (lib/turn.js), emitted outside the entries updater (must stay pure).
       if (msg.type === "tool_use") {
         setPhase(null);   // its chip says it now
         emit({ type: "call", id: msg.id, name: msg.name, detail: msg.detail, raw: msg.raw,
@@ -1005,7 +866,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
         if (/worktree_merge$/.test(msg.name || "")) mergeCallRef.current = msg.id;
       } else if (msg.type === "tool_result") {
         emit({ type: "done", id: msg.id, error: msg.is_error, image: msg.image });
-        // The tab's work landed: once you look away it can settle (#91).
+        // The tab's work landed: it can settle once you look away (#91).
         if (msg.id === mergeCallRef.current && !msg.is_error) onTabSetRef.current?.(tabId, "merged", Date.now());
       }
       else if (msg.type === "computer_start") emit({ type: "computer", id: msg.id, show: false });
@@ -1029,8 +890,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
             : { ...e, code: msg.code, background: !!msg.background };
           return [...prev.slice(0, at), next, ...prev.slice(at + 1)];
         });
-        // No code and not moved: it was refused before it ran, so no turn
-        // follows to unlock this.
+        // No code, not backgrounded: refused before running, so no turn follows to unlock this.
         if (msg.type === "shell_done" && msg.code == null && !msg.background) {
           setBusy(false);
           emit({ type: "end", error: true });
@@ -1045,26 +905,19 @@ export default function Console({ tabId = "main", active = true, onTitle,
         emit({ type: "waiting", name: "AskUserQuestion", question: true,
                    requestId: msg.request_id, detail: msg.questions?.[0]?.question || "" });
       } else if (msg.type === "result") {
-        // The usage chips re-read on this (UsageChips.jsx): a turn ending is
-        // when the subscription numbers moved.
+        // Usage chips re-read on turn end (UsageChips.jsx); so does an open diff pane (the turn may have committed).
         window.dispatchEvent(new Event(TURN_END_EVENT));
-        // An open diff pane too: the turn may have committed, or answered
-        // the comments it was sent.
         diffReloadRef.current?.();
         if (announcedRef.current) localStorage.setItem(sessionKey, announcedRef.current);
-        // A rewound conversation's fork exists once a turn lands in it; from
-        // here the stored id *is* the fork, so stop asking for the cut.
+        // The fork now exists and the stored id is it: stop asking for the cut.
         localStorage.removeItem(rewindAtKey);
         // A Stop comes back is_error too; stopping a turn isn't it failing.
         emit({ type: "end", error: msg.is_error && !msg.interrupted, duration_ms: msg.duration_ms,
                    tokens_in: msg.tokens_in, tokens_out: msg.tokens_out });
-        // Cut off by the usage window mid-work: remembered past a reload, so
-        // the tab (and the "needs you" list) can offer to pick it back up.
+        // Cut off by the usage window: remembered past a reload so the tab can offer to resume.
         if (msg.limited) markLimited({ at: Date.now() });
         else if (!msg.is_error) { markLimited(null); writeAuto(tabId, null); }
-        // A child's report that came in mid-turn is picked up once the
-        // result's setBusy(false) has rendered (wakeDue, the held-command
-        // effect). A Stop means the plan changed: the reports wait for you.
+        // A mid-turn report is picked up after setBusy(false) renders (wakeDue); a Stop makes reports wait for you.
         setWakeDue((reportsRef.current.length > 0 || prNotesRef.current.length > 0) && !msg.interrupted);
         // The turn opened a PR: watch it (found from the tree's branch).
         if (prLinkDueRef.current != null) {
@@ -1074,10 +927,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
             { kind: "status", text: `Watching PR #${r.pr.number}: this tab wakes when its checks, reviews, comments or conflicts change.` }]));
         }
       }
-      // What this session loaded, described, at connect — a dev tab's repo
-      // skills and plugins included, which the vault-side scan can't see.
-      // It is the authority: it replaces anything the scan or the init
-      // message's bare names said, short of the local /help.
+      // What the session loaded, at connect (a dev tab's repo skills/plugins included). Authoritative: replaces the scan and init names, short of local /help.
       if (msg.type === "session_info") {
         if (msg.version) setCliVersion(msg.version);
         if (msg.models?.length) { setModels(msg.models); rememberModels(profile, msg.models); }
@@ -1157,18 +1007,13 @@ export default function Console({ tabId = "main", active = true, onTitle,
       if (sessionStart) quietResumeRef.current = false;
       setEntries((prev) => {
         if (msg.type === "tool_use") {
-          // The question card is the display for this one — a chip reading
-          // "AskUserQuestion {"questions":[…]}" directly above it is the same
-          // thing twice, with the raw JSON version on top.
+          // The question card is this one's display; a raw-JSON chip above it would repeat it.
           if (msg.name === "AskUserQuestion") return prev;
-          // A subagent's call (it rides under the Agent call that started
-          // it): marked, so the run's tally reads "Agent ↳Read×12" — the
-          // subagent's work, not the parent reading twelve files.
+          // A subagent's call is marked ↳ so the tally reads "Agent ↳Read×12", not the parent reading twelve files.
           return [...prev, { kind: "tool", name: msg.parent ? `↳${msg.name}` : msg.name,
                              detail: msg.detail, desc: msg.desc, raw: msg.raw, id: msg.id }];
         }
-        // run_script's result is shown under its script (console_code); no
-        // other result carries text.
+        // run_script's result shows under its script (console_code); no other result carries text.
         if (msg.type === "tool_result" && typeof msg.text === "string") {
           const at = prev.findLastIndex((e) => e.kind === "tool" && e.id === msg.id);
           if (at < 0) return prev;
@@ -1181,20 +1026,16 @@ export default function Console({ tabId = "main", active = true, onTitle,
             input: msg.input, inputs: msg.inputs || (msg.input ? [msg.input] : []),
             plan: msg.plan, alwaysLabel: msg.always_label, guard: msg.guard,
             alwaysScope: msg.always_scope || "session",
-            // What the ids in `inputs` actually name, what saying yes costs,
-            // and the sentence Claude wrote just before asking. The card is
-            // built from these; `inputs` stays for the raw view under it.
+            // What the ids in `inputs` name, what yes costs, Claude's lead-in sentence; `inputs` stays for the raw view.
             preview: msg.preview || null, danger: msg.danger || null,
             why: msg.why || null,
             resolved: null, always: false, reason: "",
           }];
-        // Answered somewhere other than this page: the phone door
-        // (backend app/phone.py). The card settles here as if clicked.
+        // Answered elsewhere (the phone door, app/phone.py): settle the card as if clicked.
         if (msg.type === "permission_answered")
           return prev.map((e) => (e.kind === "perm" && e.requestId === msg.request_id && e.resolved === null
             ? { ...e, resolved: !!msg.allow, by: msg.by || null } : e));
-        // What the turn changed. It arrives just before the result, so it
-        // lands inside that turn's block and scrolls with it.
+        // What the turn changed; arrives just before the result, so it lands inside that turn's block.
         if (msg.type === "changes")
           return [...prev, { kind: "changes", items: msg.items || [] }];
         // A dev turn's lines (console_diff), after its ledger.
@@ -1206,9 +1047,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
             questions: msg.questions || [], resolved: null,
           }];
         if (msg.type === "status") {
-          // The resume after a restart nobody asked for: it lands after every
-          // dev turn that edits the backend, and would read as if the tab had
-          // restarted itself. A warning in it still shows.
+          // An unasked restart's resume line follows every backend-editing dev turn; hidden unless it carries a ⚠.
           if (quiet && !msg.text.includes("⚠")) return prev;
           return [...prev, { kind: "status", text: msg.text }];
         }
@@ -1226,16 +1065,12 @@ export default function Console({ tabId = "main", active = true, onTitle,
         return prev;
       });
     };
-    // Back on a session that kept working while this page was away (a reload,
-    // a dropped socket): the log is the transcript up to where the current
-    // turn began, then that turn's events, then whatever is live. Held in
-    // order meanwhile, so a live event never lands ahead of the replay.
+    // Re-attach to a session that kept working: transcript up to the current turn's start, then its events, then live (held in order).
     const attach = async (msg) => {
       holdRef.current = [];
       if (msg.cut != null && msg.cut_session) await loadTranscript(msg.cut_session, msg.cut);
       else if (msg.turn) {
-        // A turn whose start the backend can't place in the transcript: the
-        // replay is the whole log, and the load from mount mustn't land on it.
+        // A turn the backend can't place in the transcript: the replay is the whole log; the mount load must not land on it.
         transcriptGenRef.current += 1;
         setEntries([]);
       }
@@ -1250,11 +1085,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
       if (msg.type === "attached") { attach(msg); return; }
       handle(msg);
     };
-    // Detach before closing. Switching model/mode/session bumps `epoch`, which
-    // closes this socket and opens the next one — and the close handshake can
-    // land *after* the new socket's onopen, whose setConnected(true) it would
-    // then undo. The bar reads "disconnected" and send() refuses to fire, with
-    // a perfectly healthy socket underneath and only a reload to get out of it.
+    // Detach before closing: a late close handshake from the old socket (epoch bump) would undo the new one's setConnected(true).
     return () => {
       retryTimer.clear();
       stableTimer.clear();
@@ -1265,8 +1096,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
   }, [epoch]);   // eslint-disable-line react-hooks/exhaustive-deps -- one socket per epoch: a model/mode/session switch bumps it (above), and its handlers are that epoch's
 
   useEffect(() => {
-    // The scan reads the vault's .claude — a dev tab's are the repo's, which
-    // `session_info` brings at connect.
+    // The scan reads the vault's .claude; a dev tab's come with `session_info`.
     // eslint-disable-next-line react-you-might-not-need-an-effect/no-event-handler -- a fetch: the general console's commands; a dev tab's come with session_info
     if (project) return;
     fetchJSON("/api/commands")
@@ -1284,25 +1114,15 @@ export default function Console({ tabId = "main", active = true, onTitle,
       .catch(() => {});
   }, [project]);
 
-  // Follow the output only while the user is already at the bottom. Scrolling
-  // up to read mid-turn used to be yanked back down by every streamed token;
-  // now it unsticks, and the jump pill below brings them back. Sending a
-  // message re-sticks — you want to see the reply to what you just asked.
+  // Follow the output only while at the bottom; scrolling up unsticks (the jump pill returns), sending re-sticks.
   const stuckRef = useRef(true);
   const [stuck, setStuck] = useState(true);
   const stick = (v) => { stuckRef.current = v; setStuck(v); };
-  // Only the user moves the view *up*. Our own pins, the smooth jump and
-  // content growing under a pinned view all leave scrollTop the same or
-  // larger, so "not at the bottom" alone isn't a reason to let go: a pin
-  // whose scroll event lands after the next chunk grew the log read as the
-  // user leaving, and that was the pill flicker and the lost follow.
+  // Only the user moves the view *up* (pins, smooth jump, growth never lower scrollTop): "not at the bottom" alone is not a reason to unstick (pill flicker).
   const lastTopRef = useRef(0);
   function onLogScroll() {
     const el = scrollRef.current;
-    // Zero height is the tab being hidden (display: none), not the user: the
-    // browser drops the position, and reading that as "at the bottom" would
-    // pin a tab you'd scrolled up in. Coming back it reads 0, which mustn't
-    // count as scrolling up either.
+    // Zero height is a hidden tab (display: none), not the user: neither "at the bottom" nor scrolling up.
     if (!el?.clientHeight) { lastTopRef.current = 0; return; }
     const top = el.scrollTop;
     if (el.scrollHeight - top - el.clientHeight < 40) { if (!stuckRef.current) stick(true); }
@@ -1310,8 +1130,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     lastTopRef.current = top;
     saveAnchor(el);
   }
-  // A wheel or key up lets go at once, before its scroll event: a chunk
-  // landing in between would pin the view back down and swallow the gesture.
+  // Wheel/key up lets go before its scroll event, or a chunk landing in between swallows the gesture.
   function onLogWheel(e) {
     const el = scrollRef.current;
     if (!(e.deltaY < 0 && stuckRef.current && el?.scrollTop > 0)) return;
@@ -1324,10 +1143,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
   function onLogKey(e) {
     if (["ArrowUp", "PageUp", "Home"].includes(e.key) && stuckRef.current) stick(false);
   }
-  // Where you were reading, kept as the entry at the top of the view and how
-  // far into it — not a scrollTop, which a reply landing while the tab was
-  // away would shift. A hidden tab loses its scroll position entirely
-  // (WebKit), so this is what brings it back to the same place.
+  // Reading position as the top entry plus offset, not scrollTop (a hidden tab loses it in WebKit; a reply landing shifts it).
   const anchorRef = useRef(null);   // { node, offset, top }
   function saveAnchor(el) {
     const top = el.getBoundingClientRect().top;
@@ -1349,9 +1165,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     stick(true);
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }
-  // The prompt is as tall as what's in it, so everything you've typed is on
-  // screen; styles.css caps it, and past that it scrolls. Measured rather than
-  // `field-sizing: content`, which the .app's WebKit may not have.
+  // Prompt height fits its content (styles.css caps it). Measured, not `field-sizing: content`, which the .app's WebKit may lack.
   const fitInput = () => {
     const el = inputRef.current;
     if (!el?.offsetWidth) return;
@@ -1361,8 +1175,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     el.scrollTop = top;
   };
   useLayoutEffect(fitInput, [input, active, composerTarget]);
-  // A wider pane rewraps it. Width only: fitting changes the height, and
-  // answering that would loop.
+  // A wider pane rewraps it. Width only: answering height changes would loop.
   useEffect(() => {
     const el = inputRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
@@ -1374,10 +1187,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     return () => ro.disconnect();
   }, [active, composerTarget]);
 
-  // Only the latest turns are drawn; older ones wait behind a button at the
-  // top of the log. A long chat drew every turn it had ever had — markdown,
-  // math, slides — and each one is DOM the browser lays out on every streamed
-  // token. The button keeps your place: the log grows upward under it.
+  // Only the latest turns are drawn (every turn is DOM laid out per streamed token); older ones wait behind a button that keeps your place.
   const [turnLimit, setTurnLimit] = useState(TURN_WINDOW);
   const keepFromBottomRef = useRef(null);
   function showEarlier() {
@@ -1391,26 +1201,20 @@ export default function Console({ tabId = "main", active = true, onTitle,
     keepFromBottomRef.current = null;
   }, [turnLimit]);
 
-  // A new first entry means a different log (new session, resume): re-stick.
-  // Layout, not passive: it has to run before paint (no frame drawn off the
-  // bottom) and before the observer below reads stuckRef for this commit.
+  // A new first entry means a different log: re-stick. Layout effect: must run before paint and before the observer below reads stuckRef.
   const firstEntryRef = useRef(null);
   useLayoutEffect(() => {
     const fresh = entries[0] !== firstEntryRef.current;
     firstEntryRef.current = entries[0];
     if (fresh) setTurnLimit(TURN_WINDOW);
-    // A `!` arrives as the user entry and its empty shell block together, so
-    // what you just sent can be the second-to-last entry.
+    // A `!` adds the user entry and its empty shell block together: what you sent can be second-to-last.
     const tail = entries[entries.length - 1], before = entries[entries.length - 2];
     const justRan = tail?.kind === "shell" && before?.kind === "user" && !tail.output && tail.code === undefined;
     if (fresh || tail?.kind === "user" || justRan) stick(true);
     const el = scrollRef.current;
     if (stuckRef.current && el?.clientHeight) el.scrollTop = el.scrollHeight;
   }, [entries]);
-  // Not everything that grows the log is an `entries` change: the working
-  // line's phase, the agent strip, an image loading, a block expanding. Pin
-  // on any DOM change while stuck. The observer's microtask runs before
-  // paint, so the view never shows a frame short of the bottom.
+  // Not all growth is an `entries` change (phase line, agent strip, images, expanding blocks): pin on any DOM change while stuck (observer runs before paint).
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || typeof MutationObserver === "undefined") return;
@@ -1422,10 +1226,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     el.addEventListener("load", pin, true);   // images, capture: load doesn't bubble
     return () => { mo.disconnect(); el.removeEventListener("load", pin, true); };
   }, []);
-  // The log is laid out at zero height while the sheet is shut or the tab is
-  // hidden, so the scroll above lands nowhere; re-pin whenever the pane
-  // itself resizes — or, coming back from hidden scrolled up, return to the
-  // place you were reading. Runs before paint, so there's no flash of the top.
+  // The log has zero height while the sheet is shut or the tab hidden, so scrolls land nowhere: re-pin on pane resize, or restore the reading place. Before paint.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
@@ -1441,10 +1242,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     return () => ro.disconnect();
   }, []);
 
-  // Dropping a file used to paste its local path into the textarea — the
-  // browser's own default, and useless, because the console runs with the
-  // vault as its cwd and can't read arbitrary disk anyway. Read it here
-  // instead and attach what it *says* as a pill.
+  // A dropped file's path is useless (the console's cwd is the vault): read it and attach what it says as a pill.
   async function ingest(label, request) {
     const id = onAddPill({ kind: "file", label, data: "",
                            note: "reading…", pending: true });
@@ -1467,8 +1265,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     }
   }
 
-  // The tray's half: the backend opens the file itself, by name, out of the
-  // Desktop — so a screenshot never has to be found in Finder first.
+  // The tray's half: the backend opens the Desktop file by name.
   function ingestDesk(name) {
     setSeenDesk((prev) => new Set(prev).add(name));
     setFresh(null);
@@ -1479,9 +1276,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     }));
   }
 
-  // ⌃⇧⌘4 puts the screenshot on the clipboard rather than the Desktop, and
-  // every clipboard image arrives named "image.png" — so a paste is named
-  // for when it happened, which is what tells two of them apart on the chip.
+  // Clipboard images all arrive as "image.png" (⌃⇧⌘4): name a paste by when it happened so two chips differ.
   function onPaste(e) {
     const files = [...(e.clipboardData?.files || [])];
     if (!files.length) return;      // plain text pastes as text
@@ -1492,9 +1287,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
       : f));
   }
 
-  // The tray, and the one-click chip for a screenshot taken moments ago. The
-  // chip is checked on focus: the gesture is "screenshot, then come back to
-  // the app", and coming back is exactly a focus event — no polling.
+  // The tray, and the chip for a just-taken screenshot, checked on window focus (no polling).
   const [tray, setTray] = useState(null);           // null = closed, else files
   const [fresh, setFresh] = useState(null);         // a just-taken screenshot
   const [seenDesk, setSeenDesk] = useState(() => new Set());
@@ -1534,8 +1327,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
   }
 
   function onDrop(e) {
-    // A dragged widget row/group/card lands as the pill its pin button would
-    // have made — same label, same shaped payload, same replace-by-label.
+    // A dragged widget lands as the pill its pin button would make (same label, payload, replace-by-label).
     const pin = readPin(e.dataTransfer);
     if (pin) {
       e.preventDefault();
@@ -1550,21 +1342,16 @@ export default function Console({ tabId = "main", active = true, onTitle,
     ingestFiles(files);
   }
 
-  // Sending mid-read would attach a file whose contents are still "reading…",
-  // which the model would report as an unreadable attachment.
+  // Sending mid-read would attach "reading…" as the file's contents.
   const reading = pills.some((p) => p.pending);
 
-  // Exactly one card holds the keyboard at a time. The SDK only ever has one
-  // question in flight, but a card left unresolved by an interrupt stays in
-  // the log, and two live cards fighting over the same arrow key is the one
-  // way this gets confusing.
+  // Exactly one card holds the keyboard (an interrupt can leave an unresolved card in the log).
   const awaiting = entries.find(
     (e) => (e.kind === "perm" || e.kind === "ask") && e.resolved === null
   )?.requestId;
   const awaitingPerm = awaiting && entries.some((e) => e.kind === "perm" && e.requestId === awaiting)
     ? awaiting : null;
-  // That card opens as a modal when this tab is the one the window picked
-  // (`modal`: the showing tab if it's asking, else the first that is).
+  // That card opens as a modal when this tab is the window's pick (`modal`: the showing tab if asking, else the first that is).
   const [cardInLog, setCardInLog] = useState(null);
   const modalCard = modal && awaiting && awaiting !== cardInLog
     ? entries.find((e) => e.requestId === awaiting && (e.kind === "perm" || e.kind === "ask"))
@@ -1579,11 +1366,8 @@ export default function Console({ tabId = "main", active = true, onTitle,
     setHistSearch(false);
     setSuggestion("");
     if (text.startsWith("/btw ")) { askAside(text.slice(5).trim()); setInput(""); return; }
-    // Typed while an approval card waits: the terminal's "no, and tell Claude
-    // what to do differently". The card is declined with this as its reason,
-    // which reaches the model as the call's answer, so the turn turns on it
-    // rather than the message sitting behind a call nobody approved (#99).
-    // Line comments stay put for the next message.
+    // Typed while an approval card waits: decline it with this as the reason (the call's answer), as the terminal does (#99).
+    // Line comments stay for the next message.
     if (awaitingPerm && text && !text.startsWith("/") && !text.startsWith("!")) {
       answerPermission(awaitingPerm, { allow: false, reason: text });
       setInput("");
@@ -1593,18 +1377,15 @@ export default function Console({ tabId = "main", active = true, onTitle,
     const out = withComments(text, comments, worktree?.branch);
     const tags = out.tags;
     const done = () => { setInput(""); if (out.used) setComments([]); };
-    // Mid-turn, the setting (⌥Enter the other way): "queue" holds it for a
-    // turn of its own when this one ends; "steer" sends it in after the step
-    // running now, not after the whole turn (as it does behind messages
-    // still steering). Commands and `!` lines wait locally either way.
+    // Mid-turn, the setting (⌥Enter the other way): "queue" holds it for its own turn; "steer" sends it in after the current step.
+    // Commands and `!` lines wait locally either way.
     const queueIt = (readEnterMode() === "queue") !== other;
     if (busy && queueIt && !/^[!/]/.test(text)) { if (sendHeld(out.text)) done(); return; }
     if (busy || queued.length) { if (sendQueued(out.text, true, { shown: text, tags })) done(); return; }
     if (sendText(out.text, true, true, { shown: text, tags })) done();
   }
 
-  // Held server-side for its own turn when this one ends (#92). The list
-  // comes back as a `held` frame; nothing to add here meanwhile.
+  // Held server-side for its own turn (#92); the list returns as a `held` frame.
   function sendHeld(text) {
     if (!connected || wsRef.current?.readyState !== WebSocket.OPEN) return false;
     wsRef.current.send(JSON.stringify({ ...messagePayload(text, true, true), hold: true }));
@@ -1626,15 +1407,10 @@ export default function Console({ tabId = "main", active = true, onTitle,
     setEnterModeState(mode);
   }
 
-  // Off to the CLI now, under a uuid its replay hands back when it's read.
-  // It joins the log then, between the steps it really came between.
-  // `withPills` false: the diff pane's asks, which mustn't carry off what's
-  // pinned to the prompt. `shown`: the log's text and chips when the message
-  // carries more than was typed (send's line comments).
+  // To the CLI now under a uuid its replay hands back; it joins the log then, between the steps it came between.
+  // `withPills` false: diff-pane asks mustn't carry off pinned pills. `shown`: log text/chips when more than was typed is sent.
   function sendQueued(text, withPills = true, shown = null) {
-    // A command or a `!` line isn't a message the model can take mid-step:
-    // it waits here for the turn to end (the effect below), as all of them
-    // used to.
+    // A command or `!` line can't be taken mid-step: it waits here for turn end (the effect below).
     if (text.startsWith("!") || text.startsWith("/")) {
       setQueued((q) => [...q, { id: crypto.randomUUID(), text, local: true }]);
       return true;
@@ -1650,8 +1426,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     return true;
   }
 
-  // The diff pane's comments and its "ask the tab" buttons: the tab's next
-  // message, now if it's idle, else in at the next step as a typed one is.
+  // Diff-pane comments and "ask the tab": the next message, now if idle, else in at the next step.
   function sendFromPane(text) {
     if (busy || queued.length) return sendQueued(text, false);
     return sendText(text, false, true);
@@ -1687,8 +1462,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     return true;
   }
 
-  // `/btw`: a side question. It goes to its own one-turn model with what's on
-  // screen, so it works mid-turn and the session never hears about it.
+  // `/btw`: a side question to its own one-turn model with what's on screen; works mid-turn, the session never hears it.
   async function askAside(question) {
     if (!question) return;
     const id = `btw-${Date.now()}`;
@@ -1701,11 +1475,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     setEntries((p) => p.map((e) => (e.id === id ? { ...e, answer } : e)));
   }
 
-  // The formula goes in as $…$ where the caret was, the notation the console
-  // reads and the transcript draws; the field is one line above the prompt.
-  // Once in, a formula is drawn in the preview over the prompt, and clicking
-  // it opens it here again: Enter puts the edit back in its place, an emptied
-  // field takes the formula out, Esc leaves it as it was.
+  // The formula goes in as $…$ at the caret. Clicking a drawn one reopens it: Enter replaces in place, emptying removes it, Esc leaves it.
   function closeMath(caret) {
     mathRef.current = "";
     setMathOpen(false);
@@ -1726,8 +1496,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     const tex = mathRef.current.trim();
     const piece = tex ? `$${tex}$` : "";
     if (tex) mathMadeRef.current.add(tex);
-    // The span is re-found by its text: the prompt may have been typed in
-    // since the field opened, which moves it.
+    // Re-found by text: typing since the field opened moves it.
     let at = mathEdit ? input.indexOf(`$${mathEdit.tex}$`, Math.max(0, mathEdit.start - 64)) : -1;
     if (mathEdit && at < 0) at = input.indexOf(`$${mathEdit.tex}$`);
     if (mathEdit && at >= 0) {
@@ -1742,8 +1511,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     closeMath(caret + piece.length);
   }
 
-  // Ctrl+Enter: stop the turn and send what's in the prompt now. Queued with
-  // the rest, and the Stop keeps the queue, so the CLI's next turn is it.
+  // Ctrl+Enter: stop the turn and send the prompt now; the Stop keeps the queue, so the CLI's next turn is this.
   function sendNow() {
     const text = input.trim();
     if (!text || !busy) return;
@@ -1752,9 +1520,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     interrupt(true);
   }
 
-  // ⌘Enter: this prompt, and its pills, as the first message of a new tab
-  // in this one's mode and project, opened behind it; the composer clears so
-  // the next thought can start here (#93). The window says no past MAX_TABS.
+  // ⌘Enter: prompt and pills become the first message of a new tab (same mode/project) opened behind; the composer clears (#93). The window refuses past MAX_TABS.
   function sendElsewhere() {
     const text = input.trim();
     if (!text || reading || !onBackgroundTab) return;
@@ -1770,19 +1536,14 @@ export default function Console({ tabId = "main", active = true, onTitle,
     if (sent.length) onClearPills();
   }
 
-  // Whatever was waiting comes back to the prompt — a Stop means the plan
-  // changed. The backend takes it back from the CLI and says what it got
-  // (`unqueued`); with no socket there's no CLI holding it.
+  // A Stop returns the waiting messages to the prompt: the backend takes them back from the CLI (`unqueued`); no socket, no CLI holding them.
   function stopTurn() {
     const open = wsRef.current?.readyState === WebSocket.OPEN;
     unqueued(queued.filter((q) => q.local || !open).map((q) => q.id));
     interrupt();
   }
 
-  // A held command, once nothing is running and nothing sent is still unread;
-  // failing that, a wake a child's report asked for. Here, not in the socket
-  // handler that ended the turn: that handler's `wake` still sees busy, and
-  // this runs after the render that cleared it.
+  // A held command once idle and nothing sent is unread; else a wake a report asked for. Here, not in the socket handler, whose `wake` still sees busy.
   /* eslint-disable react-you-might-not-need-an-effect/no-event-handler, react-you-might-not-need-an-effect/no-derived-state, react-you-might-not-need-an-effect/no-adjust-state-on-prop-change, react-you-might-not-need-an-effect/no-pass-live-state-to-parent, react-you-might-not-need-an-effect/no-chain-state-updates -- the trigger is the socket: connected/busy flip in its handlers, and this needs the render after, whose state they can't see (above) */
   useEffect(() => {
     if (busy || !connected || reading) return;
@@ -1790,11 +1551,14 @@ export default function Console({ tabId = "main", active = true, onTitle,
       const [next, ...rest] = queued;
       setQueued(rest);
       sendText(next.text);
+    } else if (fallbackDue) {
+      setFallbackDue(null);
+      fallbackRetryRef.current?.(fallbackDue);
     } else if (wakeDue) {
       setWakeDue(false);
       wake();
     }
-  }, [busy, connected, reading, queued, wakeDue]); // eslint-disable-line react-hooks/exhaustive-deps -- sendText and wake are render-local; these are the conditions that let a queued send go
+  }, [busy, connected, reading, queued, wakeDue, fallbackDue]); // eslint-disable-line react-hooks/exhaustive-deps -- sendText and wake are render-local; these are the conditions that let a queued send go
   /* eslint-enable react-you-might-not-need-an-effect/no-event-handler, react-you-might-not-need-an-effect/no-derived-state, react-you-might-not-need-an-effect/no-adjust-state-on-prop-change, react-you-might-not-need-an-effect/no-pass-live-state-to-parent, react-you-might-not-need-an-effect/no-chain-state-updates */
 
   // Esc twice: clear a prompt (Up brings it back), or from an empty one rewind.
@@ -1806,24 +1570,18 @@ export default function Console({ tabId = "main", active = true, onTitle,
       rewind(last, "conversation");
   }
 
-  // Split out of send() because a summoned turn has no composer to clear and
-  // no draft to consume: what the wake word heard goes as-is.
-  // `withPills` false: a handed-off tab's brief, which must not carry off
-  // the pills sitting in the prompt you share with the tab you're in. An
-  // array: exactly those pills (a ⌘Enter brief took its own along), and the
-  // shared prompt's are left alone.
+  // Split from send(): a summoned turn has no composer to clear. `withPills` false: a handed-off brief must not carry off
+  // the shared prompt's pills; an array: exactly those pills (a ⌘Enter brief's own).
   const RESUME_TEXT = "Continue where you left off: the usage limit cut the last turn off mid-work.";
   const resume = () => sendText(RESUME_TEXT, false, true);
-  // The same message, sent by the banner once the window has reset
-  // (lib/autoResume.js). Not as typed: nobody wrote it, so it doesn't make
-  // the tab the user's or unlock a child's handoff (console.unlock_handoff).
+  // Sent by the banner after the window resets (lib/autoResume.js). Not "typed": it must not make the tab the user's or unlock handoff (console.unlock_handoff).
   const autoResume = () => sendText(RESUME_TEXT, false, false);
   sendTextRef.current = sendText;
 
   function sendText(raw, withPills = true, typed = withPills, shown = null) {
     const text = raw.trim();
     if (!text || reading) return false;
-    // The user wrote here: the window won't close this tab to make room.
+    // The window won't close a tab the user wrote in to make room.
     if (typed) onTyped?.(tabId, "engaged");
     if (text === "/help") {
       // client-side: never reaches Claude, costs zero tokens
@@ -1837,8 +1595,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
       return true;
     }
     if (!connected || busy) return false;
-    // `!`: the CLI's shell mode. You typed it, so it runs with no card, and
-    // Claude answers the output (backend: run_shell).
+    // `!`: the CLI's shell mode; typed by you, so no card; Claude answers the output (backend: run_shell).
     if (text.length > 1 && text.startsWith("!")) {
       wsRef.current.send(JSON.stringify({ type: "shell", command: text.slice(1).trim() }));
       setEntries((p) => [...p, { kind: "user", text }, { kind: "shell", output: "" }]);
@@ -1861,13 +1618,8 @@ export default function Console({ tabId = "main", active = true, onTitle,
     return true;
   }
 
-  // A child tab's report wakes this one, as a finished background task
-  // wakes Claude Code: a turn nobody typed, carrying the held reports, so the
-  // model acts on them (a follow-up through message_tab, the next step, or a
-  // word to the user) instead of sitting on them until the user's next
-  // message. Mid-turn, it waits for the turn to end (the result handler).
-  // MAX_WAKES in a row without the user is the most: a parent and child
-  // passing work back and forth stop there and wait for a person.
+  // A child's report wakes this tab with a turn nobody typed, carrying the held reports; mid-turn it waits (result handler).
+  // At most MAX_WAKES in a row without the user: a parent and child passing work back and forth stop for a person.
   const wakesRef = useRef(0);
   function wake() {
     const n = reportsRef.current.length;
@@ -1899,10 +1651,9 @@ export default function Console({ tabId = "main", active = true, onTitle,
     prNotesRef.current = [];
     return {
       type: "user", text,
-      // Everything but a brief is the user: what lets a spawned tab hand off
-      // (backend: unlock_handoff).
+      // Everything but a brief is the user; unlocks handoff in a spawned tab (backend: unlock_handoff).
       typed,
-      // `doc` is a kept PDF's ref — what lets the answer cite its pages.
+      // `doc`: a kept PDF's ref, so the answer can cite its pages.
       context: sent.map(({ label, data, kind, note, doc, image }) => ({ label, data, kind, note, doc, image })),
       verify_url: project && localStorage.getItem(`autoverify:${project}`) === "1"
         ? localStorage.getItem(`preview:${project}`) : null,
@@ -1923,36 +1674,29 @@ export default function Console({ tabId = "main", active = true, onTitle,
     inputRef.current?.focus();
   }
 
-  // `answers` is null when the card was dismissed with esc — the backend turns
-  // that into the same "did not answer" the CLI would have produced on its own.
+  // `answers` null = dismissed with esc; the backend turns it into the CLI's own "did not answer".
   function answerQuestion(requestId, answers) {
     wsRef.current?.send(JSON.stringify({
       type: "question", request_id: requestId, answers,
     }));
     emit({ type: "answered" });
     setEntries((prev) => prev.map((e) =>
-      // null is "still asking", so a dismissal settles as false rather than
-      // leaving the card live forever with the turn already moved on.
+      // null is "still asking", so a dismissal settles as false.
       e.kind === "ask" && e.requestId === requestId
         ? { ...e, resolved: answers ?? false } : e));
     inputRef.current?.focus();
   }
 
   function interrupt(keepQueue = false) {
-    // Stop the mouth first. The backend drops the sentences it hasn't sent,
-    // but the ones already in the browser would otherwise keep playing after
-    // the turn they belong to was cut off.
+    // Stop the mouth first: sentences already in the browser would keep playing after the cut-off turn.
     voiceRef.current?.stopSpeech();
-    // No open socket means no backend left to stop it — and no `result` or
-    // `idle` coming back to unlock the composer. Stop has to work regardless.
+    // No open socket: no `result`/`idle` will come back to unlock the composer, but Stop must work.
     if (wsRef.current?.readyState !== WebSocket.OPEN) {
       cutTurn("Stopped.");
       return;
     }
     wsRef.current.send(JSON.stringify({ type: "interrupt", keep_queue: keepQueue }));
-    // The backend denies everything still waiting on an answer, so a card left
-    // on screen is already answered-for. Settling it here keeps someone from
-    // picking an option that now goes nowhere.
+    // The backend denies every waiting card; settle them here so no option is picked that goes nowhere.
     setEntries((prev) => prev.map((e) =>
       (e.kind === "perm" || e.kind === "ask") && e.resolved === null
         ? { ...e, resolved: false } : e));
@@ -1977,17 +1721,8 @@ export default function Console({ tabId = "main", active = true, onTitle,
         if (!ev.on) setVoiceNote("");
         break;
       case "barge_in":
-        // The wake word said again while it was talking. The interrupt already
-        // exists — the console has taken one from the Stop button since day
-        // one, and the SDK owns the bookkeeping for a turn cut off mid-sentence.
-        // This is a new trigger on that path, not new machinery. A `wake`
-        // event follows it, so the note below is immediately overwritten by
-        // "listening…"; what matters here is that the mouth stops.
-        // Not conditional on `busy`: the model's turn ends when the result
-        // lands, but the mouth outlives it by however much backlog is still
-        // being synthesized — and that gap is exactly when a long answer gets
-        // talked over. The backend closes its pump whether or not a turn is
-        // still running.
+        // The wake word said mid-speech: a new trigger on the Stop path. A `wake` event follows and overwrites the note; what matters is the mouth stops.
+        // Not conditional on `busy`: the mouth outlives the turn by the synthesis backlog, exactly when a long answer gets talked over.
         setVoiceNote("go ahead");
         interrupt();
         break;
@@ -1995,14 +1730,11 @@ export default function Console({ tabId = "main", active = true, onTitle,
         setMicState("off");
         setVoiceNote("");
         if (!ev.send) {
-          // Push-to-talk lands in the composer to be read before it sends.
-          // That's the line the upload refusal draws, held: a live mic is
-          // fine because you're in the room to catch a bad transcript.
+          // Push-to-talk lands in the composer to be read before sending (a live mic is fine: you're there to catch a bad transcript).
           setInput((cur) => (cur ? `${cur.trim()} ${ev.text}` : ev.text));
           inputRef.current?.focus();
         } else if (!sendText(ev.text)) {
-          // Mid-turn (an interrupt is still landing): hold it and send when
-          // the turn actually stops, or the spoken sentence is just lost.
+          // Mid-turn (interrupt landing): hold it for the turn's stop, or the sentence is lost.
           pendingSpeechRef.current = ev.text;
         }
         break;
@@ -2068,9 +1800,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     voiceRef.current?.pttUp();
   }
 
-  // Hold to talk without reaching for the mouse. Ctrl+Shift+Space because it
-  // is free on macOS — Cmd+Space is Spotlight and plain Ctrl+Space switches
-  // input sources.
+  // Hold-to-talk on Ctrl+Shift+Space: free on macOS (Cmd+Space is Spotlight, Ctrl+Space switches input sources).
   useEffect(() => {
     if (!voiceCap?.stt || !active) return;
     const isHotkey = (e) => e.code === "Space" && e.ctrlKey && e.shiftKey && !e.metaKey;
@@ -2085,13 +1815,8 @@ export default function Console({ tabId = "main", active = true, onTitle,
     // eslint-disable-next-line react-hooks/exhaustive-deps -- talkStart/talkEnd are render-local; the binding follows the mic and the tab being active
   }, [voiceCap, micState, active]);
 
-  // A model, style or voice switch reconnects and resumes (a mode switch is
-  // live: changeMode). The CLI announces a
-  // session id at init, before anything is said, but writes no transcript
-  // until the first turn — so resuming a session nothing was said in fails
-  // ("No conversation found", the CLI exits 1) and the socket dies on the
-  // next send. A new tab whose mode you set first did exactly that. With
-  // nothing to keep, the switch starts fresh instead.
+  // A model, style or voice switch reconnects and resumes (mode is live: changeMode). A session nothing was said in has no
+  // transcript and resuming it kills the socket ("No conversation found"), so with nothing to keep the switch starts fresh.
   function reconnectKeeping() {
     if (!entries.some((e) => e.kind === "user")) {
       localStorage.removeItem(sessionKey);
@@ -2101,9 +1826,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     reconnect(false);
   }
 
-  // Buffered reply text into the log. Called before anything else touches
-  // the log, so a chip or a card never lands ahead of text that came first.
-  // Refs and setters only, like cutTurn: the socket handlers hold an old copy.
+  // Buffered reply text into the log, called before anything else touches it (order). Refs and setters only: socket handlers hold an old copy.
   function flushText() {
     if (textRafRef.current != null) {
       cancelAnimationFrame(textRafRef.current);
@@ -2132,12 +1855,8 @@ export default function Console({ tabId = "main", active = true, onTitle,
     }
   }
 
-  // A turn this page thinks is live, ended from this side: its socket is gone
-  // (or the backend says nothing is running), so no `result` is coming for
-  // it. The backend's teardown denies every card still waiting, so a card
-  // left on screen is settled as denied — answering it would go nowhere.
-  // Refs and setters only: the socket handlers call the copy from the render
-  // that opened them.
+  // End a "live" turn from this side (socket gone or nothing running: no `result` is coming); waiting cards settle as denied
+  // (the backend's teardown denied them). Refs and setters only: socket handlers call the copy from the render that opened them.
   function cutTurn(why) {
     flushText();
     const wasBusy = busyRef.current;   // read now: the updater below runs later
@@ -2159,8 +1878,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     quietResumeRef.current = false;   // asked for: the new mode/model line is the answer
     if (clearLog) setEntries([]); // rate limits are account-wide, not session-scoped — keep them
     setShowSessions(false);
-    // The old socket's onclose is detached, so say it here instead: the next
-    // socket is still CONNECTING, and send() on that throws.
+    // The old onclose is detached, so say it here: send() on the next, still CONNECTING, socket throws.
     setConnected(false);
     retryRef.current = 0;
     attachRef.current = false;   // a new session on purpose, not the old one picked up
@@ -2183,8 +1901,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     const q = until == null ? projectQ : `${projectQ ? `${projectQ}&` : "?"}until=${until}`;
     return fetchJSON(`/api/sessions/${id}/transcript${q}`)
       .then((d) => { if (gen === transcriptGenRef.current) setEntries(d?.entries || []); })
-      // A transcript that can't be read still means the log on screen belongs
-      // to some other session, so clear it rather than leave it standing.
+      // Unreadable still means the log on screen is another session's: clear it.
       .catch(() => { if (gen === transcriptGenRef.current) setEntries([]); });
   }
 
@@ -2196,10 +1913,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     reconnect(false); // keep the transcript we just loaded; the backend re-attaches context
   }
 
-  // The model and --effort are both fixed at session start, so a pick of
-  // either (the bar's ModelChip) is one reconnect; resume keeps the
-  // conversation and the new pick applies.
-  // A tab open_tab gave its own pick keeps the change its own.
+  // Model and --effort are fixed at session start: a pick is one reconnect (resume keeps the conversation). An open_tab tab keeps the change its own.
   function changeModelEffort(m, level) {
     setModel(m);
     setEffort(level);
@@ -2225,9 +1939,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     wsRef.current?.send(JSON.stringify({ type: "mcp", action, name, enabled }));
   }
 
-  // Claude Code's three: "code" puts the repo's files back (dev only, on
-  // this socket); "conversation" drops the message and everything after it
-  // and puts its text back in the composer; "both" is files first.
+  // "code" restores files (dev only, this socket); "conversation" drops the message onward and restores its text to the composer; "both" is files first.
   function rewind(entry, scope) {
     if (busy) return;
     if (scope === "conversation") { rewindConversation(entry); return; }
@@ -2237,12 +1949,8 @@ export default function Console({ tabId = "main", active = true, onTitle,
     wsRef.current?.send(JSON.stringify({ type: "rewind", id: entry.checkpoint }));
   }
 
-  // The cut is resolved off the stored session's transcript
-  // (sessions.rewind_point), then the tab reconnects resuming at it as a
-  // fork — the original stays whole in "resume".
-  // `retry`: a model's name. The cut is the same, but the message is sent
-  // again by itself (retryTextRef, on the fork's `session` frame) and not
-  // put back in the composer.
+  // The cut resolves off the stored transcript (sessions.rewind_point); the tab resumes at it as a fork (the original stays whole).
+  // `retry` (a model's name): same cut, but the message is re-sent (retryTextRef, on the fork's `session` frame), not put back in the composer.
   async function rewindConversation(entry, retry = null) {
     const stored = localStorage.getItem(sessionKey);
     const mark = (rewind) => setEntries((prev) => prev.map((e) =>
@@ -2277,10 +1985,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
   }
   rewindConversationRef.current = rewindConversation;
 
-  // "Retry with…" on a reply (RetryMenu): fork the conversation from just
-  // before the message it answered, on the picked model, and ask it again.
-  // The pick becomes this tab's own, like one open_tab gave it: a retry
-  // shouldn't change what every new tab starts on.
+  // "Retry with…" (RetryMenu): fork from just before the answered message on the picked model. The pick is the tab's own, so a retry doesn't change what new tabs start on.
   async function retryWith(asked, m) {
     if (busy) return;
     const was = { model, tabModel };
@@ -2290,14 +1995,20 @@ export default function Console({ tabId = "main", active = true, onTitle,
     else localStorage.setItem(modelKey(profile), m);
     const name = m === "default" ? defaultModel || "the default model" : m;
     if (await rewindConversation(asked, name)) return;
-    // The cut failed (it says why on the message): the tab stays as it was.
+    // The cut failed (says why): the tab stays as it was.
     setModel(was.model);
     if (onTabSet) onTabSet(tabId, "model", was.tabModel);
     else localStorage.setItem(modelKey(profile), was.model);
   }
 
-  // The shortlist card's "use this one" (DelegateCall): the choice goes to
-  // Claude as your next message.
+  // `model_refused`: re-send on the fallback as a fork, like "retry with…"; called from the post-turn effect.
+  fallbackRetryRef.current = (m) => {
+    const asked = [...entries].reverse().find((e) => e.kind === "user" && e.checkpoint);
+    if (asked) retryWith(asked, m);
+    else changeModelEffort(m, effort);
+  };
+
+  // The shortlist card's "use this one" (DelegateCall): sent to Claude as your next message.
   function pickVariant(n, provider, batch) {
     if (busy) return false;
     return sendText(`Go with variant ${n}${provider ? ` (${provider})` : ""} from batch ${batch}.`, false, true);
@@ -2310,23 +2021,13 @@ export default function Console({ tabId = "main", active = true, onTitle,
     reconnectKeeping();
   }
 
-  // Switching *into* "never ask" is confirmed every time, not once and
-  // remembered. Every other mode in this list can be picked by accident and
-  // costs a click to undo; this one can't be undone at all, and the moment to
-  // notice you picked it is before the next turn, not in the summary
-  // afterwards. Declining leaves the select where it was.
-  // Returns false when the switch was declined, which the caller uses to put
-  // the <select> back: state never changed, so React has no re-render to
-  // restore it with, and the element would sit showing a mode the session
-  // isn't in.
+  // Switching into "never ask" is confirmed every time (it can't be undone afterwards). Returns false when declined: the
+  // caller resets the <select> by hand, since state never changed and React won't re-render it.
   function changeMode(m) {
     if (m === "bypass" && mode !== "bypass"
         && !window.confirm(BYPASS_WARNING)) return false;
     setMode(m); localStorage.setItem(spawned ? tabModeKey : modeKey(profile), m);
-    // Live, not a reconnect: the backend switches the running CLI, so the
-    // turn in flight and its cards survive and the next tool call is asked
-    // under the new mode. A reconnect killed all of that, once per press
-    // when cycling. With no socket up, the next start reads the stored mode.
+    // Live, not a reconnect: the backend switches the running CLI, so the turn in flight and its cards survive. No socket: the next start reads the stored mode.
     const ws = wsRef.current;
     if (ws?.readyState === WebSocket.OPEN)
       ws.send(JSON.stringify({ type: "mode", permission_mode: wireMode(m) }));
@@ -2338,18 +2039,10 @@ export default function Console({ tabId = "main", active = true, onTitle,
     setShowSessions((s) => !s);
   }
 
-  // The log reads as empty when nothing has actually been *said* in it. The
-  // session-init line ("New session · mode=… · cwd=…") is a `status` entry,
-  // so `entries.length === 0` stopped being true the moment the socket
-  // connected — which is why the invitation used to flash and disappear a
-  // half-second after the app opened, leaving the pane blank.
+  // Empty means nothing *said*: the session-init line is a `status` entry, so `entries.length === 0` is false once connected.
   const idle = entries.every((e) => e.kind === "status");
   const composerMath = useMemo(() => userMathSpans(input, mathMadeRef.current).length > 0, [input]);
-  // That same line in an empty pane is mostly plumbing the bar already shows,
-  // so the pane keeps only the sentence that matters: what this mode will do
-  // without asking (console.py, mode_note), which has to be said before the
-  // first message. One carrying a warning (reload_note) stays whole, and once
-  // there's a conversation the line stays as the record.
+  // In an empty pane the init line keeps only what this mode does without asking (console.py mode_note); a warning (reload_note) stays whole.
   const sessionLine = (e) => idle && e.kind === "status"
     && /^(New session|Resumed|Rewound)\b/.test(e.text) && !e.text.includes("⚠");
   const modeNote = /mode=\S+ \((.+?)\)(?: · |$)/.exec(entries.findLast(sessionLine)?.text || "")?.[1];
@@ -2366,11 +2059,8 @@ export default function Console({ tabId = "main", active = true, onTitle,
     }
     return [...prefix, ...substr];
   })();
-  // `@`: the word at the end of the input, as a path under this tab's folder,
-  // or another tab or a past session to attach (#94). One list, tabs first
-  // (there are few, and they're what you're juggling), then files, then
-  // sessions from the search behind chat_search, once there are 2 letters.
-  // A tab or session lands as a digest pill (lib/pills.js), not text.
+  // `@`: the trailing word as a path under the tab's folder, or a tab/past session to attach (#94). One list: tabs, files,
+  // then sessions (chat_search, from 2 letters). A tab or session lands as a digest pill (lib/pills.js).
   const fileQuery = input.startsWith("!") ? null : /(?:^|\s)@([^\s]*)$/.exec(input)?.[1] ?? null;
   const [fileHits, setFileHits] = useState([]);   // { kind: "file" | "tab" | "session", … }
   const fileOff = fileQuery === null || acDismissed;
@@ -2390,11 +2080,8 @@ export default function Console({ tabId = "main", active = true, onTitle,
       .catch(() => []);
     Promise.all([files, past]).then(([f, s]) => { if (!stale()) setFileHits([...tabs, ...f, ...s]); });
   }, fileOff ? 0 : 120, [fileQuery, acDismissed, project, worktree]);
-  // The bar's merge, and the diff pane's: the same as the tab's
-  // worktree_merge tool. A conflict never touches the main checkout; it
-  // comes back as a line here and (from the bar) a drafted message asking
-  // the tab to resolve it, which you can send or not. The pane shows the
-  // conflict itself, so it passes `draft: false` and gets the answer back.
+  // Same as the worktree_merge tool. A conflict never touches the main checkout: it returns as a line (and from the bar a
+  // drafted message to resolve it). The pane shows the conflict itself: `draft: false`, answer returned.
   async function mergeWorktree({ push = false, draft = true } = {}) {
     if (!worktree) return null;
     setMerging(true);
@@ -2415,9 +2102,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     setEntries((prev) => [...prev, { kind: "status", text }]);
     return r;
   }
-  // A turn's card opens the pane on that turn; the bar opens a worktree
-  // tab's branch, else everything uncommitted. A fresh key each time, so it
-  // opens where it was asked to rather than where it last was.
+  // A turn's card opens the pane on that turn; the bar opens the branch, else all uncommitted. Fresh key each time so it opens where asked.
   function openDiff(spec) {
     diffReloadRef.current = null;
     diffSeqRef.current += 1;
@@ -2439,7 +2124,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
   function completeFile(hit) {
     if (hit.kind === "file") setInput(input.replace(/@[^\s]*$/, `@${hit.path} `));
     else {
-      // The mention goes; what it named rides along as a pill.
+      // The mention becomes a pill.
       setInput(input.replace(/(^|\s)@[^\s]*$/, "$1"));
       onPinContext(`${hit.kind} · ${clipText(hit.label, 36)}`, sessionPin(hit.sid, hit.project));
     }
@@ -2453,10 +2138,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     inputRef.current?.focus();
   }
 
-  // The pane follows the conversation: the newest reply's first doc
-  // reference opens it there, once per reply (streaming re-renders this on
-  // every token; the key keeps that to one open). An empty log is a new
-  // chat, whose documents are someone else's business.
+  // The newest reply's first doc reference opens the pane, once per reply (the key survives per-token re-renders). An empty log is a new chat.
   const lastText = entries.findLastIndex((e) => e.kind === "text");
   const lastTextBody = lastText >= 0 ? entries[lastText].text : "";
   /* eslint-disable react-you-might-not-need-an-effect/no-event-handler, react-you-might-not-need-an-effect/no-chain-state-updates -- follows the reply as it streams in over the socket; an emptied log is a new chat, by whichever path emptied it */
@@ -2471,11 +2153,8 @@ export default function Console({ tabId = "main", active = true, onTitle,
     // eslint-disable-next-line react-hooks/exhaustive-deps -- follows the newest text entry; docPane and docAuto are read, not watched
   }, [lastText, lastTextBody, entries.length === 0]);
   /* eslint-enable react-you-might-not-need-an-effect/no-event-handler, react-you-might-not-need-an-effect/no-chain-state-updates */
-  // Two things read off which model wrote each reply (`model` on a text
-  // entry). `changes`: the reply where the model differs from the one
-  // before it, for the "model changed" mark. `retries`: each turn's last
-  // reply, with the message it answered, which is where "retry with…" sits;
-  // a `!` command's turn has no message to ask again.
+  // From each reply's `model`: `changes` (reply whose model differs from the previous: the "model changed" mark) and `retries`
+  // (each turn's last reply with its asked message: where "retry with…" sits; a `!` turn has none).
   const logMarks = useMemo(() => {
     const changes = new Map(), retries = new Map();
     let wrote = null, asked = null, lastReply = -1;
@@ -2525,9 +2204,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     </select>
   );
   const reviewClick = () => openDiff(diffOpen ? null : {});
-  // The project's scripts and the PR chip (ProjectBar.jsx): on the bar, or in
-  // ⋯ once the bar folds them. Waits for the socket's worktree, so the first
-  // load reads the tab's own tree, not the main checkout's.
+  // Project scripts and PR chip (ProjectBar.jsx), in ⋯ once folded. Waits for the socket's worktree so the first load reads the tab's own tree.
   const devBar = profile === "dev" && !!project && connected;
   const projectBar = (menu, parts) => (
     <ProjectBar key={`${project}:${worktree?.path || ""}`} project={project}
@@ -2568,9 +2245,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     <div
       className={`console${dragging ? " dropping" : ""}${busy ? " busy" : ""}${docView && !docTarget ? ` with-doc${docCover ? " doc-cover" : ""}` : ""}`}
       onDragOver={(e) => {
-        // getData is blocked until the drop, so the *kind* has to come off
-        // `types` — which is what lets the veil say which of the two things
-        // is about to happen while there's still time to not do it.
+        // getData is blocked until the drop, so the kind comes off `types`.
         const types = [...(e.dataTransfer?.types || [])];
         const kind = types.includes(PIN_MIME) ? "context"
           : types.includes("Files") ? "file" : null;
@@ -2580,8 +2255,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
         setDragging(kind);
       }}
       onDragLeave={(e) => {
-        // relatedTarget is null when the pointer leaves the window entirely,
-        // and inside the pane when it merely crosses a child's border.
+        // relatedTarget is null only when the pointer leaves the window.
         if (!e.currentTarget.contains(e.relatedTarget)) setDragging(false);
       }}
       onDrop={onDrop}
@@ -2592,11 +2266,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
             : "Drop to attach as context"}
         </div>
       )}
-      {/* One row: what you change mid-session (model, mode, diff, a voice
-          that's on) stays out; the set-and-leave controls and the session
-          actions (docs, resume, new) live in ⋯. Under the plan view the row
-          is portalled into the status bar (`barTarget`), so the console has
-          one row of chrome, not two. */}
+      {/* One row: mid-session controls (model, mode, diff, a live voice) out; set-and-leave and session actions in ⋯. Portalled into the status bar under the plan view. */}
       {placeBar(
       <div className={`console-bar${barTarget ? " in-status" : ""}`}>
         <span className={`dot ${connected ? "on" : "off"}`} title={connected ? "connected" : "disconnected"} />
@@ -2608,6 +2278,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
         <ModelChip models={models} model={model} defaultModel={defaultModel} effort={effort}
           live={liveModel} busy={busy} onPick={changeModelEffort} />
         {modeSelect("mode")}
+        <AccountChip sessionAccount={sessionAccount} busyRef={busyRef} onReconnect={reconnectKeeping} />
         {usageInBar && <UsageChips rateLimits={rateLimits} />}
         {!barTarget && <span className="bar-spacer" />}
         {voiceOut && <span className="bar-fold" data-cut="voice">{voiceBtn}</span>}
@@ -2629,8 +2300,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
           onClick={() => setBarMore((v) => !v)}
           title={`Docs, resume, new · style, voice, MCP · usage${barCut ? " · and what the bar has no room for" : ""}`}>⋯</button>
         <BarMenu open={barMore} anchor={moreEl} onClose={closeMore}>
-          {/* What the status bar folded for room (lib/barHost.js), first:
-              it was one click away on the bar, so it's the first thing here. */}
+          {/* What the status bar folded for room (lib/barHost.js), first. */}
           {devBar && (folded(barCut, "scripts") || folded(barCut, "pr"))
             && projectBar(true, folded(barCut, "scripts") && folded(barCut, "pr") ? "both"
               : folded(barCut, "scripts") ? "scripts" : "pr")}
@@ -2754,9 +2424,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
             <RecentSessions onResume={resumeSession} project={project} />
           </div>
         )}
-        {/* presentation-only grouping: one block per exchange (user → tools →
-            reply → result). Perm/help cards stand alone between blocks. Items
-            carry their flat index, which is what the collapsed runs key on. */}
+        {/* presentation-only grouping: one block per exchange (user → tools → reply → result); perm/help cards stand alone. Items carry their flat index (run key). */}
         {(() => {
           const groups = [];
           entries.forEach((e, i) => {
@@ -2771,8 +2439,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
               if (e.kind === "result") last.closed = true;
             }
           });
-          // Windowed by user turn, so a turn is never cut in half: the first
-          // group drawn is the turnLimit-th user message from the end.
+          // Windowed by user turn (never cut in half): the first group is the turnLimit-th user message from the end.
           let from = 0;
           for (let gi = groups.length - 1, n = 0; gi >= 0; gi--) {
             if (groups[gi].items?.[0]?.e.kind === "user" && ++n === turnLimit) { from = gi; break; }
@@ -2792,10 +2459,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
             const bare = g.items.every((it) => it.e.kind === "status");
             if (bare) return renderNotes(g.items, gi);
             return (
-              // `g`: a lone card is keyed by its entry index, and a bare gi
-              // collides with it (the card at entry 3, the turn after it at
-              // group 3) — React then leaves stale copies of the card behind,
-              // one more with every message.
+              // `g` prefix: a bare gi collides with a lone card's entry-index key (stale card copies pile up).
               <div key={`g${gi}`} className={`turn${g.closed ? " settled" : ""}`}>
                 {coalesce(g.items).map((r) => (
                   r.agent
@@ -2822,17 +2486,12 @@ export default function Console({ tabId = "main", active = true, onTitle,
             );
           })];
         })()}
-        {/* while a call is in flight its own line already pulses; two things
-            saying "still going" is one more than the log needs — unless the
-            model has moved on to thinking or writing the next call */}
+        {/* a call in flight already pulses; show this only once the model has moved on to thinking/writing */}
         {busy && (phase || entries[entries.length - 1]?.kind !== "tool") && (
           <WorkingLine since={turnStartRef.current} phase={phase} />
         )}
         <AgentStrip agents={agents} hidden={agentsSeen} />
-        {/* A tab a quit cut off resumes only on a click (the banner below),
-            so while that banner is up the usage-limit one, and its resume
-            at the reset, stand aside: one tab, one resume. Resume there sends
-            a turn, which clears `limited`; Dismiss leaves it for a click. */}
+        {/* A quit-interrupted tab resumes on a click (banner below); the usage-limit banner and its auto-resume stand aside: one tab, one resume. */}
         {limited && !busy && !interrupted && (
           <LimitBanner tab={tabId} limited={limited} rateLimits={rateLimits} onResume={resume}
             model={liveModel || findModel(models, model === "default" ? defaultModel : model)?.resolved
@@ -2859,13 +2518,8 @@ export default function Console({ tabId = "main", active = true, onTitle,
         )}
       </div>
 
-      {/* The plan view draws the prompt under the stage, outside the sheet,
-          so it stays on screen at every sheet height and over a full view.
-          A portal keeps its state here, and React events still bubble from
-          it to this pane — dropping onto the prompt is still a drop here. */}
-      {/* The plan view gives the document the map's place (`docTarget`), so
-          the conversation keeps its whole width; anywhere else it shares the
-          console. Only the showing tab draws into the shared slot. */}
+      {/* The plan view draws the prompt under the stage, outside the sheet (on screen at every height). A portal keeps its state here and events bubble to this pane. */}
+      {/* The plan view gives the document the map's place (`docTarget`); elsewhere it shares the console. Only the showing tab draws into the shared slot. */}
       {docView && (docTarget
         ? active && createPortal(renderDocPane(false), docTarget)
         : renderDocPane(true))}
@@ -2884,10 +2538,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     </DocPaneContext.Provider>
   );
 
-  // The card waiting on you, in the middle of the screen over everything:
-  // in the log it could sit under a peeked sheet or in a tab you weren't in.
-  // A background tab's says which tab it is. "In the conversation" puts it
-  // back in the log, for reading what led up to it first.
+  // The waiting card, centred over everything (in the log it could sit under a peeked sheet or in another tab). A background tab's names its tab; "In the conversation" returns it to the log.
   function renderCardModal() {
     const label = profile === "dev" ? `dev · ${projectName}` : profile;
     return (
@@ -2950,16 +2601,13 @@ export default function Console({ tabId = "main", active = true, onTitle,
     });
   }
 
-  // Runs of tool calls become one item; everything else passes through.
-  // An Agent call is its own row (AgentCall): what its subagent does never
-  // rides this stream, so folded into a run it read as one more chip.
+  // Runs of tool calls become one item. An Agent call is its own row (AgentCall): its subagent's work never rides this stream.
   function coalesce(items) {
     const out = [];
     for (const { e, i } of items) {
       const last = out[out.length - 1];
       if (e.kind === "tool" && AGENT_TOOLS.has(e.name)) out.push({ agent: e, at: i });
-      // Another provider at work is its own row too (DelegateCall): it is
-      // the log's mark that someone other than Claude answered.
+      // A delegate provider is its own row (DelegateCall): the mark that someone other than Claude answered.
       else if (e.kind === "tool" && DELEGATE_TOOL.test(e.name)) out.push({ delegate: e, at: i });
       else if (e.kind === "tool" && last?.tools) last.tools.push(e);
       else if (e.kind === "tool") out.push({ tools: [e], at: i });
@@ -2968,9 +2616,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     return out;
   }
 
-  // Connection notes stack up: every model or mode switch reconnects and says
-  // the same shape of thing again. Only the last one is still true, so that is
-  // the one on screen, with the count of what it covers standing in for the rest.
+  // Connection notes stack up per reconnect; only the last is still true, so show it with a count for the rest.
   function renderNotes(items, gi) {
     if (items.length === 1) return renderEntry(items[0].e, items[0].i);
     const at = items[0].i;
@@ -2989,10 +2635,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
     );
   }
 
-  // One entry that can't render costs that entry, as its plain text where it
-  // has any — never the transcript, which has no other copy on screen. Entry
-  // has to be a component: drawn inline, the markdown would run during
-  // Console's own render, above the boundary that's meant to catch it.
+  // One entry that can't render costs only itself (plain text where it has any). Entry must be a component: inline, markdown would run above the error boundary.
   function renderEntry(e, i) {
     return (
       <ErrorBoundary key={i} label="console entry" resetKey={e.text}
@@ -3095,11 +2738,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
         </div>
       );
     }
-    // What the turn changed — the receipt auto mode trades approval cards
-    // for. Deliberately not a summary anyone wrote: every row is one tool
-    // call that ran and returned, so the list is countable rather than
-    // agreeable. Rows past the eighth fold, because a long unattended run is
-    // exactly when the count matters more than the detail.
+    // What the turn changed: auto mode's receipt in place of approval cards. Each row is one tool call that ran (countable, not a written summary); rows past the eighth fold.
     if (e.kind === "changes") {
       const open = openRuns.has(i);
       const shown = open ? e.items : e.items.slice(0, 8);
@@ -3163,8 +2802,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
       );
     if (modalCard && e.requestId === modalCard.requestId)
       return <p key={i} className="entry status card-away">Waiting on your answer — the card is open in the middle of the screen.</p>;
-    // Live only where you can answer it: the keys are the window's, so a card
-    // in a hidden tab mustn't take them.
+    // Live only where you can answer it: a hidden tab's card mustn't take the window's keys.
     if (e.kind === "perm")
       return <PermCard key={i} entry={e} active={awaiting === e.requestId && active}
                        onAnswer={answerPermission} />;
@@ -3188,9 +2826,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
             ))}
           </div>
         )}
-        {/* Held for their own turns, in order (#92). Click one to edit it;
-            ↑↓ reorder; "steer now" hands it in mid-turn (idle, "send now"
-            makes it the next turn); × drops it. The server holds the list. */}
+        {/* Held for their own turns (#92): click edits, ↑↓ reorder, "steer now" hands in mid-turn (idle: "send now"), × drops. The server holds the list. */}
         {holding.length > 0 && (
           <ol className="held-list" aria-label="Held for the next turns">
             {holding.map((h, i) => (
@@ -3304,9 +2940,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
                 {p.kind === "file" && <Icon name="paperclip" size={10} />}
                 {p.kind === "session" && <Icon name="message" size={10} />}
                 {p.label}
-                {/* the note is what the model will actually see of an
-                    unreadable file, so it belongs on the chip, not in a
-                    tooltip the user has to go looking for */}
+                {/* the note is what the model sees of an unreadable file: on the chip, not a tooltip */}
                 {p.kind === "file" && !p.data && p.note && (
                   <span className="pill-note">{p.note}</span>
                 )}
@@ -3355,9 +2989,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
           </div>
         )}
         {voiceNote && <div className="voice-note">{voiceNote}</div>}
-        {/* The prompt as it will read, drawn only while it holds a formula:
-            the textarea keeps the $…$ source, this shows what it says, and a
-            formula clicked here opens in the math field again. */}
+        {/* The prompt as it will read, only while it holds a formula (the textarea keeps the $…$ source); clicking one reopens the math field. */}
         {composerMath && (
           <div className="composer-preview" aria-label="Your message with its formulas drawn">
             {renderUserMath(input, (span) => openMath(span), mathMadeRef.current)}
@@ -3402,15 +3034,11 @@ export default function Console({ tabId = "main", active = true, onTitle,
               }
               if (ctrl && e.key === "Enter") { e.preventDefault(); sendNow(); return; }
               if (e.metaKey && !e.ctrlKey && e.key === "Enter") { e.preventDefault(); sendElsewhere(); return; }
-              // Shift+Tab switches the permission mode only on an empty composer;
-              // with something typed it's plain Shift+Tab, focus
-              // moving back, which every other control in the app now gets.
-              // ⌥⇧Tab is always WebKit's move-focus-back.
+              // Shift+Tab cycles the mode only on an empty composer; otherwise (and ⌥⇧Tab) it's WebKit's focus-back.
               if (e.key === "Tab" && e.shiftKey && (input || e.altKey)) return;
               if (e.key === "Tab" && e.shiftKey) {
                 e.preventDefault();
-                // Mid-turn too: the switch is live and leaves the turn running.
-                // Never onto "never ask": its confirm is no place for a stray key.
+                // Mid-turn too (live switch). Never onto "never ask": its confirm is no place for a stray key.
                 const cycle = MODES.filter((m) => m.value !== "bypass" || m.value === mode);
                 const at = cycle.findIndex((m) => m.value === mode);
                 changeMode(cycle[(at + 1) % cycle.length].value);
@@ -3457,8 +3085,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
                 if (!input && queued.length) {
                   e.preventDefault();
                   const last = queued[queued.length - 1];
-                  // A sent one comes back only if the CLI hasn't read it
-                  // (the backend's `unqueued` answer); a held command is ours.
+                  // A sent one returns only if the CLI hasn't read it (`unqueued`); a held command is ours.
                   if (last.local || wsRef.current?.readyState !== WebSocket.OPEN) unqueued([last.id]);
                   else wsRef.current.send(JSON.stringify({ type: "unqueue", id: last.id }));
                   return;
@@ -3492,10 +3119,7 @@ export default function Console({ tabId = "main", active = true, onTitle,
             aria-label="Attach from the Desktop">
             <Icon name="paperclip" size={14} />
           </button>
-          {/* The bar's "new" isn't on screen in the plan view, which draws
-              only this composer — so the composer carries its own. Not
-              mid-turn: reconnecting would drop the reply being written. Hidden
-              while nothing has been said — it's already a new chat. */}
+          {/* The plan view shows only this composer, so it carries its own "new": not mid-turn (reconnect drops the reply), hidden while idle. */}
           {!idle && (
             <button className="btn mic-btn" onClick={newSession} disabled={busy}
               title={busy ? "Stop the reply first" : "New chat"}
@@ -3537,8 +3161,5 @@ export default function Console({ tabId = "main", active = true, onTitle,
   }
 }
 
-// What the app mounts. The app re-renders whenever any card's fetch starts or
-// lands (widgets/cards.js runs there), and none of that concerns the console.
-// Its props are all stable callbacks plus `pills`, so memo keeps a long
-// transcript from re-rendering on every one.
+// What the app mounts. Props are stable callbacks plus `pills`, so memo keeps a long transcript from re-rendering on every card fetch (widgets/cards.js).
 export const ConsolePane = memo(Console);

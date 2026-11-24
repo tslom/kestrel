@@ -1,9 +1,6 @@
-"""The health poller's failure modes: a transient blip is retried, and a
-series that still fails costs only its own metrics.
+"""The health poller's failure modes: a blip is retried, a failing series costs only its own metrics.
 
-Measured before this (2026-10): ~8% of refresh cycles died on one read
-timeout / reset / 503 out of eleven sequential calls, and the whole window —
-every metric — was thrown away with it.
+Design: DESIGN.md → `app/health.py`: refresh failure modes, test-pinned.
 """
 
 import io
@@ -73,8 +70,7 @@ def test_a_4xx_is_an_answer_not_a_blip(monkeypatch, answer):
 
 
 def test_a_401_refreshes_the_token_once_and_resends(monkeypatch):
-    """Google now and then rejects a token its expiry still vouches for. A
-    401 never landed, so even a non-idempotent POST is safe to resend."""
+    """A 401 is retried once, even for a POST (it never landed)."""
     seen = []
     orig = http.urllib.request.Request
 
@@ -104,8 +100,7 @@ def test_the_resent_call_keeps_its_transient_retry(monkeypatch):
 
 
 def test_offline_is_not_retried(monkeypatch):
-    """A dead resolver half a second later is still dead; offline.py serves
-    the cache for it."""
+    """A dead resolver is not retried; offline.py serves the cache."""
     dns = urllib.error.URLError(socket.gaierror(8, "nodename nor servname"))
     calls = _script(monkeypatch, dns, b"{}")
     with pytest.raises(urllib.error.URLError):
@@ -217,8 +212,7 @@ def test_a_failed_series_keeps_its_rows_and_the_rest_still_land(con, token, monk
 
 
 def test_a_cold_day_with_a_failed_series_still_reads_as_missing(con, token, monkeypatch):
-    """Backfill marks nothing on partial failure, so the next get() asks
-    again instead of trusting a day with no heart rate in it."""
+    """A partial failure marks nothing, so the next get() asks again."""
     monkeypatch.setattr(health, "_api", _fake_api(
         {"sleep": urllib.error.URLError(ConnectionResetError(54, "reset"))}))
     d = date.fromisoformat(DAY)
@@ -229,8 +223,7 @@ def test_a_cold_day_with_a_failed_series_still_reads_as_missing(con, token, monk
 
 
 def test_a_dead_token_outranks_a_timeout(con, token, monkeypatch):
-    """best_effort() swallows the network; a 401 beside a timeout must be the
-    one raised, or the expired credential hides behind stale data."""
+    """A 401 beside a timeout is the error raised."""
     monkeypatch.setattr(health, "_api", _fake_api(
         {"heart-rate": TimeoutError("slow"), "steps": RuntimeError("health API 401: x")}))
     d = date.fromisoformat(DAY)
@@ -239,9 +232,7 @@ def test_a_dead_token_outranks_a_timeout(con, token, monkeypatch):
 
 
 def test_an_unavailable_optional_type_is_not_a_failure(con, token, monkeypatch):
-    """The nightly trio may not exist for this watch: the API refusing one is
-    "no data", so the sync completes — and it no longer wipes that metric's
-    rows on the way."""
+    """An API refusal of a nightly metric is "no data": the sync completes and keeps its rows."""
     _seed(con)
     monkeypatch.setattr(health, "_api", _fake_api(
         {"daily-oxygen-saturation": RuntimeError("health API 400: unsupported")}))
@@ -255,8 +246,7 @@ def test_an_unavailable_optional_type_is_not_a_failure(con, token, monkeypatch):
 
 
 def test_a_clean_sync_still_replaces_the_window(con, token, monkeypatch):
-    """A metric the source no longer reports for a day goes away, as before —
-    the scoped delete covers every series that answered."""
+    """A metric the source stops reporting for a day goes away."""
     _seed(con)
     monkeypatch.setattr(health, "_api", _fake_api())
     d = date.fromisoformat(DAY)

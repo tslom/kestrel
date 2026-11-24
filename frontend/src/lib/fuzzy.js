@@ -1,8 +1,5 @@
-// Subsequence matching for the command palette. Small on purpose: the palette
-// ranks ~30 fixed commands, not a vault's worth of notes, so a greedy
-// left-most scan is enough and stays readable. If this ever ranks note titles,
-// replace it — greedy can miss the better alignment of a query against a long
-// string, and at that size you'd notice.
+// Subsequence matching for the command palette. Greedy left-most scan: enough for ~30 fixed commands; replace
+// it if it ever ranks note titles (greedy misses better alignments in long strings).
 
 // Anything that starts a "word" — a match landing here reads as intentional
 // ("cal" hitting Calendar) rather than incidental ("cal" hitting Local).
@@ -34,31 +31,20 @@ export function match(text, query) {
     at = found + 1;
   }
 
-  // Two tiebreaks, both weak enough that a real bonus above always outranks
-  // them: matches that start early beat late ones, and short labels beat long
-  // ones holding the same match.
+  // Weak tiebreaks (a real bonus outranks them): early matches, then short labels.
   score -= positions[0] * 0.5;
   score -= text.length * 0.05;
   return { score, positions };
 }
 
-// Keywords are alternative names for a command, and they are matched as
-// substrings rather than fuzzily. Subsequence matching over the keyword blob
-// finds nonsense — "debug" picks the d-e-b out of "Debts" and the u-g out of
-// its own trailing "jump…widget" — and beats the command that actually lists
-// "debug". You type a keyword because you know the word, so requiring it whole
-// costs nothing and removes the junk.
+// Keywords match as whole substrings, not fuzzily: subsequence over the keyword blob finds nonsense ("debug"
+// picks letters out of "Debts") and beats the command that lists "debug".
 const KEYWORD_HIT = -100;
 
 /**
- * Filter and rank `commands` against `query`.
- *
- * Titles match fuzzily and score; keywords only decide whether a command
- * survives at all. That gap is deliberate and wide — a title match always
- * sorts above a command that merely mentions the word — and ties fall back to
- * declaration order, which is why an empty query returns the list untouched.
- *
- * @returns {Array} commands, each with `positions` for title highlighting.
+ * Filter and rank `commands`: titles match fuzzily and score; keywords only decide survival, so a title match
+ * always outranks a keyword mention. Ties keep declaration order (an empty query returns the list untouched).
+ * @returns {Array} commands with `positions` for title highlighting.
  */
 export function rank(commands, query) {
   const q = query.trim();

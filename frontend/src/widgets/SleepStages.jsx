@@ -5,14 +5,9 @@ import { dragPin } from "../lib/drag.js";
 import { useChartWidth } from "../ui/charts.jsx";
 import { dayDate, fmtHM, shortDay } from "../lib/time";
 
-// Sleep-stage stacked bars: one bar per night stacking
-// deep / rem / light / awake minutes. The four series are already synced by
-// the health provider (providers/health.py) and served on /api/health — this
-// is UI only, no backend. Depth reads as a single-hue blue ramp (deep darkest
-// → light lightest); awake is a neutral gray because it isn't sleep. The
-// legend, the direct hour labels and the hover breakdown all carry identity,
-// so color is never the only cue. Self-contained like Patterns.jsx: its own
-// range chips and fetch, rendered as a third mode inside TrendsExpand.
+// Sleep-stage stacked bars from /api/health (deep/rem/light/awake). Depth is a single-hue blue ramp
+// (deep darkest); awake is neutral gray (not sleep); legend and labels mean colour is never the only
+// cue. Self-contained like Patterns.jsx (own range chips and fetch), a third mode in TrendsExpand.
 
 // Bottom → top of each stack. Order is by depth so the ramp reads dark→light.
 const STAGES = [
@@ -30,10 +25,8 @@ function weekday(key) {
   return dayDate(key).toLocaleDateString([], { weekday: "short" });
 }
 
-// Stacked bars off a bottom baseline, one per night. A 1.5px surface-colored
-// stroke on each segment opens a clean gap between stages without distorting
-// true stacked heights. A dotted line marks the average total sleep; total
-// hours are direct-labeled above each bar when the range is short enough to fit.
+// A 1.5px surface-coloured stroke per segment gaps the stages without distorting heights; dotted
+// line = average total; hour labels only when the range is short enough.
 function StackChart({ nights }) {
   const [box, W] = useChartWidth();
   const H = 192, padX = 12, padTop = 16, padBot = 26;

@@ -1,12 +1,6 @@
-"""Office-hours amendments read out of mail, waiting on approval.
+"""Office-hours amendments read out of mail wait on approval; the tests pin what a proposal refuses to become.
 
-A Piazza post saying "no OH Thursday" is the one piece of course data that
-arrives by mail and goes stale in the vault. Applying it automatically was the
-obvious build and is the wrong one: a misparse sends you across campus to a
-locked door, and you find out by standing outside it. So the extractor
-proposes and you approve, and the assertions worth having are about what the
-proposal refuses to become — a row you can't check, or a write the vault
-didn't agree to.
+Design: DESIGN.md → Schema history, "v48, office-hours proposals".
 """
 
 import json
@@ -81,16 +75,14 @@ def test_a_clean_cancellation_becomes_a_pending_proposal(dbfile, vault_courses):
 
 
 def test_no_quote_is_no_proposal(dbfile, vault_courses):
-    """The quote is the only field a human can check at a glance. Without it
-    the approval step is a coin flip with extra steps."""
+    """No quote, no proposal: it's the only field a human can check at a glance."""
     _mail()
     _upsert(_item(quote=""))
     assert _rows() == []
 
 
 def test_an_unknown_course_is_dropped(dbfile, vault_courses):
-    """A guessed code ("CS 103") points at a note _find can't open, so the
-    proposal would be unapprovable — drop it rather than surface it."""
+    """A guessed code ("CS 103") can't be opened by _find: dropped, not surfaced."""
     _mail()
     _upsert(_item(course="CS 103"))
     assert _rows() == []
@@ -103,8 +95,7 @@ def test_an_unparseable_date_is_dropped(dbfile, vault_courses):
 
 
 def test_a_change_with_no_new_time_is_dropped(dbfile, vault_courses):
-    """"Office hours are moving" with no time says nothing that can be
-    applied; a cancel needs no time, a change does."""
+    """A change with no time can't be applied; a cancel needs none."""
     _mail()
     _upsert(_item(action="change", when=None))
     assert _rows() == []
@@ -132,8 +123,7 @@ def test_the_same_amendment_twice_stays_one_row(dbfile, vault_courses):
 
 
 def test_one_message_can_propose_two_dates(dbfile, vault_courses):
-    """The UNIQUE key is (msg_id, course, day, action) — "Thursday and Friday
-    are off" is two amendments from one mail, not a conflict."""
+    """UNIQUE is (msg_id, course, day, action): "Thursday and Friday off" is two amendments."""
     _mail()
     _upsert(_item(day="2026-09-20"))
     _upsert(_item(day="2026-09-21"))
@@ -143,9 +133,7 @@ def test_one_message_can_propose_two_dates(dbfile, vault_courses):
 # ---------- the pending list ----------
 
 def test_past_dates_drop_off_the_pending_list(dbfile, vault_courses):
-    """Approving "cancel last Tuesday" writes an override for a day that has
-    already happened — noise in the vault, and it can't change a decision you
-    already made by walking over there."""
+    """A cancel for a day that already happened is dropped from the pending list."""
     _mail()
     _upsert(_item(day="2020-01-06"))
     assert email_extract.pending_oh_proposals() == []
@@ -162,8 +150,7 @@ def test_decided_proposals_leave_the_pending_list(dbfile, vault_courses, applied
 
 
 def test_a_borrowed_connection_is_left_open(dbfile, vault_courses):
-    """The caller's connection is theirs: reading through it must not close it
-    (nor commit its open transaction)."""
+    """Reading through the caller's connection must not close or commit it."""
     _mail()
     with db.session() as con:
         con.execute("BEGIN")
@@ -262,9 +249,7 @@ def test_deciding_twice_is_idempotent(dbfile, vault_courses, applied):
 
 
 def test_a_failed_apply_leaves_it_pending(dbfile, vault_courses, monkeypatch):
-    """The note moved, or the entry can't be matched. A proposal that failed
-    to apply is still waiting — marking it approved would hide that the vault
-    is unchanged."""
+    """A failed apply (note moved, entry unmatched) stays pending: approving would hide an unchanged vault."""
     def boom(*a, **kw):
         raise courses.CourseError("no office_hours entry for that TA")
     monkeypatch.setattr(courses, "set_exception", boom)
@@ -333,11 +318,7 @@ def test_a_quote_naming_no_or_several_weekdays_keeps_the_date(dbfile, vault_cour
 
 
 # ---------- a new weekly block (action='add') ----------
-#
-# A course digest where a TA signing "Devon" announces standing Thursday
-# hours "starting next week" must not read as relevant:false, as it did when
-# the prompt ruled every standing schedule out. These run against a real
-# note on disk, because approval goes through courses.set_hours for real.
+# Runs against a real note on disk: approval goes through courses.set_hours.
 
 DEVON_QUOTE = ("Starting next week, I will be holding office hours from 12-2 pm "
               "on Thursdays in GCS, Lower Level 2.")
@@ -388,8 +369,7 @@ def _devon(**over):
 
 
 def test_the_digest_s_new_ta_block_becomes_a_proposal(dbfile, note):
-    """No surname and a relative start date are both fine: the name is what
-    the post was signed with, and the date is the first Thursday it applies."""
+    """No surname and a relative start date are both fine."""
     note([HALVORSEN])
     _mail(subject="10/02/26 Daily Digest for CSCI 103L on Piazza",
           from_addr="no-reply@piazza.com")
@@ -402,8 +382,7 @@ def test_the_digest_s_new_ta_block_becomes_a_proposal(dbfile, note):
 
 @pytest.mark.parametrize("where", [None, "GCS, Lower Level 2", "gcs lower level 2"])
 def test_an_add_the_note_already_holds_is_dropped(dbfile, note, where):
-    """A digest re-announcing the syllabus hours is not news — however the
-    model punctuates the room."""
+    """A digest re-announcing the syllabus hours is not news, however the room is punctuated."""
     note([HALVORSEN, {"who": "Devon", "role": "TA", "when": "Thurs 12:00–14:00",
                     "where": "GCS Lower Level 2"}])
     _mail()
@@ -432,8 +411,7 @@ def test_an_add_the_card_could_not_place_is_dropped(dbfile, note, over):
 
 
 def test_an_add_that_started_last_week_still_waits(dbfile, note):
-    """A cancel for a past date is moot; a weekly block that began last week
-    is this week's hours, so it stays on the card."""
+    """A past cancel is moot; a weekly block that began last week stays."""
     note([HALVORSEN])
     _mail()
     _upsert(_devon(day="2020-01-02", quote="I hold office hours on Thursdays now."))
@@ -458,8 +436,7 @@ def test_approving_an_add_writes_the_block_and_undo_removes_it(dbfile, note):
 
 
 def test_undoing_an_add_that_amended_a_block_puts_the_old_one_back(dbfile, note):
-    """Same person, same weekday is the same block, so set_hours amends it —
-    and the undo must restore those hours, not delete the block."""
+    """Same person and weekday is the same block: undo restores the hours, not deletes the block."""
     note([HALVORSEN])
     _mail()
     _upsert(_devon(who="Martin Halvorsen", role="instructor", when="Tue 14:00-16:00",
@@ -483,8 +460,7 @@ def test_the_model_is_told_the_hours_already_on_file(dbfile, note):
 # ---------- a digest is several posts ----------
 
 def test_every_amendment_in_one_message_is_kept(dbfile, vault_courses, monkeypatch):
-    """The runner used to keep only the first object per id — the second post
-    in a digest was parsed and then thrown away."""
+    """Every post in a digest is kept, not just the first object per id."""
     _mail(subject="Daily Digest for CSCI 103L")
     reply = [_item(day="2099-05-05", quote="No OH Tuesday."),
              _item(day="2099-05-07", quote="No OH Thursday.")]

@@ -1,16 +1,8 @@
 """Web Push, sender side: RFC 8291 encryption and a VAPID header (RFC 8292).
 
-The phone door's notifications (app/phone.py). Written against `cryptography`
-rather than taking pywebpush: it is four primitives (ECDH, HKDF, AES-GCM,
-ES256), the RFC publishes a worked example to hold them to
-(test_webpush.py), and it keeps the list of things that talk to the network
-on this machine short.
-
-What leaves is one HTTPS POST, outbound, to the push service the phone's
-browser registered with. The body is encrypted to a key only that browser
-holds, so the service relays ciphertext. `send()` refuses any endpoint that
-isn't a known push service: the endpoint is a URL a paired device handed us,
-and this server must not become a way to POST at arbitrary hosts.
+For the phone door's notifications (app/phone.py). `send()` refuses any endpoint
+that isn't a known push service (PUSH_HOSTS): endpoints come from paired devices.
+Design: DESIGN.md → `app/webpush.py`.
 """
 from __future__ import annotations
 
@@ -27,8 +19,7 @@ from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
-# Where a browser's push subscription may point: Apple (Safari, and every
-# browser on iOS), Google (Chrome), Mozilla (Firefox).
+# Allowed push services: Apple (Safari, all iOS browsers), Google, Mozilla.
 PUSH_HOSTS = (".push.apple.com", "fcm.googleapis.com",
               "updates.push.services.mozilla.com")
 RECORD_SIZE = 4096

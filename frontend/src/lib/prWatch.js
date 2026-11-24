@@ -3,20 +3,14 @@ import { postJSON } from "./api.js";
 import { useTicker } from "./poll.js";
 import { useLoad } from "./refresh.js";
 
-// PR watch (backend: app/console_pr.py). A dev tab linked to its pull
-// request polls it every two minutes and is woken with a note when it moves.
-// The backend is stateless: the last snapshot lives here, per tab, in
-// localStorage, and goes back with each poll so the backend can say what
-// changed. Polling lives in the tab's console, so a tab that's closed or
-// settled (unmounted) stops asking, and a merged or closed PR stops it too.
-//
-// `watch`: { ref, last, final } — `ref` the PR's URL once known (a link made
-// from the branch passes ""), `last` the snapshot, `final` merged or closed.
+// PR watch (app/console_pr.py): a dev tab linked to its PR polls every two minutes and is woken with a note when
+// it moves. The backend is stateless: the last snapshot lives here per tab (localStorage) and goes back with each
+// poll. Polling lives in the tab's console, so closed/settled tabs and merged/closed PRs stop it.
+// `watch`: { ref (PR URL once known; "" for a link made from the branch), last (snapshot), final (merged/closed) }.
 
 export const PR_POLL_MS = 120_000;
 
-// What a `gh pr create` names its PR by: its --head branch, if it pushed one
-// other than the tree's own (a site repo's try/* branches), else the tree's branch.
+// A `gh pr create` names its PR by its --head branch if it pushed one other than the tree's own, else the tree's branch.
 export function createdRef(command) {
   return /\bgh\s+pr\s+create\b[^\n]*?(?:--head|-H)[=\s]+["']?([\w./-]+)/.exec(command || "")?.[1] || "";
 }
@@ -62,8 +56,7 @@ export function usePrWatch({ tabId, project, worktree, onNotes }) {
   const [checking, setChecking] = useState(false);
   const setWatch = (w) => { setWatchState(w); save(tabId, w); };
 
-  // One poll at a time: two in flight carry the same `last`, and both would
-  // report the same news (the mount poll and a refresh-bus broadcast did).
+  // One poll at a time: two in flight carry the same `last` and report the same news twice.
   const inflight = useRef(null);
   function check(ref = watch?.ref ?? "", last = watch?.last ?? null) {
     if (!project) return Promise.resolve(null);
@@ -80,8 +73,7 @@ export function usePrWatch({ tabId, project, worktree, onNotes }) {
       if (r.notes?.length) onNotes?.(r.notes, r.pr);
       return { pr: r.pr };
     } catch (e) {
-      // A first link that finds no PR says so and links nothing; a poll that
-      // fails (offline, gh logged out) keeps the watch and tries again.
+      // A first link finding no PR links nothing; a failed poll (offline, gh logged out) keeps the watch.
       setError(e.message);
       return { error: e.message };
     } finally {

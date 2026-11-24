@@ -3,14 +3,9 @@ import { fetchJSON } from "../lib/api";
 import { dayDate, fmtDay } from "../lib/time";
 import Band from "./Band.jsx";
 
-// A year of one daily number, a square per day, so a season or a habit reads at
-// a glance. Fixed to the year whatever range the sheet is on: its job is the
-// long view that range bars can't give.
-//
-// One hue, light to dark, in steps cut at the quartiles of the days that have
-// any, so a single huge day can't wash the rest out. A day with no reading draws
-// nothing and a reading of zero draws a faint square: a sensor that wasn't
-// watching isn't a zero.
+// A year of one daily number, a square per day, fixed to the year whatever the sheet's range.
+// One hue in quartile steps (a huge day can't wash out the rest). No reading draws nothing; zero draws
+// a faint square: an unwatching sensor isn't a zero.
 
 const CELL = 11, GAP = 2, PITCH = CELL + GAP;
 const LABEL_W = 0, TOP = 14;
@@ -82,8 +77,7 @@ export function CalendarHeat({ rows, start, fmt, label }) {
   );
 }
 
-// The band every sheet uses: reads its own year, so it costs the sheet's own
-// range nothing. `views` of a sheet stay as they were.
+// The band every sheet uses: reads its own year, independent of the sheet's range.
 export default function YearHeat({ source, metric, fmt, label, title = "This year" }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);

@@ -7,15 +7,8 @@ import { useSheetData } from "../lib/sheet.js";
 import { fmtAgo, fmtDur, shortDay } from "../lib/time";
 import { fmtKm } from "../lib/units.js";
 
-// Location sheet — where the days went.
-//
-// The one thing this sheet has to keep saying, because every number on it is
-// shaped by it: **OwnTracks reports movement, not presence.** A phone that
-// sits still sends nothing, so a quiet day and a dead app produce the same
-// empty row, and every figure here is a lower bound over whatever slice of
-// the day was actually recorded. The card says this in words; the sheet says
-// it by never drawing a zero it didn't observe (`finite` drops the nulls) and
-// by wording the away window as fixes rather than as leaving and coming home.
+// Location sheet. OwnTracks reports movement, not presence: every figure is a lower bound, so the
+// sheet never draws an unobserved zero (`finite` drops nulls) and words the away window as fixes.
 const VIEWS = ["km_traveled", "time_at_home_min", "places", "entropy",
   "first_leave", "last_return"];
 
@@ -43,9 +36,7 @@ export default function LocationSheet({ onPin }) {
 
   const leaveAt = new Map(finite(rows("first_leave")).map((r) => [r.day, r.value]));
   const returnAt = new Map(finite(rows("last_return")).map((r) => [r.day, r.value]));
-  // Every day that produced any fix at all gets a row, even the ones with no
-  // away window — a blank track is the day saying "the phone never left", and
-  // dropping it would quietly shorten the week.
+  // Every day with any fix gets a row, even with no away window (a blank track is "the phone never left").
   const spanDays = [...new Set([...km.map((r) => r.day), ...leaveAt.keys()])].sort();
   const spans = spanDays.map((day) => ({
     key: day, label: shortDay(day),

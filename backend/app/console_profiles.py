@@ -1,21 +1,9 @@
-"""What a console tab is *for*: general, study, or dev on a project.
+"""What a console tab is for: general, study, or dev on a project.
 
-A profile is the part of a session fixed at start — cwd, prompt, tools,
-permission mode — so it is chosen when the tab opens (the new-tab picker),
-not guessed from the first message: a misread would run the whole session in
-the wrong directory with the wrong tools. A tab can still move work to the
-right place mid-conversation through `open_tab` (console_tools), which opens
-a new tab rather than reshaping this one.
-
-- **general** — the vault console as it always was.
-- **study** — the same vault and tools, prompted to tutor: work it through
-  with the user rather than hand over the answer. Builds on the course tools.
-- **dev** — Claude Code on a repo under `DEV_PROJECT_ROOTS`: cwd at the repo,
-  so its CLAUDE.md, settings, skills and auto-memory load the way they do in a
-  terminal; the stock prompt plus a short note (no vault rules); subagents on;
-  none of the vault tools but `open_tab` and `project_info`. Other projects
-  are readable from it (Read/Grep/Glob without a card, see `is_project_path`)
-  but never added as working directories — writing there still asks.
+A profile is the part of a session fixed at start (cwd, prompt, tools, permission
+mode), so it is chosen when the tab opens, never guessed from the first message.
+`resolve_project` is the only gate between a browser/model string and a dev cwd.
+Design: DESIGN.md → Console (Modes).
 """
 
 import re
@@ -26,22 +14,17 @@ from typing import Any
 from . import db
 from .config import DEV_PROJECT_ROOTS
 
-# Claude Code's per-project state: ~/.claude/projects/<cwd, every
-# non-alphanumeric as "-">/memory is a repo's auto-memory.
+# A repo's auto-memory: ~/.claude/projects/<cwd, non-alphanumerics as "-">/memory.
 CLAUDE_PROJECTS = Path.home() / ".claude" / "projects"
 
-# A new project's directory name: no separators, no leading dot (list_projects
-# hides those), nothing a shell or a URL would trip on.
+# No separators, no leading dot (list_projects hides those), nothing a shell or URL trips on.
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 
 PROFILES = ("general", "study", "dev")
 
-# What a profile starts in before you pick one for it (the browser remembers
-# your pick per profile). Dev runs never ask: a Claude Code session on a repo you opened on purpose doesn't stop for clicks,
-# and the turn's diff is the review. That includes a tab another tab opened,
-# which sat on a card nobody was watching while it was held to ask. General
-# and study stay on auto: they hold the mail and calendar tools, and auto still
-# stops for what can't be undone.
+# Mode before the user picks one. Dev never asks (the turn's diff is the review; a
+# tab opened by another tab sat on an unwatched card). General/study stay on auto:
+# they hold mail and calendar tools.
 DEFAULT_MODE = {"general": "auto", "study": "auto", "dev": "bypassPermissions"}
 
 
@@ -58,8 +41,7 @@ def _is_project(path: Path) -> bool:
 
 
 def list_projects() -> list[dict]:
-    """Every directory directly under a project root, most recently touched
-    first — the picker's list. `git` marks the ones the diff pane can read."""
+    """Directories directly under a project root, newest first. `git` marks diff-readable ones."""
     out = []
     for root in DEV_PROJECT_ROOTS:
         if not root.is_dir():
@@ -69,8 +51,7 @@ def list_projects() -> list[dict]:
                 continue
             git = (p / ".git").exists()
             try:
-                # A repo's .git/index moves on every stage and checkout, which
-                # is a better "last worked on" than the directory's own mtime.
+                # .git/index moves on every stage/checkout: better "last worked on" than the dir.
                 mtime = (p / ".git" / "index").stat().st_mtime if git else p.stat().st_mtime
             except OSError:
                 mtime = 0
@@ -81,12 +62,8 @@ def list_projects() -> list[dict]:
 
 
 def resolve_project(value: str | None) -> Path:
-    """A project path or bare name → the directory, or ProfileError.
-
-    The only gate between a string from the browser (or the model, through
-    open_tab) and a session's cwd, so it accepts nothing but an immediate
-    child of a configured root: no `..`, no symlink out, no other directory.
-    """
+    """A project path or bare name → the directory, or ProfileError. Accepts only an
+    immediate child of a configured root (no `..`, no symlink out)."""
     if not value:
         raise ProfileError("a dev tab needs a project")
     projects = list_projects()
@@ -101,16 +78,14 @@ def resolve_project(value: str | None) -> Path:
 
 
 def with_folders(rows: list[dict]) -> list[dict]:
-    """`list_projects` rows with the folder each is filed under. Apart from
-    list_projects on purpose: a folder is only how the picker groups things,
-    so it can't change what a name resolves to or what a tab may read."""
+    """`list_projects` rows plus their picker folder. Kept apart from list_projects so
+    a folder never changes what a name resolves to or what a tab may read."""
     folders = db.project_folders()
     return [{**p, "folder": folders.get(str(Path(p["path"]).resolve()))} for p in rows]
 
 
 def file_project(project: str | None, folder: str | None) -> dict:
-    """Move a project into a folder (blank: out of it). App metadata only:
-    the directory stays put. One level, so no `/` in a folder's name."""
+    """Move a project into a folder (blank: out). App metadata only; one level, no `/`."""
     path = resolve_project(project)
     name = " ".join(str(folder or "").split())
     if len(name) > 64 or "/" in name:
@@ -119,11 +94,8 @@ def file_project(project: str | None, folder: str | None) -> dict:
 
 
 def create_project(name: str | None, root: str | None = None) -> dict:
-    """A new, empty project — the picker's "new project" row. `git init`ed so
-    the diff pane works from the first turn; nothing else is scaffolded (the
-    first dev turn is where a project gets its shape). `root` must be one of
-    DEV_PROJECT_ROOTS (default: the first); an existing name is refused, not
-    reused."""
+    """A new empty `git init`ed project (nothing scaffolded). `root` must be one of
+    DEV_PROJECT_ROOTS (default: the first); an existing name is refused."""
     name = str(name or "").strip()
     if not _NAME.fullmatch(name):
         raise ProfileError("a project name is letters, digits, . _ - "
@@ -148,8 +120,7 @@ def memory_dir(path: Path) -> Path:
 FILE_WALK_CAP = 20_000
 FILE_MATCHES = 12
 FILE_MAX_BYTES = 1_000_000
-# Generated from app.db and index.db: an edit here would be overwritten, or
-# worse, read as the truth (CLAUDE.md, one source of truth per datum).
+# Generated (CLAUDE.md: one source of truth per datum); an edit would be overwritten.
 FILE_READ_ONLY = {"tasks.md"}
 
 
@@ -192,8 +163,8 @@ def write_file(cwd: Path, rel: str, content: str, mtime: Any) -> dict:
 
 
 def matching_files(cwd: Path, query: str) -> list[str]:
-    """Relative paths under `cwd` containing `query`, names before folders.
-    git's list where there is one, so a repo's ignored files don't drown it."""
+    """Relative paths under `cwd` containing `query`, filename hits first. Uses git's
+    list where there is one so ignored files don't drown it."""
     import itertools
     import os
     import subprocess
@@ -221,9 +192,8 @@ def matching_files(cwd: Path, query: str) -> list[str]:
 
 
 def dev_servers(cwd: Path, skip: tuple[int, ...] = ()) -> list[dict]:
-    """What's listening on this machine from inside a project, for the view
-    pane's preview: `lsof` for the listeners, then each one's cwd. A port with
-    no process behind this project is someone else's, so it isn't offered."""
+    """Listening ports whose process cwd is inside the project (the view pane's preview);
+    other people's ports aren't offered."""
     import re
     import subprocess
 
@@ -254,8 +224,7 @@ def dev_servers(cwd: Path, skip: tuple[int, ...] = ()) -> list[dict]:
 
 
 def is_project_path(value: str | None) -> bool:
-    """Whether a Read/Grep/Glob target is inside some project or its
-    auto-memory — what a dev tab may read without a card."""
+    """Whether a Read/Grep/Glob target is inside a project or its auto-memory (no card)."""
     if not value:
         return False
     try:
@@ -280,7 +249,7 @@ def _head(path: Path, limit: int) -> str | None:
 
 
 def _blurb(path: Path) -> str:
-    """A project's first prose line — README's (it says what the thing is), else CLAUDE.md's."""
+    """A project's first prose line: README's, else CLAUDE.md's."""
     for f in ("README.md", "readme.md", "CLAUDE.md", "AGENTS.md"):
         text = _head(path / f, 4000) or ""
         for line in text.splitlines():
@@ -301,10 +270,8 @@ def _git(path: Path, *args: str) -> str:
 
 
 def describe(project: str | None = None, exclude: Path | None = None) -> str:
-    """What one dev tab can learn about another project without leaving its
-    own. No project: every project, one line each. A project: its CLAUDE.md
-    (else README), its auto-memory index, recent commits, what's uncommitted
-    and the top level — enough to know what to Read next, with the paths."""
+    """What a dev tab can learn about another project: none given, one line per project;
+    else CLAUDE.md/README, memory index, commits, uncommitted count, top level."""
     if not project:
         rows = [p for p in list_projects()
                 if exclude is None or Path(p["path"]).resolve() != exclude.resolve()]
@@ -330,8 +297,7 @@ def describe(project: str | None = None, exclude: Path | None = None) -> str:
     for f in ("CLAUDE.md", "README.md", "readme.md"):
         if text := _head(path / f, 6000):
             out.append(f"## {f}\n{text}")
-            # A CLAUDE.md that is mostly `@AGENTS.md` imports: the imported
-            # files are the instructions, so they come along (inside the repo only).
+            # Follow `@file` imports (inside the repo only): they are the instructions.
             for imp in re.findall(r"^@(\S+)\s*$", text, re.M)[:4]:
                 target = (path / imp).resolve()
                 if path.resolve() in target.parents and (body := _head(target, 6000)):
@@ -350,6 +316,5 @@ def describe(project: str | None = None, exclude: Path | None = None) -> str:
 
 
 def start_mode(profile: str, asked: str | None) -> str | None:
-    """The permission mode a session starts in: your pick for the tab (stored by the
-    picker; a switch after start is a live `mode` message), else the profile's default."""
+    """The tab's picked permission mode (a later switch is a live `mode` message), else the profile's."""
     return asked or DEFAULT_MODE[profile]

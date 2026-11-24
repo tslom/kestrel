@@ -7,11 +7,9 @@ import Files from "../ui/Files.jsx";
 import Icon from "../ui/icons.jsx";
 import { dragPin } from "../lib/drag.js";
 
-// People / CRM-lite slide-over (ROUND34_PLAN.md §17): search by name, see
-// waiting-on threads + birthdays/watch-due, drill into one person's merged
-// email/message/meeting history, edit the only real facts (name, birthday,
-// watch_cadence_days, notes) via PATCH /api/people/{person_key}. Vault notes
-// are explicitly out of scope — this is texts/emails/events only.
+// People / CRM-lite slide-over: search, waiting-on threads, birthdays/watch-due, one person's merged
+// history, edits via PATCH /api/people/{person_key}. Texts/emails/events only, no vault notes.
+// Design: DESIGN.md → `frontend/src/widgets/PeopleExpand.jsx`.
 
 function fmtWhen(iso) {
   if (!iso) return "—";
@@ -23,23 +21,11 @@ function fmtWhen(iso) {
     : d.toLocaleDateString([], { year: "2-digit", month: "short", day: "numeric" });
 }
 
-// Identifies one waiting row across renders — same triple the list keys on,
-// so a draft stays attached to the message it was drafted for (a newer
-// message from the same person is a different row, and deserves a new draft).
+// A newer message is a different row and deserves a new draft.
 const rowId = (w) => `${w.kind}-${w.key}-${w.last_at}`;
 
-// One waiting row as console context — the thread, who's owed, how long it's
-// been, and the message itself. Shared by the row's pin button and its drag,
-// so the two gestures can't drift into sending different things.
-//
-// The identifier the row was drawn from rides along, because the pin carries
-// exactly one message and that message is a reply to something: a pinned
-// "here just in case +1 (555) …" reads as the sender offering a second
-// number of their own when the turn above it asked for someone else's
-// contact, and without a pointer the console can't go looking for that turn.
-// `their_latest_message` is named for what it is, and
-// chat_guid / thread_id are what a db_query over `messages` or `emails` needs
-// to read what came before it.
+// One waiting row as console context, shared by the pin button and the drag. chat_guid / thread_id
+// ride along so the console can db_query what the pinned message was replying to.
 const waitingPin = (w) => ({
   label: `waiting · ${w.to || w.key}`,
   data: {
@@ -125,10 +111,7 @@ function PersonDetail({ personKey, onPin, onBack }) {
 
   const { person, emails, messages, meetings, stats, message_handle } = detail;
 
-  // The history here is read-only, so "reply" means handing off to the real
-  // app. Backend-side `open`, not an <a href="imessage://">, so it doesn't
-  // depend on how the webview treats a non-http scheme — same behaviour in
-  // the pywebview window and a browser tab.
+  // Backend-side `open`, not an imessage:// link: webviews treat non-http schemes differently.
   const openMessages = () =>
     fetchJSON(`/api/people/${encodeURIComponent(personKey)}/open-messages`,
       { method: "POST" }).catch((e) => setError(e.message));
@@ -145,9 +128,7 @@ function PersonDetail({ personKey, onPin, onBack }) {
 
   return (
     <div className="people-detail">
-      {/* The head is the drag handle for the whole person. Making the panel
-          itself draggable would take text selection away from the history
-          under it, which is the one thing you actually read here. */}
+      {/* Only the head drags: a draggable panel would break text selection in the history. */}
       <div className="people-detail-head" {...dragPin(personLabel, personData)}>
         <button className="widget-footer-btn people-back" onClick={onBack}><Icon name="arrowLeft" size={11} /> all people</button>
         <button className="pin-mini people-pin" onClick={pin}
@@ -160,9 +141,7 @@ function PersonDetail({ personKey, onPin, onBack }) {
           <Icon name="message" /> Open in Messages
         </button>
       )}
-      {/* Keyed on what it copies, so a saved or reloaded card starts the
-          form over from the stored values, and a refetch that changed
-          nothing leaves an edit alone. */}
+      {/* Keyed on what it copies: a save resets the form, a no-change refetch leaves an edit alone. */}
       <EditForm key={[personKey, person.name, person.birthday, person.watch_cadence_days, person.notes].join("\u0000")}
         person={person} personKey={personKey} onSaved={(p) => setDetail((d) => ({ ...d, person: p }))} />
       <dl className="people-stats">
@@ -362,9 +341,7 @@ export default function PeopleExpand({ onPin }) {
     postJSON(`/api/people/${encodeURIComponent(key)}`, { hidden: val }, "PATCH")
       .then(load).catch((e) => setError(e.message));
 
-  // Dismiss ≠ mute. Mute kills a sender forever (bots, shops); dismiss writes
-  // off one dangling thread and lets the person back in the moment they send
-  // something newer — which is why `through` is the row's own last_at.
+  // Dismiss ≠ mute: mute kills a sender forever; dismiss ends one thread (`through` = the row's last_at).
   const dismiss = (w) =>
     postJSON("/api/people/waiting/dismiss",
       { kind: w.kind, key: w.key, through: w.last_at })
@@ -375,8 +352,7 @@ export default function PeopleExpand({ onPin }) {
       + `${encodeURIComponent(d.key)}`, { method: "DELETE" })
       .then(load).catch((e) => setError(e.message));
 
-  // "Not now" — the opposite of dismissing. Leaves the row in the feed (the
-  // reply is still owed) and puts a task in today's list.
+  // "Not now": keeps the row (the reply is still owed) and adds a task to today.
   const remind = (w) => {
     const id = rowId(w);
     setRemindState((s) => ({ ...s, [id]: "saving" }));
@@ -388,8 +364,7 @@ export default function PeopleExpand({ onPin }) {
       .catch((e) => { setRemindState((s) => ({ ...s, [id]: null })); setError(e.message); });
   };
 
-  // One model call per press, so it can take a few seconds — the row keeps a
-  // "drafting…" state rather than freezing the panel.
+  // One model call per press (seconds): the row shows "drafting…".
   const draft = (w) => {
     const id = rowId(w);
     if (drafts[id]) { setDrafts((d) => ({ ...d, [id]: null })); return; }  // toggle shut
@@ -519,16 +494,13 @@ export default function PeopleExpand({ onPin }) {
                     onClick={w.key ? () => setSelected(w.key) : undefined}>
                     <span className="people-hist-text">
                       {w.to || w.subject || "(unknown)"}
-                      {/* the message you owe a reply to, so you can tell
-                          a "you up?" from something that needs thought */}
+                      {/* the message you owe a reply to */}
                       {w.preview && <em className="people-preview">{w.preview}</em>}
                     </span>
                     <span className="people-hist-when">{w.days}d · {w.kind}</span>
                     {w.key && (
                       <>
-                        {/* The row already has three verbs for acting on it;
-                            this is the fourth — take it to the console when
-                            the answer needs thought rather than a template. */}
+                        {/* Fourth verb: take it to the console when the answer needs thought. */}
                         <button className="people-mute tip"
                           aria-label="Pin to console"
                           data-tip="Pin — attach this thread to your next console message"
@@ -564,9 +536,7 @@ export default function PeopleExpand({ onPin }) {
                         </button>
                       </>
                     )}
-                    {/* Drafts open in place under the row they belong to.
-                        Click one to copy — sending stays in Messages/Gmail
-                        on purpose (nothing here can send). */}
+                    {/* Click a draft to copy; nothing here sends (that stays in Messages/Gmail). */}
                     {d && !d.loading && (
                       <div className="people-drafts" onClick={(e) => e.stopPropagation()}>
                         {d.error && <p className="people-draft-note">{d.error}</p>}

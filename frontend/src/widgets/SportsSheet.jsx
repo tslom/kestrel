@@ -6,9 +6,8 @@ import { useSheetData } from "../lib/sheet.js";
 import { fmtAgo, fmtDay, fmtTime } from "../lib/time";
 import { dragPin } from "../lib/drag.js";
 
-// USC's schedule, read for the two things you'd ask: what's next, and how's the
-// season going. The whole year, not a range picker: a season doesn't line up
-// with a week or a month. Exhibitions stay on the schedule and out of a record.
+// The schedule: what's next, how's the season. Whole year, no range picker (seasons don't fit a
+// week or month); exhibitions stay on the schedule and out of a record.
 
 const VIEWS = [null];
 const NEXT_N = 8;

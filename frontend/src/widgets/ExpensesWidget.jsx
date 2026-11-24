@@ -15,11 +15,8 @@ import { shortDay } from "../lib/time";
 // Expenses to be paid back (backend app/expenses.py): what's waiting
 // to go, the Export button that sends it, and each sent batch until it's paid.
 //
-// Charges are claimed from the Money sheet's transaction list. This card is
-// where they're checked before sending, which is why amount, category and
-// note can be edited here: claiming part of a charge is an edit, not a
-// separate kind of claim. Both views reload on the "expenses" topic, so a
-// claim made in one shows up in the other.
+// Claimed from the Money sheet, checked here (amount/category/note editable: a part-claim is an
+// edit). Both reload on the "expenses" topic.
 const money = (n) => fmtMoney(n, "USD");
 const TOPIC = "expenses";
 
@@ -70,10 +67,7 @@ function Editor({ row, categories, onDone }) {
   );
 }
 
-// A claim made on a pending charge. `pending`: it hasn't posted, so the
-// amount can still move (the claim follows it until you export).
-// `vanished`: the charge disappeared without posting, usually a released
-// hold, so there may be nothing to claim.
+// `pending`: not posted, the claim follows it until export. `vanished`: dropped without posting (a released hold).
 function PendingTag({ state }) {
   if (state === "pending") return (
     <span className="check-tag" title="Still pending at the bank. The claim follows the charge when it posts">pending</span>
@@ -84,9 +78,7 @@ function PendingTag({ state }) {
   return null;
 }
 
-// Rows in a sent batch that no longer match what the bank says: the charge
-// settled at a different amount after the sheet went out, or it was a
-// pending charge that never posted.
+// Sent rows that no longer match the bank: settled at a different amount, or never posted.
 function batchDrift(items) {
   const settled = items.filter((r) => r.posted_amount != null);
   const vanished = items.filter((r) => r.pending_state === "vanished");
@@ -102,8 +94,7 @@ function batchDrift(items) {
   return out;
 }
 
-// Mark a batch paid (by that deposit, or none), undoable: undo marks it
-// unpaid again. The broadcast re-reads this card and the Money sheet's tags.
+// Mark a batch paid (by that deposit, or none); undo marks it unpaid. Broadcast re-reads this card and the Money sheet.
 function payBatch(b, txn) {
   const url = `/api/expenses/batches/${b.id}/paid`;
   return postJSON(url, { paid: true, transaction_id: txn ?? null }).then(() => {
@@ -159,8 +150,7 @@ function Batch({ b, onChange }) {
             <Icon name="undo" size={11} />
           </button>
         ) : (
-          // Labelled, not a hover icon: "he hasn't paid the last one, send
-          // it again with more on it" is the normal way this gets used.
+          // Labelled, not a hover icon: resending an unpaid batch with more on it is the normal use.
           <button className="debt-nudge waiting expense-reopen"
             title="Put these back with the waiting expenses so the next export sends them all in one sheet (the old file stays in Downloads)"
             onClick={() => act(fetchJSON(`/api/expenses/batches/${b.id}`, { method: "DELETE" }))}>
@@ -182,9 +172,7 @@ export function useExpensesCard() {
   const waiting = data?.waiting ?? [];
   const batches = data?.batches ?? [];
   const unpaid = batches.filter((b) => !b.paid_at);
-  // A deposit that looks like Dad's wire is the one thing here that wants an
-  // answer today. Anything waiting to send, or sent and unpaid, is real
-  // content but nothing is owed yet.
+  // Only a deposit that looks like the payback wire wants an answer today.
   const level = !data ? null : data.wires > 0 ? NEEDS : waiting.length || unpaid.length ? HAS : QUIET;
   const summary = !data ? "" : [
     data.wires > 0 && `${data.wires} wire${data.wires === 1 ? "" : "s"} to confirm`,
@@ -192,8 +180,6 @@ export function useExpensesCard() {
     unpaid.length > 0 && `${money(data.outstanding)} awaiting`,
   ].filter(Boolean).join(" · ") || "nothing outstanding";
 
-  // One row per deposit that looks like a batch being paid back. Marking it
-  // is the same POST the batch's own button makes.
   const markPaid = (b) => payBatch(b, b.wire.transaction_id);
   const asks = batches.filter((b) => !b.paid_at && b.wire).map((b) => ({
     id: `expenses:wire:${b.id}`, card: "expenses", tier: OWED, kind: "",
@@ -219,8 +205,7 @@ export default function ExpensesWidget({ card, onPin }) {
     fetchJSON(`/api/expenses/${id}`, { method: "DELETE" }).then(changed, fail);
   }
 
-  // "Venmo 24.50 haircut": a trailing number is the amount and whatever
-  // follows is the note, the same grammar the debts box uses.
+  // "Venmo 24.50 haircut": same grammar as the debts box.
   function add(text) {
     const m = text.match(/^(.+?)\s+\$?(\d+(?:\.\d{1,2})?)\s*(.*)$/);
     if (!m) { setErr("Write it as “Venmo 24.50 haircut”: who, how much, what for."); return; }

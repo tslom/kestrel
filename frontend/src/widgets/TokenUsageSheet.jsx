@@ -4,18 +4,14 @@ import { useWidgetData } from "../lib/refresh";
 // Model usage, off the session transcripts (app/token_usage.py): tokens and
 // API-equivalent cost per tab, model, mode, project or day.
 //
-// Two questions lead the sheet because they're why it exists: did the model
-// tiering save anything (the lede reprices the same tokens as if one model
-// had done it all), and where did the 5h / weekly window go (the range chips
-// start on the live window when the usage chips know its reset).
-//
-// "Cost" is list price for the tokens, not a bill: on a subscription nothing
-// is charged per token. The note under the table says so every time.
+// Leads with: did model tiering save anything (lede reprices the same tokens on one model) and
+// where did the 5h / weekly window go. "Cost" is list price, not a bill; the note under the table says so.
+// Design: DESIGN.md → Model usage (`app/token_usage.py`, `widgets/TokenUsageSheet.jsx`).
 
 const RANGES = [["5h", "5h window"], ["week", "week window"], ["today", "today"],
   ["30d", "30 days"], ["90d", "90 days"], ["all", "all"]];
 const GROUPS = [["tab", "tab"], ["model", "model"], ["provider", "provider"],
-  ["mode", "mode"], ["project", "project"], ["day", "day"]];
+  ["account", "account"], ["mode", "mode"], ["project", "project"], ["day", "day"]];
 
 const usd = (v) => (v >= 100 ? `$${Math.round(v).toLocaleString()}`
   : v >= 1 ? `$${v.toFixed(2)}` : v > 0 ? `$${v.toFixed(3)}` : "$0");
@@ -29,24 +25,36 @@ function tok(n) {
   return String(n);
 }
 
-function Tiering({ claude, ifAll }) {
-  // The one comparison that answers "does tiering save anything": what
-  // Claude's calls cost, against the same tokens on each single Claude
-  // model. Gemini and Codex errands aren't in it on either side.
+// An epoch-seconds stamp as "5m ago" / "3h ago" / "2d ago".
+function ago(at) {
+  if (!at) return "never";
+  const s = Math.max(0, Date.now() / 1000 - at);
+  if (s < 90) return "just now";
+  if (s < 5400) return `${Math.round(s / 60)}m ago`;
+  if (s < 129600) return `${Math.round(s / 3600)}h ago`;
+  return `${Math.round(s / 86400)}d ago`;
+}
+
+const perM = (v) => (v == null ? "?" : v >= 1 ? `$${+v.toFixed(2)}` : `$${+v.toPrecision(2)}`);
+
+function Tiering({ mix, ifAll }) {
+  // The one comparison that answers "does the mix save anything": what the
+  // priced calls cost, errands included, against the same tokens on each
+  // single model. Unpriced calls are on neither side.
   const parts = Object.entries(ifAll || {}).filter(([, v]) => v > 0);
-  if (!parts.length || !claude) return null;
+  if (!parts.length || !mix) return null;
   return (
     <p className="usage-lede">
-      Claude&apos;s tokens on one model:{" "}
+      The same tokens on one model:{" "}
       {parts.map(([m, v], i) => {
-        const saved = 1 - claude / v;
+        const saved = 1 - mix / v;
         return (
           <span key={m}>
             {i > 0 && " · "}
             {m} {usd(v)}{" "}
             <span className={saved >= 0 ? "tu-good" : "tu-bad"}>
               ({saved >= 0 ? `mix saves ${Math.round(saved * 100)}%`
-                : `mix costs ${Math.round((claude / v - 1) * 100)}% more`})
+                : `mix costs ${Math.round((mix / v - 1) * 100)}% more`})
             </span>
           </span>
         );
@@ -55,9 +63,21 @@ function Tiering({ claude, ifAll }) {
   );
 }
 
+function Cost({ row }) {
+  // Unpriced is said, never shown as $0: a model no list has is a gap in the
+  // number, not a free call.
+  if (row.unpriced && !row.cost) return <span className="tu-unpriced">unpriced</span>;
+  return (
+    <>
+      {usd(row.cost)}
+      {row.unpriced > 0 && <span className="tu-unpriced" title={`${row.unpriced} unpriced`}> +?</span>}
+    </>
+  );
+}
+
 function Providers({ list }) {
-  // Only once something besides Claude ran in the range: Gemini and Codex
-  // errands (the delegates log), counted in tokens; they have no price here.
+  // Only once something besides Claude ran in the range: Antigravity and Codex
+  // errands (the delegates log), priced from the same lists.
   if (!list || list.length < 2) return null;
   return (
     <p className="usage-lede">
@@ -65,22 +85,90 @@ function Providers({ list }) {
       {list.map((p, i) => (
         <span key={p.key}>
           {i > 0 && " · "}
-          {p.label} {tok(p.tokens)}{p.cost ? ` (${usd(p.cost)})` : ""}, {count(p.calls, p.key === "claude" ? "call" : "run")}
+          {p.label} {tok(p.tokens)} (<Cost row={p} />), {count(p.calls, p.key === "claude" ? "call" : "run")}
         </span>
       ))}
     </p>
   );
 }
 
+function Prices({ prices, sources }) {
+  // Where each model's price came from and how fresh it is, so a number can
+  // be checked; an unpriced model says why.
+  if (!prices?.length) return null;
+  const by = Object.fromEntries((sources || []).map((s) => [s.id, s]));
+  const failed = (sources || []).filter((s) => !s.ok && s.note);
+  return (
+    <>
+      <h3 className="usage-head">Prices, $ per million tokens</h3>
+      <table className="slice-table usage-table tu-table tu-prices">
+        <thead>
+          <tr>
+            <th>model</th>
+            <th title="fresh input">in</th>
+            <th>out</th>
+            <th title="cache read">cached</th>
+            <th>from</th>
+          </tr>
+        </thead>
+        <tbody>
+          {prices.map((p) => {
+            const pr = p.price;
+            const src = pr && by[pr.source];
+            return (
+              <tr key={`${p.provider}:${p.model}`}>
+                <td className="tu-label">
+                  <span title={p.model}>{p.label}</span>
+                  <small className="tu-sub">
+                    {p.provider}{pr && pr.listed_as !== p.model ? ` · listed as ${pr.listed_as}` : ""}
+                    {pr?.long_above ? ` · higher past ${tok(pr.long_above)} prompt` : ""}
+                    {p.gap ? ` · ${p.gap}` : ""}
+                  </small>
+                </td>
+                {pr ? (
+                  <>
+                    <td className="usage-touch">{perM(pr.input)}</td>
+                    <td className="usage-touch">{perM(pr.output)}</td>
+                    <td className="usage-touch">{perM(pr.cache_read)}</td>
+                    <td className="usage-touch tu-from" title={src?.url || ""}>
+                      {src?.label || pr.source}
+                      <small className="tu-sub">{pr.source === "builtin" ? "by hand" : ago(pr.fetched_at)}</small>
+                    </td>
+                  </>
+                ) : (
+                  <td colSpan={4} className="usage-touch">
+                    <span className="tu-unpriced">unpriced</span>
+                    <small className="tu-sub">{p.unpriced_why}</small>
+                  </td>
+                )}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <p className="usage-note">
+        Tried in order: Claude Code&apos;s own list for Claude, then LiteLLM&apos;s, then
+        OpenRouter&apos;s, then the built-in table (Claude only). Fetched daily; a failed
+        fetch keeps the last good list.
+        {failed.map((s) => ` ${s.label}: last try failed ${ago(s.tried_at)} (${s.note}).`)}
+      </p>
+    </>
+  );
+}
+
 function Detail({ row, group }) {
-  const outside = (group === "model" && row.provider && row.provider !== "claude")
+  const outside = ((group === "model" || group === "account") && row.provider && row.provider !== "claude")
     || (group === "provider" && row.key !== "claude");
-  if (outside) {
+  if (group === "model") {
     return (
       <small className="tu-sub">
-        {group === "model" ? `${row.provider} · ` : ""}{count(row.calls, "run")} · tokens only
+        {row.provider} · {count(row.calls, outside ? "run" : "call")}
+        {row.price ? ` · ${row.price.source_label}` : " · no price"}
       </small>
     );
+  }
+  if (outside) {
+    return <small className="tu-sub">{count(row.calls, "run")}</small>;
   }
   if (group === "tab") {
     return (
@@ -107,9 +195,10 @@ function Table({ range, group }) {
         <strong className="tu-big">{usd(total.cost)}</strong> API-equivalent in {data.what}:{" "}
         {tok(total.tokens)} tokens over {total.sessions} session{total.sessions === 1 ? "" : "s"}.
         Prompt caching saved {usd(total.cache_saved)} ({tok(total.cache_read)} read from cache).
+        {total.unpriced > 0 && <> <span className="tu-unpriced">{count(total.unpriced, "call")} unpriced</span>, not in the total.</>}
       </p>
       <Providers list={data.providers} />
-      <Tiering claude={data.claude_cost} ifAll={data.if_all_on} />
+      <Tiering mix={data.mix_cost} ifAll={data.if_all_on} />
       <table className="slice-table usage-table tu-table">
         <thead>
           <tr>
@@ -132,7 +221,7 @@ function Table({ range, group }) {
                 {tok(r.input + r.cache_read + r.cache_write)}
               </td>
               <td className="usage-touch" title={`without caching ${usd(r.uncached)}`}>
-                {r.unpriced && !r.cost ? "—" : usd(r.cost)}
+                <Cost row={r} />
               </td>
               <td className="tu-share"><span style={{ width: `${(r.cost / top) * 100}%` }} /></td>
             </tr>
@@ -141,6 +230,7 @@ function Table({ range, group }) {
       </table>
       {data.more > 0 && <p className="usage-note">{data.more} more below these.</p>}
       <p className="usage-note">{data.note}</p>
+      <Prices prices={data.prices} sources={data.price_sources} />
     </>
   );
 }

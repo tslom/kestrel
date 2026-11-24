@@ -1,14 +1,6 @@
-// A file a reply names, made clickable — once the backend says it's real.
-//
-// Until then (and forever, if it isn't) the text renders exactly as written:
-// a sentence mentioning a path that doesn't exist is ordinary, and a link
-// that goes nowhere is worse than none. What's real is app/files.py's call.
-//
-// Click: an image, PDF, video, audio, markdown or text file opens in the
-// console's viewer pane (lib/files.js FileContext); anything else, a folder,
-// or a click outside a console opens with the default app (`open`). Apps and
-// scripts are only ever revealed — the backend enforces that, this just says
-// so. ⌥-click, or the folder button on hover, reveals any of them in Finder.
+// A file a reply names, clickable once the backend (app/files.py) says it's real; until then plain text.
+// Click: media/markdown/text opens in the console's viewer pane (lib/files.js FileContext); else the
+// default app. Apps and scripts are only revealed (backend-enforced). ⌥-click or the folder button reveals in Finder.
 import { useState } from "react";
 import Icon from "./icons.jsx";
 import VaultLink from "./VaultLink.jsx";
@@ -22,7 +14,7 @@ const VERB = {
 
 export default function PathLink({ path, children }) {
   const files = useFiles();
-  // A relative .md outside a project is a vault note: Obsidian, as before.
+  // A relative .md outside a project is a vault note: Obsidian.
   if (isVaultNote(path, files?.bases)) return <VaultLink target={lineless(path)}>{children}</VaultLink>;
   return <FileLink path={path} files={files}>{children}</FileLink>;
 }

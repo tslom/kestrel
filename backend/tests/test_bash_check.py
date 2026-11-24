@@ -1,11 +1,8 @@
 """.claude/hooks/bash_check.py, replayed on the mistakes it stops.
 
-The blocked commands are copied from transcripts, and each
-one failed. The passes are near misses that must keep working. Each rule's
-premise is checked too: the sqlite3 form it blocks really is a syntax error,
-and the perl bound it recommends really bounds. A hook runs on whatever
-python3 the session's PATH has, which can be macOS's 3.9, so it's run under
-that as well.
+Blocked commands come from transcripts (each failed); passes are near misses. Each rule's
+premise is checked (the blocked sqlite3 form is a syntax error, the perl bound bounds), and
+the hook is also run under macOS's python3 3.9.
 """
 
 import importlib.util

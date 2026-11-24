@@ -2,15 +2,11 @@ import { useState } from "react";
 import { JsCode } from "../lib/jscode.jsx";
 import { toolLabel } from "../plan/StatusBar.jsx";
 
-// A run_script call opened up (console_code): the script coloured, folded
-// past FOLD lines, then what it returned. The collapsed run already says it
-// ran a script; this is the "what did it actually do". `t` is the log's tool
-// entry: `raw` its input, `result` / `error` from its tool_result.
+// A run_script call opened up (console_code): the script coloured, folded past FOLD lines, then its
+// result. `t` is the log's tool entry: `raw` input, `result`/`error` from its tool_result.
 const FOLD = 10;
 
-// The model gets the value as compact JSON (tokens); a person reads it laid
-// out. A list of strings — text pulled out of each read — reads best as the
-// strings themselves. The footer ("[3 calls: … · 1.2s]") stays as it came.
+// The model gets compact JSON; a person reads it laid out (a list of strings as the strings). The "[3 calls: … · 1.2s]" footer stays.
 function readable(result) {
   const lines = result.split("\n");
   const foot = /^\[\d+ calls/.test(lines[lines.length - 1] || "") ? lines.pop() : null;

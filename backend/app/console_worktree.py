@@ -1,46 +1,10 @@
-"""Each dev tab in its own git worktree, on its own branch.
+"""Each dev tab in its own git worktree (`<repo>/.claude/worktrees/tab-<hex>`, branch `kestrel/tab-<hex>`).
 
-Two dev tabs sharing one checkout sweep up each other's edits with a `git
-stash` and leave the tree unbuildable. A tab's own worktree ends that: a
-stash, reset or checkout in one can't reach another's files. JetBrains Air does the same (`.air/worktree.json`); this copies its
-model, as `.kestrel/worktree.json`.
-
-- **Where:** `<repo>/.claude/worktrees/tab-<hex>`, on branch `kestrel/tab-<hex>`
-  cut from the branch the main checkout is on (its *base*, kept in git config
-  as `branch.<branch>.kestrelbase`). The directory is listed in the repo's
-  `.git/info/exclude`, so the main checkout's status and rg never see it.
-- **Setup:** what `.kestrel/worktree.json` names. `link` symlinks gitignored
-  paths from the main checkout (a venv, node_modules, the app's data dir: one
-  copy of each, and for data, one source of truth); `setup` runs commands in
-  the new tree. With no file, `.claude/settings.local.json` is linked, the
-  allow-rules a dev tab already reads.
-- **What runs:** the backend and frontend keep serving the main checkout. A
-  tab's work goes live when `merge` fast-forwards the base branch there.
-- **Merging back:** `merge` rebases the tab's branch onto the base in the
-  tab's own tree, then fast-forwards the main checkout. A conflict never
-  reaches the main checkout: the rebase is aborted and the files are handed
-  back to the tab, which resolves them where its change lives.
-- **Reviewing first:** `review` is what the diff pane's branch view reads:
-  the commits `merge` would land, their diff against where the branch left
-  its base, and (once the base has moved) the files a merge would stop on,
-  worked out in the object store by `git merge-tree` so neither tree moves.
-- **A tab with nothing to keep** (clean tree, no commits beyond the base) has
-  its worktree and branch removed when its socket closes. A resumed session gets its tree back at
-  the same path (Claude Code files a session's transcript under its cwd, so
-  the path is how a resume finds it, `for_session`); the memory stays the
-  main checkout's, which Claude Code shares across worktrees.
-- **Orphans** (`branches`, `sweep`): every `kestrel/tab-*` branch, and every
-  `worktree-*` one Claude Code's own `--worktree` sessions (the night jobs)
-  leave, whose tab or session is gone. On startup, on a tab's close and when
-  a tree is made, the fully merged ones go (tree and branch); the rest are
-  what the plan view's "left behind" panel lists, with merge and discard.
-  Gone means: no socket here holds the tree, and no live process holds its
-  git lock (Claude Code locks a `--worktree` tree while its session runs,
-  naming the pid). They are listed there, not as a ⚠ in whatever unrelated
-  tab opens next on that repo.
-
-Stdlib only, and importable by macOS's python3 (3.9): the SessionStart hook
-(.claude/hooks/session_start.py) loads it outside the venv.
+A tab's work goes live only when `merge` rebases it onto its base and fast-forwards the
+main checkout; a conflict never reaches the main checkout. Orphan branches are swept
+unless a socket here or a live pid (git lock) holds them. Stdlib only and py3.9-safe:
+the SessionStart hook (.claude/hooks/session_start.py) loads it outside the venv.
+Design: DESIGN.md → The console sheet, "A worktree per dev tab".
 """
 
 from __future__ import annotations
@@ -63,18 +27,16 @@ DEFAULT_LINKS = (".claude/settings.local.json",)
 SETUP_TIMEOUT = 300
 NAME = re.compile(r"tab-[0-9a-f]{8}")
 NIGHT_PREFIX = "worktree-"
-# The branches the orphan sweep may touch: a tab's, or a `claude --worktree`
-# session's (its tree is `.claude/worktrees/<name>`, its branch worktree-<name>).
+# Branches the orphan sweep may touch: a tab's, or a `claude --worktree` session's (worktree-<name>).
 MANAGED = re.compile(r"kestrel/tab-[0-9a-f]{8}|worktree-[\w.-]+")
 LOCK_PID = re.compile(r"\bpid (\d+)\b")
 # KESTREL_DEV_WORKTREES=0 turns it off: dev tabs open on the main checkout.
 ENABLED = os.environ.get("KESTREL_DEV_WORKTREES", "1") != "0"
 
 _lock = threading.Lock()
-# Worktrees a live socket is using. One that's in here is never removed.
+# Worktrees a live socket holds; never removed.
 _live: Counter[str] = Counter()
-# Notified (under _lock) each time a release() has finished its removal and
-# sweep, for wait_released.
+# Notified under _lock after each release() finishes (for wait_released).
 _released = threading.Condition(_lock)
 
 
@@ -93,14 +55,12 @@ def _out(cwd: Path, *args: str) -> str | None:
 
 
 def _munge(path: Path) -> str:
-    # Claude Code's project-directory name for a cwd: every non-alphanumeric
-    # becomes "-" (console_profiles.memory_dir).
+    # Claude Code's project-dir name for a cwd (see console_profiles.memory_dir).
     return re.sub(r"[^A-Za-z0-9]", "-", str(path))
 
 
 def eligible(repo: Path) -> bool:
-    """A repo a tab can branch from: the main worktree (not itself a linked
-    one), on a branch, with a commit to branch from."""
+    """The main worktree, on a branch, with a commit."""
     if not ENABLED or not (repo / ".git").is_dir():
         return False
     return bool(_out(repo, "rev-parse", "--verify", "-q", "HEAD")
@@ -119,10 +79,8 @@ def _config(repo: Path) -> dict:
 
 
 def _exclude(repo: Path, links: list[str]) -> None:
-    """The worktrees directory and every link, in .git/info/exclude (shared
-    by all worktrees). Links need their own line: `.venv/` in .gitignore
-    matches a directory, and a symlink to one is a file to git, so without
-    this the tab's `git add -A` would commit it."""
+    """The worktrees dir and every link in .git/info/exclude. Links need their own line:
+    `.venv/` in .gitignore doesn't match a symlink (a file to git), so `git add -A` would commit it."""
     path = repo / ".git" / "info" / "exclude"
     want = [f"/{DIR.as_posix()}/"] + [f"/{p.strip('/')}" for p in links]
     try:
@@ -140,10 +98,8 @@ def _exclude(repo: Path, links: list[str]) -> None:
 
 
 def link(repo: Path, tree: Path, cfg: dict | None = None) -> list[str]:
-    """Symlink the configured gitignored paths from the main checkout into
-    `tree`, kept out of git. Returns the ones it linked; a path already there
-    (or missing from the main checkout) is left alone. Also what
-    .claude/hooks/session_start.py runs, for a worktree Kestrel didn't make."""
+    """Symlink the configured paths from the main checkout into `tree`; returns those linked.
+    Existing or missing paths are left alone. session_start.py runs this too."""
     cfg = cfg or _config(repo)
     _exclude(repo, cfg["link"])
     made = []
@@ -158,8 +114,7 @@ def link(repo: Path, tree: Path, cfg: dict | None = None) -> list[str]:
 
 
 def _setup(repo: Path, tree: Path) -> list[str]:
-    """Links and setup commands. Returns what went wrong, for the start line:
-    a tab whose venv didn't link can still edit, so this never refuses."""
+    """Links and setup commands. Returns what went wrong (for the start line); never refuses."""
     cfg = _config(repo)
     link(repo, tree, cfg)
     notes = []
@@ -177,8 +132,7 @@ def _setup(repo: Path, tree: Path) -> list[str]:
 
 
 def _unlink(repo: Path, tree: Path) -> None:
-    """Take the links out before git removes the tree, so nothing it does can
-    follow one into the main checkout's data."""
+    """Unlink before git removes the tree, so nothing follows a link into the main checkout's data."""
     try:
         links = _config(repo)["link"]
     except WorktreeError:
@@ -190,16 +144,13 @@ def _unlink(repo: Path, tree: Path) -> None:
 
 
 def _base(repo: Path, branch: str) -> str:
-    """Where a branch lands: the base it was cut from, else the branch the
-    main checkout is on."""
+    """The base a branch was cut from, else the main checkout's branch."""
     return _out(repo, "config", f"branch.{branch}.kestrelbase") or \
         _out(repo, "symbolic-ref", "--short", "HEAD") or "main"
 
 
 def _info(repo: Path, tree: Path, notes: list[str] | None = None) -> dict:
-    # The branch the tree is on, which isn't always the one it was made on: a
-    # tab can check out another (a site repo's tab trees sit on try/* branches),
-    # and merging the made-on one then lands the wrong commits.
+    # The tree's current branch, not the made-on one (a site repo's trees sit on try/*).
     branch = (_out(tree, "symbolic-ref", "-q", "--short", "HEAD") if tree.is_dir() else None) \
         or BRANCH_PREFIX + tree.name
     return {"path": str(tree), "name": tree.name, "branch": branch,
@@ -220,7 +171,7 @@ def _add(repo: Path, tree: Path, base: str) -> list[str]:
 
 
 def create(repo: Path) -> dict:
-    """A new tab's worktree. Sweeps the abandoned empty ones first."""
+    """A new tab's worktree; sweeps abandoned empty ones first."""
     repo = repo.resolve()
     base = _out(repo, "symbolic-ref", "--short", "HEAD")
     if not base:
@@ -234,9 +185,7 @@ def create(repo: Path) -> dict:
 
 
 def for_session(repo: Path, session_id: str) -> dict | None:
-    """The worktree a session ran in, put back if it was removed. None: the
-    session ran in the main checkout (it predates worktrees, or they were
-    off), and resumes there."""
+    """The worktree a session ran in, rebuilt if removed; None if it ran in the main checkout."""
     repo = repo.resolve()
     if not re.fullmatch(r"[0-9A-Za-z-]{8,64}", session_id or ""):
         return None
@@ -265,8 +214,7 @@ def for_session(repo: Path, session_id: str) -> dict | None:
 
 
 def _trees(repo: Path) -> list[dict]:
-    """`git worktree list --porcelain` as [{path, branch, locked}], the main
-    checkout first. `locked` is the lock's reason ("locked" if it gave none)."""
+    """`git worktree list --porcelain` as [{path, branch, locked}], main first; `locked` is the reason."""
     out = _out(repo, "worktree", "list", "--porcelain") or ""
     trees: list[dict] = []
     for line in out.splitlines():
@@ -290,17 +238,14 @@ def _ours(repo: Path) -> list[Path]:
 
 
 def _managed_trees(repo: Path) -> list[Path]:
-    """The tab worktrees, and the `claude --worktree` ones on their own
-    worktree-<name> branch — the trees the left-behind panel can open."""
+    """Tab worktrees plus `claude --worktree` ones on their own worktree-<name> branch."""
     root = (repo / DIR).resolve()
     return [t["path"] for t in _trees(repo) if t["path"].parent == root and (
         NAME.fullmatch(t["path"].name) or t["branch"] == NIGHT_PREFIX + t["path"].name)]
 
 
 def _lock_alive(reason: str) -> bool:
-    """Whether a worktree lock still has its holder. Claude Code's says
-    "claude session <name> (pid N …)"; a lock that names no pid was put there
-    by hand, on purpose, so it holds."""
+    """Whether a lock's holder lives. Claude Code's names a pid; one without was set by hand and holds."""
     m = LOCK_PID.search(reason or "")
     if not m:
         return True
@@ -318,8 +263,7 @@ def _merged(repo: Path, branch: str, base: str) -> bool:
 
 
 def _dirty(tree: Path) -> list[str]:
-    # No optional locks: status would otherwise refresh the index under
-    # index.lock, and the tab may be committing in this tree right now.
+    # --no-optional-locks: the tab may be committing here (index.lock).
     return [ln[3:] for ln in (_git(tree, "--no-optional-locks", "status", "--porcelain").stdout
                               or "").splitlines()]
 
@@ -328,11 +272,8 @@ ORPHAN_COMMITS = 5
 
 
 def branches(repo: Path) -> list[dict]:
-    """Every kestrel/tab-* and worktree-* branch in the repo and where it
-    stands: {branch, name, kind ("tab"/"night"), path (its tree, or None),
-    base, merged, ahead, behind, dirty, locked, held, commits}. `held`: a
-    socket here or a live process (by its git lock) is using it, so nothing
-    may touch it; the rest are orphans."""
+    """Every kestrel/tab-* and worktree-* branch: {branch, name, kind ("tab"/"night"), path (or None),
+    base, merged, ahead, behind, dirty, locked, held, commits}. `held` = in use; the rest are orphans."""
     repo = repo.resolve()
     trees = _trees(repo)
     main = trees[0]["path"] if trees else repo
@@ -349,7 +290,7 @@ def branches(repo: Path) -> list[dict]:
         path = t["path"] if t else None
         held = (path == main
                 or (path is not None and _live[str(path)] > 0)
-                # a tab whose tree moved to another branch still owns this one
+                # a tab whose tree moved branches still owns this one
                 or (kind == "tab" and _live[str(repo / DIR / name)] > 0)
                 or bool(t and t["locked"] and _lock_alive(t["locked"])))
         base = _base(repo, b)
@@ -372,22 +313,20 @@ def branches(repo: Path) -> list[dict]:
 
 
 def orphans(repo: Path) -> list[dict]:
-    """The branches whose tab or session is gone and which still hold work:
-    commits their base doesn't have, or uncommitted files in their tree."""
+    """Unheld branches still holding work (commits beyond base, or uncommitted files)."""
     return [b for b in branches(repo)
             if not b["held"] and not (b["merged"] and not b["dirty"])]
 
 
 def _drop(repo: Path, b: dict, force: bool = False) -> bool:
-    """Remove a branch and its tree. Without `force` git refuses a tree with
-    uncommitted or untracked files, which is the point."""
+    """Remove a branch and its tree; without `force` git refuses a dirty tree."""
     if b["path"]:
         tree = Path(b["path"])
         _unlink(repo, tree)
         args = ["worktree", "remove"] + (["--force", "--force"] if force else [])
         r = _git(repo, *args, str(tree))
         if r.returncode:
-            _setup(repo, tree)   # the tree stays, and so must its venv
+            _setup(repo, tree)   # the tree stays, so relink
             return False
     _git(repo, "branch", "-D", b["branch"])
     _git(repo, "config", "--remove-section", f"branch.{b['branch']}")
@@ -412,9 +351,7 @@ def main_checkout(tree: Path) -> Path:
 
 
 def resolve(repo: Path, value: str | None) -> Path | None:
-    """A worktree path from the browser → the path, if it is one of this
-    repo's tab worktrees (or a `--worktree` session's on its own branch).
-    The only way a request reaches into one."""
+    """A browser-supplied worktree path → the path if managed, else None. The only way a request reaches one."""
     if not value:
         return None
     want = Path(value).resolve()
@@ -425,12 +362,11 @@ def resolve(repo: Path, value: str | None) -> Path | None:
 
 
 def _remove(repo: Path, tree: Path) -> bool:
-    """Remove a tab's tree, and the tab's own branch if that's merged (a
-    tree moved to another branch can leave its made-on one holding work)."""
+    """Remove a tab's tree, and its own branch if merged (a moved tree can leave it holding work)."""
     _unlink(repo, tree)
     r = _git(repo, "worktree", "remove", str(tree))
     if r.returncode:
-        # Put the links back: the tree stays, and so must its venv.
+        # The tree stays: relink.
         _setup(repo, tree)
         return False
     branch = BRANCH_PREFIX + tree.name
@@ -446,10 +382,7 @@ def _empty(repo: Path, tree: Path) -> bool:
 
 
 def sweep(repo: Path) -> list[str]:
-    """Remove every orphan that holds nothing: a branch fully merged into its
-    base with no uncommitted files in its tree, and tab trees on some other
-    branch in the same state. Returns the branches (or trees) removed.
-    Caller holds _lock."""
+    """Remove every orphan holding nothing (merged, clean); returns what was removed. Caller holds _lock."""
     repo = repo.resolve()
     _git(repo, "worktree", "prune")
     gone = []
@@ -463,8 +396,7 @@ def sweep(repo: Path) -> list[str]:
 
 
 def sweep_all(repos: list[Path]) -> dict[str, list[str]]:
-    """`sweep` across repos (startup). A repo that can't branch is skipped,
-    and one that fails doesn't stop the rest."""
+    """`sweep` across repos (startup); a failing repo doesn't stop the rest."""
     out = {}
     for repo in repos:
         try:
@@ -479,9 +411,7 @@ def sweep_all(repos: list[Path]) -> dict[str, list[str]]:
 
 
 def release(tree: Path) -> bool:
-    """A socket using `tree` closed. Removes it if that was the last and it
-    holds nothing, then sweeps the repo's other orphans; True if it was
-    removed."""
+    """A socket using `tree` closed: remove it if last and empty, then sweep; True if removed."""
     key = str(tree)
     with _lock:
         _live[key] -= 1
@@ -496,16 +426,12 @@ def release(tree: Path) -> bool:
         except (WorktreeError, OSError, subprocess.SubprocessError):
             return False
         finally:
-            # Still under _lock, so a waiter sees the sweep's result, never
-            # the moment between the count dropping and the removal.
+            # Under _lock: a waiter never sees the gap between the count dropping and the removal.
             _released.notify_all()
 
 
 def wait_released(tree: Path | str, timeout: float = 10.0) -> bool:
-    """Block until no socket holds `tree` and its last release() has swept
-    the repo, or `timeout` passes; True if it did. For the page that just
-    closed a tab and wants the left-behind list as that close leaves it (its
-    socket's close reaches release() on its own schedule)."""
+    """Block until no socket holds `tree` and its release() has swept, or `timeout`; True if so."""
     key = str(tree)
     with _released:
         return _released.wait_for(lambda: _live[key] <= 0, timeout)
@@ -523,9 +449,7 @@ def _orphan(repo: Path, branch: str) -> dict:
 
 
 def merge_orphan(repo: Path, branch: str, push: bool = False) -> dict:
-    """The left-behind panel's merge: `merge` in the branch's tree, or, for a
-    branch with no tree, a fast-forward of the main checkout when its base
-    hasn't moved. Either way a clean landing only; then the sweep."""
+    """Left-behind merge: `merge` in its tree, or (no tree) fast-forward if base hasn't moved; then sweep."""
     repo = repo.resolve()
     with _lock:
         b = _orphan(repo, branch)
@@ -554,13 +478,11 @@ def merge_orphan(repo: Path, branch: str, push: bool = False) -> dict:
 
 
 def discard(repo: Path, branch: str) -> dict:
-    """The left-behind panel's discard: the branch and its tree, uncommitted
-    files and all. Refuses one in use; the UI asks before it gets here."""
+    """Left-behind discard: the branch and tree, uncommitted files too. Refuses one in use."""
     repo = repo.resolve()
     with _lock:
         b = _orphan(repo, branch)
-        # Forced twice: past uncommitted files, and past a lock whose holder
-        # is dead (a live one made it `held`, which _orphan refused).
+        # Forced twice: past uncommitted files, and a dead holder's lock.
         ok = _drop(repo, b, force=True)
     lost = f"{b['ahead']} commit{'s' * (b['ahead'] != 1)}" + (
         f" and {b['dirty_count']} uncommitted file{'s' * (b['dirty_count'] != 1)}"
@@ -577,13 +499,9 @@ CONFLICT_CONTEXT = 3
 
 
 def review(tree: Path) -> dict:
-    """The tab's branch as the diff pane's review shows it: `status`, plus
-    the commits `merge` would land (newest first), their diff against the
-    commit the branch left its base at, and `conflicts` — empty unless the
-    base moved on and a merge of the two would stop. Only reads: the tab may
-    be mid-turn in this tree."""
-    from . import console_diff   # here, not at the top: session_start.py loads
-                                 # this file standalone, so its imports stay stdlib
+    """`status` plus the commits `merge` would land (newest first), their diff from the
+    merge-base, and `conflicts` (empty unless base moved and a merge would stop). Read-only."""
+    from . import console_diff   # lazy: session_start.py loads this file stdlib-only
     tree = tree.resolve()
     s = status(tree, main_checkout(tree))
     base = s["base"]
@@ -599,13 +517,8 @@ def review(tree: Path) -> dict:
 
 
 def preview_conflicts(tree: Path, base: str, branch: str) -> list[dict]:
-    """The files merging `branch` into `base` would stop on, found without
-    moving a tree or a ref: `merge-tree --write-tree` merges in the object
-    store only. [{path, kind, message, regions}], `kind` git's own word
-    ("contents", "modify/delete", …).
-
-    A preview: `merge` rebases, replaying commit by commit, so it can stop on
-    a change a later commit undid. Its answer is the one that counts."""
+    """[{path, kind, message, regions}] the merge would stop on, via `merge-tree --write-tree`
+    (object store only; nothing moves). A preview: `merge` rebases commit by commit, and its answer counts."""
     r = _git(tree, "merge-tree", "--write-tree", "-z", "--name-only", base, branch)
     if r.returncode != 1:            # 0 is a clean merge; anything else can't say
         return []
@@ -635,12 +548,9 @@ def preview_conflicts(tree: Path, base: str, branch: str) -> list[dict]:
 
 
 def _conflict_regions(tree: Path, oid: str, path: str, base: str, branch: str) -> list[dict]:
-    """The conflicted hunks git wrote into the merged file: the base's lines
-    and the tab's (and the ancestor's, under a diff3 conflictStyle), a little
-    context either side. The markers are matched with their labels, so a
-    line that merely starts with <<<<<<< isn't one. Empty for a conflict
-    that isn't about lines (modify/delete, binary)."""
-    from . import console_diff   # see review()
+    """The conflicted hunks in the merged file, with context; markers matched with their
+    labels. Empty for non-line conflicts (modify/delete, binary)."""
+    from . import console_diff
     text = console_diff.blob(tree, oid, path)
     if not text:
         return []

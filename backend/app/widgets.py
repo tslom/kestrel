@@ -239,9 +239,7 @@ def get_courses(term: str | None = None):
         out["proposals"] = email_extract.pending_oh_proposals()
     except sqlite3.Error:
         out["proposals"] = []   # pre-v48 DB, or the table dropped: no proposals
-    # Study mode: an exam inside two weeks, with the review items logged for
-    # it. Read off syllabus text a parser can misread, so a failure here costs
-    # the line, never the hours.
+    # Study line (exam within 2 weeks): parsed from syllabus text, so a failure costs the line, not the hours.
     try:
         from . import study
         out["study"] = study.desk(out["term"])
@@ -261,8 +259,7 @@ def post_courses_proposal(proposal_id: int, body: ProposalIn):
     except KeyError:
         raise HTTPException(404, "no such proposal")
     except courses.CourseError as e:
-        # The proposal stays pending: it failed to apply, so it's still
-        # waiting, and saying "approved" would hide that the note is unchanged.
+        # Stays pending: "approved" would hide that the note is unchanged.
         raise HTTPException(409, str(e))
 
 

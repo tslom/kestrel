@@ -6,25 +6,18 @@ import { BLOCKING, CLOCK, BROKEN } from "../lib/asks.js";
 import { DESK, CARD_NAME } from "../widgets/cards.js";
 import Icon from "../ui/icons.jsx";
 
-// The plan view's side column at rest: what needs you, then everything else
-// as one line per card.
-//
-// A row says what, since when, and what to do, and has one way out: act,
-// snooze ("later"), or open. Acting holds the list's order in place — the
-// finished row stays, marked done — until your pointer leaves the list, so
-// nothing jumps under the cursor mid-triage (the settle rule). The keyboard
-// works the list like an inbox: j/k move, ↵ does the row's first action,
-// s then 1–4 snoozes, o opens the card, Esc backs out.
+// The plan view's side column at rest: what needs you, then one line per card. A row acts, snoozes or
+// opens; acting holds the order (finished row marked done) until the pointer leaves, so nothing jumps
+// mid-triage (the settle rule). Keys: j/k move, ↵ first action, s then 1–4 snooze, o open, Esc back.
+// Design: DESIGN.md → The "needs you" list (`plan/NeedsList.jsx`).
 
 const TIER_WORD = { [BLOCKING]: "blocking a turn", [CLOCK]: "has a clock on it",
                     [BROKEN]: "broken source" };
 
-// How long the settle rule holds after the last action if the pointer never
-// leaves (a keyboard-only run).
+// Settle hold after the last action if the pointer never leaves (keyboard-only).
 const SETTLE_MS = 6000;
 
-// What a row sends when it's dragged into the prompt: the ask itself, minus
-// the buttons' functions, which don't survive JSON anyway.
+// A dragged row's payload: the ask minus its button functions (they don't survive JSON).
 function askPin(a) {
   return [`needs you · ${a.title}`, {
     card: a.card, what: a.title, why: a.why, kind: TIER_WORD[a.tier] || "owed",
@@ -102,9 +95,7 @@ function CardLine({ id, summary, quiet, hot, on, onOpen }) {
   );
 }
 
-// The quiet cards fold away: the map already shows they're there, and a list
-// of what doesn't need you is the longest thing in the column. Remembered per
-// browser, like the theme.
+// The quiet cards fold away (the map shows them); remembered per browser.
 const QUIET_KEY = "needs_quiet_open";
 
 export default function NeedsList({ asks, snoozed, sal, loading, cleared, nextClock, waiting,
@@ -119,8 +110,7 @@ export default function NeedsList({ asks, snoozed, sal, loading, cleared, nextCl
     return !v;
   });
 
-  // ---- the settle rule: after an action, hold the order and show the
-  // finished rows in place until the pointer leaves (or SETTLE_MS passes).
+  // ---- the settle rule: hold the order, finished rows in place, until the pointer leaves or SETTLE_MS.
   const [frozen, setFrozen] = useState(null);   // { order: [id], items: {id: ask}, done: {id: true|until} }
   const settleT = useTimeout();
   const settle = useCallback(() => { settleT.clear(); setFrozen(null); }, [settleT]);
@@ -141,8 +131,7 @@ export default function NeedsList({ asks, snoozed, sal, loading, cleared, nextCl
   const actionable = rows.filter((r) => !r.done).map((r) => r.a);
 
   const act = (a, x) => {
-    // Only an action that does something finishes the row; opening a card,
-    // a sheet or a draft leaves it where it is.
+    // Only an action that does something finishes the row (opening a card, sheet or draft doesn't).
     if (x.run) hold(a.id, true);
     onAct(a, x);
   };
@@ -162,8 +151,7 @@ export default function NeedsList({ asks, snoozed, sal, loading, cleared, nextCl
       const t = e.target;
       if (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable) return;
       if (t.closest?.(".console-pane, .prompt-bar")) return;
-      // A focused control's own Enter wins; a waiting approval card keeps
-      // Enter and Esc for itself.
+      // A focused control's Enter wins; a waiting approval card keeps Enter and Esc.
       if (e.key === "Enter" && /^(BUTTON|A)$/.test(t.tagName)) return;
       if ((e.key === "Enter" || e.key === "Escape") && waiting) return;
       const ids = actionable.map((a) => a.id);
@@ -189,8 +177,7 @@ export default function NeedsList({ asks, snoozed, sal, loading, cleared, nextCl
       else handled = false;
       if (handled) { e.preventDefault(); e.stopImmediatePropagation(); }
     };
-    // Capture, so a handled Esc never reaches the stack's Esc (which would
-    // close the side column under the cursor).
+    // Capture, so a handled Esc doesn't reach the stack's Esc (which closes the side column).
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
   });
@@ -210,8 +197,7 @@ export default function NeedsList({ asks, snoozed, sal, loading, cleared, nextCl
             {cleared} cleared today
           </span>
         )}
-        {/* Put away, the column is a slide-over; `onDock` (set only then)
-            brings it back as a column on a wide window. */}
+        {/* `onDock` (set only when put away) brings it back as a column. */}
         {onDock && (
           <button className="side-x side-dock" onClick={onDock} aria-label="Keep Needs you open beside the map"
             title="Keep open beside the map"><Icon name="pin" size={12} /></button>
@@ -220,9 +206,7 @@ export default function NeedsList({ asks, snoozed, sal, loading, cleared, nextCl
           title="Put away — the map and Kestrel take the window · the strip's “need you” brings it back">
           <Icon name="close" size={12} /></button>
       </div>
-      {/* Hovering any row lights its card's node on the map, and the other
-          way round (`hot`, shared through PlanApp). Leaving the list lets
-          the settle rule go. */}
+      {/* Row hover lights its map node and vice versa (`hot`, via PlanApp); leaving releases the settle rule. */}
       <div className="side-body"
         onPointerOver={(e) => {
           const id = e.target.closest?.("[data-card]")?.dataset.card;
@@ -236,8 +220,7 @@ export default function NeedsList({ asks, snoozed, sal, loading, cleared, nextCl
             onAct={act} onOpen={onOpen} onOpenNote={onOpenNote} onSnooze={snooze}
             onLater={(id) => setSnoozeOpen((s) => (s === id ? null : id))} />
         ))}
-        {/* Once you're on the keys, not before: help for a mode you aren't in
-            is clutter. */}
+        {/* Only once you're on the keys. */}
         {kcur != null && actionable.length > 0 && (
           <p className="keys-hint"><kbd>j</kbd><kbd>k</kbd> move · <kbd>↵</kbd> act · <kbd>s</kbd> snooze · <kbd>o</kbd> open</p>
         )}

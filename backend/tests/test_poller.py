@@ -1,9 +1,6 @@
-"""poller.refresh_all — runs every refreshable provider concurrently and
-returns {name: info | {"error": ...}}. The invariant that matters: one
-provider raising never sinks the others (each is guarded in _refresh_one).
+"""poller.refresh_all: one provider raising never sinks the others (each guarded in _refresh_one).
 
-Every test takes `dbfile`: a refresh now also writes a `provider_health` row,
-and these fake providers ('a', 'bad', …) have no business in the real app.db."""
+Every test takes `dbfile`: refresh writes a `provider_health` row and the fake providers must stay out of the real app.db."""
 
 import asyncio
 import types
@@ -12,8 +9,7 @@ from app.providers import poller
 
 
 def _mod(refresh=None):
-    """A stand-in provider module. Omit `refresh` to model a read-only
-    provider (no refresh attr) — refresh_all must skip it."""
+    """A stand-in provider module; omit `refresh` to model a read-only one (skipped)."""
     m = types.SimpleNamespace()
     if refresh is not None:
         m.refresh = refresh
@@ -51,8 +47,7 @@ def test_one_failure_does_not_sink_others(dbfile, monkeypatch):
 
 
 def _stub_post_steps(monkeypatch):
-    """Stub all four post-steps: the real ones write the real app.db (and the
-    backup copies it) — see test_sync_route.py for how that was found."""
+    """Stub all four post-steps: the real ones write the real app.db (see test_sync_route.py)."""
     def alarms():
         raise RuntimeError("alarm table locked")
 
@@ -65,9 +60,7 @@ def _stub_post_steps(monkeypatch):
 
 def test_post_steps_run_in_order_on_both_paths_and_a_failure_is_logged(
         dbfile, monkeypatch):
-    """sync_all() and refresh_stream() iterate one POST_STEPS, so the two
-    can't drift; a failing step becomes {"error": ...} on both, doesn't stop
-    the steps after it, and lands in the failure log instead of only stderr."""
+    """sync_all() and refresh_stream() iterate one POST_STEPS; a failing step becomes {"error": ...} on both, doesn't stop later steps, and reaches the failure log."""
     from app import failures
 
     monkeypatch.setattr(poller, "REGISTRY", {"a": _mod(lambda: {"rows": 1})})

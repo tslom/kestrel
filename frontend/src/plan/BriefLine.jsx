@@ -4,28 +4,20 @@ import { postJSON } from "../lib/api";
 import { useLoad } from "../lib/refresh";
 import { dragPin } from "../lib/drag.js";
 
-// The brief bar: one line that says only what the "needs you" list can't —
-// how its rows bear on each other, and tomorrow's first thing
-// (POST /api/brief/line, cached per day and per set of asks). Hidden when
-// there's nothing to add. The full morning brief is still written each day
-// for the /daily-brief skill, and opens from here as its own view.
+// The brief bar: one line saying only what the list can't (how rows bear on each other, tomorrow's
+// first thing; POST /api/brief/line, cached per day and set of asks); hidden if nothing to add.
+// The full morning brief (for /daily-brief) opens from here.
 
-// Long enough that a burst of changes (a snooze, then its settle) is one ask.
+// A burst of changes (a snooze, then its settle) is one ask.
 const DEBOUNCE_MS = 1500;
 
-// A reason line ends in an age ("waiting 27 h", "7 h ago", "in 12 min") that
-// changes on its own. Left in, every hour would be a "new" list and a new
-// model call for the same rows; the line is about how rows relate, not how
-// old they are, so the ages come out before it's asked.
+// Strip the trailing age ("waiting 27 h", "in 12 min") from reasons: left in, every hour is a new list and model call.
 const AGE = /\s*·?\s*(?:waiting|asked|open|in|due)?\s*\d+(?:\.\d+)?\s*(?:min|h|d)\b(?:\s*(?:ago|overdue|late))?/g;
 
 export default function BriefLine({ asks, onPin, onFull }) {
   const [state, setState] = useState(null);   // { line } | { error }
   const [open, setOpen] = useState(false);
-  // Not the console's own rows (`console:` ids: an approval card, a question,
-  // tabs the limit stopped). They last seconds and are already on screen, and
-  // each one would be a new set of asks, so a model call: left in, they are
-  // about half of this line's background calls (New Features #53).
+  // Not `console:` rows: they last seconds and were about half the background calls (#53).
   const payload = asks.filter((a) => !String(a.id || "").startsWith("console:"))
     .map((a) => ({ title: a.title, why: (a.why || "").replace(AGE, "").trim(),
                    card: a.card || null }));

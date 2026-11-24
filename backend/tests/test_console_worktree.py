@@ -78,9 +78,7 @@ def test_removing_a_tree_leaves_the_linked_data_alone(repo):
 
 
 def test_wait_released_answers_once_the_close_has_swept(repo):
-    """The page asks for the left-behind list right after closing a tab
-    (/api/console/orphans?released=); the answer has to wait for that
-    socket's release(), not guess at how long it takes."""
+    """/api/console/orphans?released= waits for that socket's release()."""
     import threading
     tree = Path(cw.create(repo)["path"])
     got = []
@@ -149,9 +147,8 @@ def test_a_live_lock_holds_and_a_dead_one_doesnt(repo):
     assert by["night-live"]["held"] and not by["night-dead"]["held"]
     with cw._lock:
         cw.sweep(repo)
-    # Merged and clean, but a live session holds it; the dead lock doesn't
-    # save the other (a plain `worktree remove` refuses a locked tree, so the
-    # merged-and-clean sweep leaves it for discard).
+    # Merged and clean but held by a live session; the dead lock doesn't save the other
+    # (plain `worktree remove` refuses a locked tree, so the sweep leaves it for discard).
     assert alive.exists()
     with pytest.raises(cw.WorktreeError):
         cw.discard(repo, "worktree-night-live")

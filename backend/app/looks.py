@@ -1,28 +1,9 @@
-"""Look lab: verdicts on UI design variants, for the redesign rounds.
+"""Look lab: verdicts on UI design variants (`look_votes`), plus themes.
 
-The redesign is an A/B loop rather than one big rewrite: a
-round of looks ships as CSS scoped to `html[data-look=…]`
-(frontend/src/looks/), you live with them and flip between two, and each
-verdict lands here with a note. The next round's dev tab reads these
-(`GET /api/looks`, or the `look_votes` table) to drop what lost, keep what
-won, and try the next variable.
-
-Which looks exist is the frontend's registry, not data: this only stores
-what you said about them.
-
-Except themes, which are data: a colour look Kestrel made
-when asked ("make it warmer"). A theme is a set of **colour roles** and
-nothing else, each a `#RRGGBB` that lands on one design token. Free CSS is
-not accepted anywhere on this path, because guessed CSS is what failed in the
-tool this was learned from, and its agent said "fixed" anyway. Every role set
-is contrast-checked against the pairs the baseline was built to
-(docs/ui-overhaul.md) before it is stored, and the tool's result is a WebKit
-picture of it (`specimen_shot`), so "done" can't be said unseen.
-
-A theme is a look like any other: `data-look="theme-<slug>"`, a chip in the
-lab's Colour row, votes in `look_votes` under that id. Which theme is on is
-held here (`active`), not per browser, so the one Kestrel set is the one the
-window shows.
+Which looks exist is the frontend's registry; this stores what you said about
+them. Themes are data: colour roles only (`#RRGGBB` per design token), never
+free CSS, contrast-checked before storing; `active` lives here, not per browser.
+Design: DESIGN.md → Themes Kestrel makes.
 """
 
 import json
@@ -88,8 +69,7 @@ def unvote(vote_id: int):
 
 # ---------- themes: colour roles Kestrel may set ----------
 
-# Role -> the token it sets. The whole surface a theme can touch: colour
-# tokens from the `:root` block of frontend/src/styles.css, and no others.
+# Role -> token: the whole surface a theme can touch (colour tokens in styles.css `:root`).
 ROLES: dict[str, str] = {
     "desk": "--paper", "surface": "--paper-raise",
     "line": "--paper-line", "line_strong": "--paper-line-2", "boundary": "--paper-line-3",
@@ -101,8 +81,7 @@ ROLES: dict[str, str] = {
     "data": "--data", "good": "--good", "bad": "--bad",
 }
 
-# The baseline a theme is laid over, per scheme: styles.css's values, held
-# equal to it by test_looks.py. A role a theme leaves out keeps these.
+# Baseline per scheme (styles.css values, held equal by test_looks.py); omitted roles keep these.
 _LIGHT = {
     "desk": "#F6F6F8", "surface": "#FFFFFF", "line": "#E6E6E9", "line_strong": "#D5D5D9",
     "boundary": "#8A8A8E", "text": "#19191C", "text_secondary": "#636368", "text_faint": "#808084",
@@ -123,9 +102,7 @@ BASELINE: dict[str, dict[str, str]] = {
 }
 SCHEMES = ("dark", "light")   # dark first: it is where the app is used
 
-# (foreground, background, least ratio). WCAG 2.2: 4.5 for text, 3 for
-# incidental text, component boundaries and graphics; 7 where the baseline
-# holds it for body text. The baseline clears every row in both schemes.
+# (foreground, background, least ratio): WCAG 2.2 4.5 text, 3 incidental/graphics, 7 body where the baseline holds it.
 CHECKS: tuple[tuple[str, str, float], ...] = (
     ("text", "surface", 7), ("text", "desk", 7),
     ("text_secondary", "surface", 4.5), ("text_secondary", "desk", 4.5),
@@ -199,8 +176,7 @@ def _row(r) -> dict:
 
 
 def themes(con=None) -> dict:
-    """Every stored theme, which one is on, and the role -> token map the
-    page writes its CSS from (so the mapping lives here only)."""
+    """Every stored theme, the active id, and the role -> token map (the mapping lives here only)."""
     with db.borrow(con) as con:
         rows = con.execute("SELECT * FROM look_themes ORDER BY rowid").fetchall()
     return {"themes": [_row(r) for r in rows],

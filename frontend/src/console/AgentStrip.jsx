@@ -1,13 +1,8 @@
 import { useEffect, useState } from "react";
 
-// Subagents at work, under the log (backend: console_agents.py). The Agent
-// tool runs its subagent in the background now: the call comes back at once
-// and the turn can end while it works, and its own calls never reach this
-// stream. Without this the only sign of one was its report, minutes later.
-//
-// A running row: what it was sent to do, the tool it's on, how many calls and
-// tokens, how long. A finished row stays until your next message, with the
-// first line of what it reported.
+// Subagents at work, under the log (backend console_agents.py): they run in the background and their
+// calls never reach this stream, so without this the only sign was a report minutes later. A running
+// row shows task, tool, calls, tokens, time; a finished one stays until your next message.
 
 const TERMINAL = new Set(["completed", "failed", "stopped", "killed"]);
 

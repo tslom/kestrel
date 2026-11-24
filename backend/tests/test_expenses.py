@@ -7,8 +7,7 @@ from app import db, expenses
 
 @pytest.fixture
 def bank(dbfile, tmp_path, monkeypatch):
-    """One checking account, one card, and a handful of charges. Exports go
-    to a temp dir, never ~/Downloads."""
+    """One checking account, one card, a few charges; exports go to a temp dir."""
     monkeypatch.setattr(expenses, "EXPENSES_DIR", tmp_path)
     now = "2026-09-01T00:00:00"
     with db.session() as con, con:
@@ -70,8 +69,7 @@ def test_incoming_money_is_refused(bank):
 # ---------- claims on pending charges ----------
 
 def _post(con, pending_id, new_id, amount, day="2026-09-06"):
-    """What Plaid's sync hands finance: the posted charge naming the pending
-    one it replaces. Stored and followed the way _sync_item does it."""
+    """A Plaid posted charge naming its pending one, stored and followed as _sync_item does."""
     t = {"transaction_id": new_id, "pending_transaction_id": pending_id,
          "pending": False, "amount": amount, "date": day}
     con.execute(
@@ -93,8 +91,7 @@ def test_a_pending_charge_can_be_claimed(bank):
 
 
 def test_the_claim_follows_the_charge_when_it_posts(bank):
-    """A tip added at posting: the whole-charge claim follows the new total,
-    and the Money sheet shows the posted row as claimed."""
+    """A tip added at posting: the whole-charge claim follows the new total and the posted row shows claimed."""
     expenses.add(transaction_id="pend")
     with db.session() as con, con:
         assert _post(con, "pend", "pend-posted", 15.50) == 1
@@ -120,8 +117,7 @@ def test_a_partial_claim_keeps_its_amount_but_not_past_the_total(bank):
 
 
 def test_a_sent_claim_stays_frozen_and_flags_the_new_amount(bank):
-    """The spreadsheet already has $12.93 in it. The row keeps it, and the
-    card gets told the charge settled at something else."""
+    """A sent claim keeps its exported $12.93 and flags the new settled amount."""
     expenses.add(transaction_id="pend")
     b = expenses.export()
     with db.session() as con, con:
@@ -155,8 +151,7 @@ def test_a_dropped_cache_is_not_a_cancelled_charge(bank):
 
 
 def test_following_never_breaks_the_sync(bank):
-    """If the posted id is somehow claimed already, the move is skipped
-    rather than tripping UNIQUE inside finance's write transaction."""
+    """A posted id already claimed is skipped, not a UNIQUE error inside finance's write transaction."""
     expenses.add(transaction_id="pend")
     expenses.add(transaction_id="groc")
     with db.session() as con, con:
@@ -167,8 +162,7 @@ def test_following_never_breaks_the_sync(bank):
 
 
 def test_the_bank_sync_moves_the_claim(bank, monkeypatch):
-    """End to end through finance._sync_item, with Plaid's sync page faked:
-    the posted charge arrives in `added` and the pending one in `removed`."""
+    """End to end through finance._sync_item with a faked Plaid page (posted in `added`, pending in `removed`)."""
     from app.providers import finance, plaid
 
     expenses.add(transaction_id="pend")

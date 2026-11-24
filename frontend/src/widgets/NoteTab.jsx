@@ -20,9 +20,7 @@ export default function NoteTab({ path, onOpenNote, onPin }) {
 
   const pin = [`note · ${note.title}`, { path: note.path, title: note.title, excerpt: note.excerpt,
                                          links_to: note.links_to.map((l) => l.path) }];
-  // Comments (<!-- --> and Obsidian's %% %%) are hidden in Obsidian's reading
-  // view, so they're hidden here — tasks.md's banner and task ids were
-  // rendering as text.
+  // Comments (<!-- --> and %% %%) are hidden as in Obsidian's reading view (tasks.md's banner rendered as text).
   const body = (note.body ?? note.excerpt ?? "")
     .replace(/<!--[\s\S]*?-->|%%[\s\S]*?%%/g, "")
     .replace(/^\s*# [^\n]*\n/, "");
@@ -36,8 +34,7 @@ export default function NoteTab({ path, onOpenNote, onPin }) {
   ));
 
   return (
-    // Only the header drags: on the whole article, a text selection in the
-    // body picked the note up instead of selecting.
+    // Only the header drags: on the whole article, selecting text picked the note up.
     <article className="note-tab">
       <header className="note-tab-head" {...dragPin(...pin)}>
         <div>

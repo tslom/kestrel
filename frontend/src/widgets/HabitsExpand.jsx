@@ -13,9 +13,7 @@ const WEEKDAY = ["S", "M", "T", "W", "T", "F", "S"];
 
 function cellState(habit, day, value) {
   if (value > 0) return "done";
-  // created_day is the server's day_key for the habit's birth — not
-  // created_at's calendar date, which runs a day ahead before the 4am
-  // rollover and made the habit's own first day render blank.
+  // created_day is the server's day_key; created_at's date runs a day ahead before the 4am rollover.
   if (day < habit.created_day) return "na"; // predates the habit
   return "miss";
 }
@@ -99,10 +97,7 @@ export default function HabitsExpand({ onPin }) {
       .then(load).catch((e) => setError(e.message));
   };
 
-  // The streak is in the question for the same reason the list count is in
-  // ListsWidget's: "delete Exercise" reads harmless when it's a 40-day run.
-  // Archive is offered by name here because this dialog is the last place
-  // someone learns there was a non-destructive option.
+  // The streak is in the question (as ListsWidget's count); archive is named as the non-destructive option.
   const remove = (id, name, streak) => {
     const run = streak > 0 ? ` and its ${streak}-day streak` : "";
     if (!window.confirm(
@@ -156,9 +151,7 @@ export default function HabitsExpand({ onPin }) {
         </tbody>
       </table>
     )}
-    {/* Outside both branches on purpose: the empty state is exactly when
-        adding matters most, and otherwise "No habits yet." is a dead end —
-        creating one means asking the console. */}
+    {/* Outside both branches: the empty state is when adding matters most. */}
     {data && (
       <form className="habit-add" onSubmit={add}>
         <input value={newName} placeholder="Add a habit…" aria-label="New habit"

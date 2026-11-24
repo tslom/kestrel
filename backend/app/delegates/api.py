@@ -15,7 +15,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from . import registry, runs, store
+from . import accounts, boundary, registry, runs, store
 
 router = APIRouter()
 
@@ -32,8 +32,119 @@ RUN_PUBLIC = ("variant", "provider", "model", "angle", "status", "error", "file"
 async def providers(fresh: bool = False) -> dict:
     rows = await asyncio.to_thread(registry.status, fresh)
     used = {u["provider"]: u for u in await asyncio.to_thread(store.usage)}
+    accts = await asyncio.to_thread(accounts.listing)
     return {"providers": [{**{k: v for k, v in r.items() if k != "path"},
-                           "usage": used.get(r["id"])} for r in rows]}
+                           "usage": used.get(r["id"]),
+                           "accounts": accts.get(r["id"], []),
+                           "signing_in": accounts.login_state(r["id"])} for r in rows],
+            "purposes": boundary.PURPOSES, "tags": list(boundary.WORK_FOR)}
+
+
+# ---------- accounts (accounts.py) ----------
+
+class LoginIn(BaseModel):
+    label: str | None = None
+    allowed_for: list[str] | None = None
+    way: str | None = None          # registry.LoginWay.id; omitted: the first
+
+
+def _known(provider: str) -> registry.Provider:
+    p = registry.PROVIDERS.get(provider)
+    if p is None or not p.logins:
+        raise HTTPException(404, "no provider with accounts by that name")
+    return p
+
+
+@router.post("/api/delegates/providers/{provider}/login")
+async def login_start(provider: str, body: LoginIn) -> dict:
+    _known(provider)
+    try:
+        return await accounts.start_login(provider, body.label, body.allowed_for, body.way)
+    except accounts.AccountError as e:
+        raise HTTPException(409, str(e)) from None
+
+
+@router.post("/api/delegates/providers/{provider}/login/reopen")
+async def login_reopen(provider: str) -> dict:
+    _known(provider)
+    try:
+        return await accounts.reopen(provider)
+    except accounts.AccountError as e:
+        raise HTTPException(409, str(e)) from None
+
+
+@router.get("/api/delegates/providers/{provider}/login")
+async def login_get(provider: str) -> dict:
+    _known(provider)
+    return {"login": accounts.login_state(provider)}
+
+
+@router.delete("/api/delegates/providers/{provider}/login")
+async def login_cancel(provider: str) -> dict:
+    _known(provider)
+    accounts.cancel_login(provider)
+    return {"login": None}
+
+
+class AccountIn(BaseModel):
+    label: str | None = None
+    enabled: bool | None = None
+    allowed_for: list[str] | None = None
+    monthly_credits: float | None = None
+    credit_cap: float | None = None
+    window_cap: float | None = None
+
+
+def _account(account_id: str) -> dict:
+    acct = next((a for a in store.accounts() if a["id"] == account_id), None)
+    if acct is None:
+        raise HTTPException(404, "no such account")
+    return acct
+
+
+@router.patch("/api/delegates/accounts/{account_id}")
+async def account_patch(account_id: str, body: AccountIn) -> dict:
+    await asyncio.to_thread(_account, account_id)
+    fields = body.model_dump(exclude_unset=True)
+    if "label" in fields:
+        fields["label"] = (fields["label"] or "").strip()[:60]
+        if not fields["label"]:
+            raise HTTPException(400, "A name can't be empty.")
+    if "allowed_for" in fields:
+        fields["allowed_for"] = ",".join(t for t in boundary.WORK_FOR
+                                         if t in (fields["allowed_for"] or []))
+    if fields.get("window_cap") is not None and not 1 <= fields["window_cap"] <= 100:
+        raise HTTPException(400, "A ceiling is a percentage from 1 to 100.")
+    for n in ("monthly_credits", "credit_cap"):
+        if fields.get(n) is not None and fields[n] < 0:
+            raise HTTPException(400, "Credits can't be negative.")
+    if "enabled" in fields:
+        fields["enabled"] = int(bool(fields["enabled"]))
+    await asyncio.to_thread(store.update_account, account_id, **fields)
+    return await providers()
+
+
+class OrderIn(BaseModel):
+    ids: list[str]
+
+
+@router.post("/api/delegates/providers/{provider}/order")
+async def account_order(provider: str, body: OrderIn) -> dict:
+    have = [a["id"] for a in await asyncio.to_thread(store.accounts, provider)]
+    if sorted(have) != sorted(body.ids):
+        raise HTTPException(400, "The order has to name every account of this provider once.")
+    for i, account_id in enumerate(body.ids):
+        await asyncio.to_thread(store.update_account, account_id, priority=i)
+    return await providers()
+
+
+@router.delete("/api/delegates/accounts/{account_id}")
+async def account_delete(account_id: str) -> dict:
+    try:
+        await asyncio.to_thread(accounts.forget, account_id)
+    except accounts.AccountError as e:
+        raise HTTPException(404, str(e)) from None
+    return await providers()
 
 
 class Switch(BaseModel):

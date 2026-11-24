@@ -9,23 +9,10 @@ import { dragPin } from "../lib/drag.js";
 import { fmtDur, dayKeyLabel, fmtTime } from "../lib/time.js";
 import { fmtKm } from "../lib/units.js";
 
-// Location card, on the lede form.
-//
-// The card's standing problem shapes everything here:
-// OwnTracks reports *movement*, so every number is a lower bound over whatever
-// slice of the day got recorded, and **silence is not a failure** — a phone
-// that sits at home all day produces no fixes at all, which looks exactly like
-// OwnTracks having died. The last fix's location breaks the tie.
-//
-// On the lede form distance/places/at-home/pattern don't get a four-cell
-// grid every day. They're a muted line unless one of them
-// actually broke pattern, and the out-and-back clock times, the entropy label
-// and the 28-day trend live in the sheet.
-//
-// Two things still print unconditionally, because neither is a measurement:
-// the coverage line (what the numbers are computed from — the honesty guard
-// that stops a lower bound reading as a fact) and "still home", which is a
-// live state rather than a fact about the day the card is centred on.
+// Location card, lede form. OwnTracks reports movement, so every number is a lower bound and
+// silence is not a failure (a phone at home sends nothing); the last fix breaks the tie. Metrics
+// are a muted line unless one broke pattern. Two lines always print: coverage (the honesty guard)
+// and "still home" (live state). Design: DESIGN.md → `app/providers/location.py`: stays, places, coverage.
 const CARD_METRICS = [
   { key: "km_traveled", label: "Distance", worse: null, floor: 15, fmt: fmtKm },
   { key: "places", label: "Places", worse: null, floor: 3,
@@ -35,8 +22,7 @@ const CARD_METRICS = [
 
 const dayLabel = (sum) => dayKeyLabel(sum.day, sum.is_today);
 
-// A stretch that can run into days. fmtDur's "40h 0m" is the wrong shape at
-// this scale — the minutes are noise.
+// Stretches that run into days: fmtDur's "40h 0m" is the wrong shape.
 const fmtSpan = (min) =>
   min == null ? "" : min < 120 ? `${Math.round(min)}m` : `${Math.round(min / 60)}h`;
 
@@ -57,9 +43,7 @@ export function useLocationCard() {
   const hit = sum?.day ? lead(readings) : null;
   const rest = restLine(readings);
 
-  // An ongoing stay at home wins the fold line over any of the day's numbers:
-  // on a card centred on a past day, "still home · 40h" is the live fact where
-  // Monday's mileage is history.
+  // An ongoing stay at home wins the fold line: it is the live fact, a past day's mileage is history.
   const level = !sum ? null : hit ? HAS : QUIET;
   const summary = !sum?.day ? "no location fixes"
     : sum.home_since ? `still home · ${fmtSpan(sum.home_for_min)}`

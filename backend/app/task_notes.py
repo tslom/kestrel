@@ -1,23 +1,7 @@
-"""The CLI's `<task-notification>` messages, as a row a person can read.
-
-When a background agent or shell finishes, fails, is killed at its time
-limit, or turns out to have been cut off when the last session ended, the
-CLI tells the model by injecting a user message of raw XML:
-
-    <task-notification>
-    <task-id>a01c…</task-id><task-id>a6f8…</task-id>
-    <tool-use-id>toolu_…</tool-use-id>
-    <output-file>/private/tmp/…/tasks/b8au….output</output-file>
-    <status>stopped</status>
-    <summary>2 background agents didn't finish before the previous session
-      ended: "Time-boxed local AI video test" (a01c…), "Analyze …" (a6f8…).</summary>
-    <note>No completion record was found …</note>
-    <result>…the agent's report…</result>
-    </task-notification>
-
-Replayed as a user message it was a bubble of XML in your own voice. `parse`
-splits those out into notes for a compact row (sessions.session_transcript
-and the live stream both use it); whatever else the message said stays text.
+"""The CLI's `<task-notification>` messages (injected raw XML user messages when a
+background agent or shell finishes, fails or is cut off), as a row a person can
+read. `parse` splits them out for sessions.session_transcript and the live
+stream; the rest of the message stays text. Format sample: DESIGN.md → `app/task_notes.py`.
 """
 
 from __future__ import annotations
@@ -41,9 +25,7 @@ def _one(body: str, tag: str) -> str | None:
 
 
 def title(status: str | None, summary: str) -> str:
-    """The row's one line. A cut-off run says so plainly and names what was
-    cut off; the rest keep the CLI's own summary, which already reads well
-    ("Background command "npm run build" failed with exit code 1")."""
+    """The row's one line: a cut-off run names what was cut off; the rest keep the CLI's summary."""
     if _ENDED in summary:
         names = re.findall(r'"([^"]+)"', summary.split(":", 1)[1]) if ":" in summary else []
         n = re.match(r"\s*(\d+)\s+background agents", summary)
@@ -61,9 +43,8 @@ def title(status: str | None, summary: str) -> str:
 
 
 def from_system(data: dict) -> dict:
-    """The same row from the live stream, where the SDK hands the notification
-    over as a `task_notification` system message (task_id, status, summary,
-    output_file, tool_use_id) rather than echoing the injected text."""
+    """The same row from the live stream's `task_notification` system message
+    (task_id, status, summary, output_file, tool_use_id)."""
     status = str(data.get("status") or "").lower() or None
     summary = str(data.get("summary") or "")
     tid = data.get("task_id")

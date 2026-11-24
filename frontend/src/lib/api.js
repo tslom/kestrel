@@ -1,7 +1,4 @@
-// Backend fetch helper. Error bodies aren't always JSON — an unhandled
-// backend exception arrives as plain-text "Internal Server Error" — so
-// parse defensively: JSON.parse's own SyntaxError must never mask the real
-// failure (the "Unexpected token 'I'" widget bug).
+// Backend fetch helper. Error bodies aren't always JSON (an unhandled exception is plain-text "Internal Server Error"): parse defensively so JSON.parse's SyntaxError never masks the real failure.
 async function request(url, opts) {
   const r = await fetch(url, opts);
   const text = await r.text();
@@ -11,16 +8,8 @@ async function request(url, opts) {
   return body;
 }
 
-// Two cards asking the same question in the same tick shouldn't ask twice.
-// The glance strip opens on /api/calendar, /api/tasks, /api/email/queue and
-// /api/habits — the same four reads the cards below it make — and the desk
-// mounts them all together, so every load and every sync sent each of those
-// twice.
-//
-// A coalesce, not a cache: the entry is dropped the moment the request
-// settles, so the next read still goes to the network and nothing here can
-// hand back an answer from a previous moment. Only bodiless GETs qualify;
-// a write is never something you want silently shared.
+// Coalesce identical in-flight bodiless GETs (the desk mounts cards that read the same endpoints together).
+// Not a cache: the entry drops when the request settles. Writes are never shared.
 const inflight = new Map();
 
 export async function fetchJSON(url, opts) {
@@ -28,9 +17,7 @@ export async function fetchJSON(url, opts) {
   if (method !== "GET" || opts?.body) return request(url, opts);
 
   const pending = inflight.get(url);
-  // Each sharer gets its own copy of the body. Handing back one object would
-  // make a widget that edits its own state visible inside another widget —
-  // a bug worth far more than the microsecond the clone costs.
+  // Each sharer gets its own clone: one shared object would leak a widget's edits into another.
   if (pending) return structuredClone(await pending);
 
   const p = request(url, opts);
@@ -40,13 +27,8 @@ export async function fetchJSON(url, opts) {
   return p;
 }
 
-// The mutating half, through the same parser. Every write the desk makes is a
-// JSON body, and FastAPI rejects one that arrives without the Content-Type
-// header — which a hand-written call site drops silently, and only fails at
-// runtime. So the header isn't a parameter: `method` is the only thing a caller
-// ever varies (PATCH, for the edit forms). Bodiless calls keep spelling out
-// `fetchJSON(url, { method: "DELETE" })` — nothing to serialize, no header to
-// get wrong, and no reason to route them through here.
+// The mutating half. FastAPI rejects a JSON body without Content-Type, which a hand-written call drops silently,
+// so the header isn't a parameter; only `method` varies (PATCH). Bodiless calls use `fetchJSON(url, { method: "DELETE" })`.
 export function postJSON(url, body, method = "POST") {
   return fetchJSON(url, {
     method,
@@ -55,14 +37,9 @@ export function postJSON(url, body, method = "POST") {
   });
 }
 
-// A provider read that couldn't reach its source still answers 200, from the
-// app.db cache, carrying `stale: true` and why (backend: providers/offline.py).
-// That used to be a 500 per card — the whole desk breaking at once, which on a
-// lid opened before wifi came back read as the backend being dead.
-//
-// Takes payloads rather than one, because a card is usually several reads (four
-// health metrics, three trend series) and any one of them going stale makes the
-// card stale. Nulls pass through: a payload still loading isn't stale.
+// A provider read that couldn't reach its source answers 200 from the app.db cache with `stale: true` and why
+// (providers/offline.py), not a 500 that broke the whole desk. Takes several payloads (a card is several reads);
+// nulls pass through (still loading isn't stale).
 export function staleReason(...payloads) {
   const why = payloads.flatMap((p) => p?.offline || []);
   return why.length ? [...new Set(why)].join("\n") : null;

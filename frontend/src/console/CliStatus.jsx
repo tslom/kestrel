@@ -2,13 +2,9 @@ import { useEffect, useState } from "react";
 import { fetchJSON } from "../lib/api.js";
 import { useVisiblePoll } from "../lib/poll.js";
 
-// The console bar's word on the Claude Code CLI underneath it
-// (app/claude_cli.py). Silent while there's nothing to do — the version is
-// on the session label's tooltip then. Auto-updates are
-// off on this machine, so the only times it speaks are a release that isn't
-// installed (a button that runs `claude update`) and an install this tab's
-// session predates (a button that reconnects onto it — a running CLI keeps
-// the binary it started with).
+// The console bar's word on the CLI (app/claude_cli.py). Silent when nothing's to do (the version
+// rides the session label's tooltip). Auto-updates are off here, so it speaks only for a release not
+// installed (runs `claude update`) or an install this session predates (reconnects; a running CLI keeps its binary).
 
 const POLL_MS = 30 * 60_000;   // the backend caches the release check an hour
 

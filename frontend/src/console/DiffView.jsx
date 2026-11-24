@@ -6,24 +6,12 @@ import { highlight, langOf } from "../lib/syntax.js";
 import { anchor, commitMessage, conflictMessage, isCode, lines, numbered, place,
          where } from "../lib/review.js";
 
-// A dev tab's diffs (backend: console_diff.py). The card sits in the log at
-// the end of each turn that changed the repo — files and counts, nothing
-// else — and opens the pane: the file list on the left, the selected file's
-// hunks on the right, and a switch between scopes: the latest turn (or any
-// earlier one in the log, from the picker beside it), everything
-// uncommitted, and — for a tab in its own worktree — its branch against its
-// base, which is the review: what a merge would land
-// (console_worktree.review, merge-base and all), the Merge button, and what
-// the merge would stop on, then the worktree's uncommitted files (the
-// uncommitted scope's own payload) in a part of their own, since a merge
-// carries only commits. The change card above it is the ledger of
-// *calls*; this is the lines, read off git, so Bash's edits are in it too.
-//
-// Any line in any scope takes a comment (shift-click a second one for a
-// range). Console owns them, per tab folder: they sit as chips in the
-// composer and go with the next message you send (lib/review.js has the
-// wording), because the one who can act on "this should use the helper" is
-// the tab that wrote the line.
+// A dev tab's diffs (backend console_diff.py): a card per changing turn opens this pane (file list, hunks)
+// with scopes: a turn (picker), everything uncommitted, and for a worktree tab its branch against its
+// base = the review (console_worktree.review: what a merge lands, Merge, what it would stop on, then the
+// uncommitted files apart since a merge carries only commits). Lines are read off git, so Bash edits show.
+// Any line takes a comment (shift-click a second for a range); Console owns them per tab folder as
+// composer chips sent with the next message (lib/review.js), since the tab that wrote the line can act.
 
 const STATUS = { added: "A", deleted: "D", modified: "M", renamed: "R" };
 const SIGN = { add: "+", del: "−", ctx: " " };
@@ -80,10 +68,8 @@ function Tokens({ toks }) {
 
 const joined = (toks) => toks.map((t) => t.s).join("");
 
-// Each code row's tokens: the whole file's line when the pane has the file
-// and the line still reads the same in it (the tree may have moved since the
-// diff), else the hunk's own lines tokenized as a run — right unless the
-// hunk opens inside a string or comment that started above it.
+// A row's tokens: the whole file's line when it still reads the same (the tree may have moved), else
+// the hunk's lines as a run (wrong only if the hunk opens inside a string/comment from above).
 function rowTokens(rows, lang, sides) {
   if (!lang) return [];
   const whole = { old: sides?.old != null ? highlight(sides.old, lang) : null,
@@ -110,10 +96,8 @@ function rowTokens(rows, lang, sides) {
   });
 }
 
-// Both sides of a file in full, for rowTokens. The branch view's old side
-// is where the branch left its base and its new side the tab's HEAD; the
-// uncommitted view's are HEAD and the working tree. A turn's diff has no
-// revision to ask for, so it colours hunk by hunk.
+// Both sides of a file for rowTokens: branch = merge-base vs HEAD; uncommitted = HEAD vs working tree;
+// a turn's diff has no revision, so it colours hunk by hunk.
 function loadSides(file, view, review, scope) {
   if (view === "turn" || file.binary || !langOf(file.path)) return null;
   const blob = (rev, path) => fetchJSON(`/api/console/blob?${scope}&rev=${encodeURIComponent(rev)}`
@@ -127,8 +111,7 @@ function loadSides(file, view, review, scope) {
     .then(([o, n]) => ({ old: o ?? null, new: n ?? null }));
 }
 
-// The draft's text lives in the pane, not here: a shift-click that widens
-// the range moves the editor to another row, which is a new mount.
+// Draft text lives in the pane: a range-widening shift-click remounts the editor on another row.
 function NoteEditor({ draft, label, onChange, onSave, onCancel }) {
   const body = draft.body || "";
   return (
@@ -164,8 +147,7 @@ function NoteCard({ c, stale, onEdit, onDelete }) {
   );
 }
 
-// What a merge of the branch into its base would stop on, as git would
-// leave it in the file: the base's lines, then the tab's.
+// A merge conflict as git would leave it: base lines, then the tab's.
 function ConflictView({ c, base, branch, lang }) {
   const side = (rows, cls, key) => {
     const toks = lang ? highlight(rows.join("\n"), lang) : [];
@@ -260,9 +242,7 @@ function Patch({ file, view, review, scope, conflict, base: baseName, branch, no
   );
 }
 
-// The branch view's strip: where the branch stands against its base, and
-// the merge (Console's mergeWorktree — the bar's button and the tab's
-// worktree_merge tool take the same path).
+// The branch strip: standing against base, and the merge (Console's mergeWorktree, same path as the worktree_merge tool).
 function BranchBar({ review, worktree, busy, merging, push, onPush, onMerge }) {
   const behind = review?.behind || 0;
   const why = merging ? "Merging…"
@@ -310,8 +290,7 @@ function Band({ tone, children, action, onAction, onDismiss }) {
 
 const firstLine = (s) => (s || "").trim().split("\n")[0];
 
-// Which turn the turn scope shows: newest first, "latest" following the log
-// as turns land while the pane is open.
+// Which turn the turn scope shows: newest first, "latest" follows the log.
 function TurnPicker({ turns, at, onPick }) {
   const latest = turns.length - 1;
   return (
@@ -326,10 +305,8 @@ function TurnPicker({ turns, at, onPick }) {
   );
 }
 
-// `turns`: the log's turn diffs (lib/review.js turnDiffs); `turn` the entry
-// the pane opened on, or null for the latest. `comments`/`onComments`:
-// Console's, which go with the next message; without them (a left-behind
-// branch's review, which has no tab to read them) lines take no comment.
+// `turns`: lib/review.js turnDiffs; `turn`: the entry opened on, null = latest. `comments`/`onComments`:
+// Console's; without them (a left-behind branch has no tab) lines take no comment.
 export function DiffPane({ turns = [], turn = null, path, scope, project, worktree, busy,
                            comments = [], onComments, onClose, onSend, onMerge, reloadRef }) {
   const [view, setView] = useState(scope || (turns.length ? "turn" : "all"));
@@ -348,9 +325,7 @@ export function DiffPane({ turns = [], turn = null, path, scope, project, worktr
   const scopeQuery = `project=${encodeURIComponent(project || "")}`
     + (worktree ? `&worktree=${encodeURIComponent(worktree.path)}` : "");
 
-  // The branch view reads the uncommitted payload too: what the tab changed
-  // but hasn't committed is part of "everything it did", shown apart because
-  // the merge carries only commits.
+  // The branch view reads the uncommitted payload too, shown apart (a merge carries only commits).
   function load(v) {
     if (v === "turn" || !project) return Promise.resolve();
     const one = (k) => fetchJSON(k === "branch" ? `/api/console/review?${scopeQuery}` : `/api/console/diff?${scopeQuery}`)
@@ -359,8 +334,7 @@ export function DiffPane({ turns = [], turn = null, path, scope, project, worktr
     return Promise.all(v === "branch" ? [one("branch"), one("all")] : [one(v)])
       .finally(() => setGen((g) => g + 1));
   }
-  // On open (and the desk's refresh broadcasts); Console calls reloadRef
-  // when a turn ends, since that's when the tab may have committed.
+  // On open and refresh broadcasts; Console calls reloadRef at turn end (when it may have committed).
   useLoad(() => load(view));
   if (reloadRef) reloadRef.current = () => load(view);
 
@@ -372,8 +346,7 @@ export function DiffPane({ turns = [], turn = null, path, scope, project, worktr
   const turnAt = picked >= 0 ? picked : turns.length - 1;
   const data = view === "turn" ? { files: turns[turnAt]?.files || [] } : loaded[view];
   const committed = data?.files || [];
-  // Branch view only: the worktree's uncommitted files, after the commits.
-  // The same path can be in both, so a row's key carries its part.
+  // Branch view only: uncommitted files after the commits; a path can be in both, so keys carry the part.
   const loose = view === "branch" && !data?.error
     ? (loaded.all?.files || []).map((f) => ({ ...f, uncommitted: true })) : [];
   const files = [...committed, ...loose];
@@ -391,8 +364,7 @@ export function DiffPane({ turns = [], turn = null, path, scope, project, worktr
     load(v);
   }
 
-  // A click opens a comment on that line; a shift-click widens the open one
-  // to run from where it started to here. What's typed goes along.
+  // A click opens a comment; a shift-click widens the open one (typed text goes along).
   function startComment(rows, i, extend) {
     if (!onComments) return;
     const open = draft && !draft.id && draft.path === file.path ? draft : null;
@@ -442,9 +414,7 @@ export function DiffPane({ turns = [], turn = null, path, scope, project, worktr
   if (view === "branch" && result) {
     const tone = !result.ok ? "bad" : result.commits ? "good" : "plain";
     const text = result.text || "";
-    // The merge's own reason is written to the tab (its tool returns it);
-    // here it's you reading, so the two refusals the pane can act on get
-    // said to you. Anything else is shown as the merge put it.
+    // The tool returns the merge's reason to the tab; here the two refusals the pane can act on are said to you.
     const said = result.ok ? text.charAt(0).toUpperCase() + text.slice(1)
       : result.conflicts?.length ? `${worktree.base} moved on, and the branch's commits conflict with it in `
         + `${result.conflicts.join(", ")}. Nothing changed in the main checkout; the tab resolves it in its worktree.`

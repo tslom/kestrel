@@ -1,14 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-// The console bar's ⋯: the set-and-leave controls (effort, style, voice, MCP)
-// and the session actions (docs, resume, new), in a menu under the button so
-// the bar stays one row. Portalled to <body> and placed `fixed` from the
-// button's rect: the bar lives in the stage sheet, which clips (overflow and
-// a size container), and at its 40px peek a menu inside it would be cut off.
-//
-// `open` / `onClose` are the caller's; any click outside, Escape, a scroll or
-// a resize closes it. `anchor` is the ⋯ button.
+// The console bar's ⋯: set-and-leave controls (effort, style, voice, MCP) and session actions, keeping
+// the bar one row. Portalled to <body>, `fixed` from the button's rect (the stage sheet clips, and at
+// its 40px peek an inside menu is cut off). `open`/`onClose` are the caller's; outside click, Escape,
+// scroll or resize closes it; `anchor` is the ⋯ button.
 const MENU_ROOM = 340;   // about the tallest menu here (the model picker)
 
 export default function BarMenu({ open, onClose, anchor, children }) {
@@ -19,8 +15,7 @@ export default function BarMenu({ open, onClose, anchor, children }) {
     if (!open || !anchor) return;
     const r = anchor.getBoundingClientRect();
     const right = Math.max(8, window.innerWidth - r.right);
-    // Under the button, unless the button is low on the page (a reply's
-    // "retry with…" at the foot of the log): then above it.
+    // Under the button, above it when the button is low (a reply's "retry with…").
     const below = window.innerHeight - r.bottom;
     setPos(below < MENU_ROOM && r.top > below
       ? { bottom: window.innerHeight - r.top + 4, right }

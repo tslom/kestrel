@@ -1,10 +1,6 @@
-/* Map narrow: the round-2 system with the map cut to a fixed 360px column
-   beside the console, which takes the rest of the width (docs/ui-overhaul.md
-   P2.1, option b). Side by side from a 680px work column (360 + a usable
-   console) instead of 800, since half the width no longer goes to the map.
-   Not while a document or Claude's view holds the map's place: a PDF in
-   360px is unreadable, so those keep the even split. Folded (peek) and full
-   keep their own layouts. */
+/* Map narrow: a fixed 360px map column beside the console, from a 680px work column.
+   Not while a document or Claude's view holds the map's place (a PDF in 360px is
+   unreadable); peek and full keep their own layouts. */
 @container work (min-width: 680px) {
   :root[data-look="map-narrow"] .plan-stage:not(.peek):not(.full):not(.viewing):not(:has(> .doc-stage:not(:empty))) {
     grid-template-columns: minmax(0, 1fr) 360px;

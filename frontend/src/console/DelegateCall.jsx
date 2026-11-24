@@ -2,26 +2,23 @@ import { useState } from "react";
 import { useWidgetData } from "../lib/refresh.js";
 import "./delegates.css";
 
-// Other models at work (backend app/delegates): the log's rows for the three
-// tools Claude sends them with. `t` is the log's tool entry: `raw` its input,
-// `result` / `error` from its tool_result (console.DELEGATE_TOOL_NAMES).
-//
-//   delegate   one line, "→ gemini": the mark that another provider answered
-//   fan_out    one line, the mix it ran ("claude ×2 · gemini ×2")
-//   shortlist  the card: Claude's picks, a preview of each, and the choice
-//
-// A row opens to the brief that left and what came back, because the brief
-// is the one thing that crossed to another company.
+// Log rows for the three delegate tools (backend app/delegates; `t` = the tool entry, `raw` input,
+// `result`/`error` from its tool_result; console.DELEGATE_TOOL_NAMES): delegate ("→ Antigravity"),
+// fan_out (the mix it ran), shortlist (the card: picks, previews, the choice). A row opens to the
+// brief that left and what came back: the brief is what crossed to another company.
 export const DELEGATE_TOOL = /__(delegate|fan_out|shortlist)$/;
 
-const NAMES = { claude: "Claude", gemini: "Gemini", codex: "ChatGPT" };
+const NAMES = { claude: "Claude", antigravity: "Antigravity", codex: "ChatGPT" };
 const nameOf = (id) => NAMES[id] || id;
+
+// console_tools._variant_line's mark for a capped run that still returned something (with nothing it's an error).
+const CUT = / CUT OFF \(/;
 
 function parse(raw) {
   try { return JSON.parse(raw) || {}; } catch { return {}; }
 }
 
-// "variant 2 (gemini · gemini-3-pro, 41s): /path" and its FAILED form, as
+// "variant 2 (antigravity · gemini-3.8-flash-high, 41s): /path" and its FAILED form, as
 // console_tools writes them.
 function variantsIn(result) {
   const out = [];
@@ -58,11 +55,15 @@ function Row({ t, live, head, brief }) {
         {head}
         {redacted && <span className="dg-redacted" title="Replaced with placeholders before the brief left this machine">{redacted} removed</span>}
         {t.error ? <span className="dg-state bad">failed</span>
-          : live ? <span className="dg-state pulse">working</span> : null}
+          : live ? <span className="dg-state pulse">working</span>
+          : CUT.test(t.result || "") ? <span className="dg-state warn" title="Stopped at the turn or time limit; what came back is what it had">cut off</span>
+          : null}
       </button>
       {open && (
         <div className="dg-body">
-          <div className="dg-label">the brief (all it was given)</div>
+          <div className="dg-label">{redacted
+            ? `the brief as Claude wrote it (it was given this with ${redacted} swapped for placeholders)`
+            : "the brief (all it was given)"}</div>
           <pre className="tool-cmd">{brief}</pre>
           {t.result != null && (
             <>

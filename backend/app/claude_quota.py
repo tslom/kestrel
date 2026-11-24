@@ -1,8 +1,7 @@
-"""GET /api/console/usage — Claude subscription quota per window (5h, the
-week, paid credits) for the console bar's chips.
+"""GET /api/console/usage: Claude subscription quota per window (5h, week, credits) for the console chips.
 
-Moved out of console.py verbatim; it shares nothing with the session code.
-console.py includes this router, so main.py wiring is unchanged.
+Two sources: our own throttled fetch of the OAuth usage API (token read, never written, from the
+keychain) and the CLI's ~/.claude.json cache, which can be hours stale. Design: DESIGN.md → `app/claude_quota.py`.
 """
 
 import json
@@ -12,6 +11,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
@@ -21,38 +21,14 @@ router = APIRouter()
 
 
 # --- usage windows -----------------------------------------------------------
-#
-# The rate_limit_event the CLI streams carries a status and a reset time but
-# usually no utilization, and only for the window that is currently binding —
-# so the console bar could say "5h —" forever and never mention the week. The
-# percentages the interactive /usage screen shows come from GET
-# /api/oauth/usage, which needs the OAuth token, and the CLI parks the answer
-# in ~/.claude.json under cachedUsageUtilization. Reading that file is how we
-# get real numbers without touching the token.
-#
-# The catch, and the reason age is part of the response: only the interactive
-# UI refreshes that cache (throttled to five minutes). Print/SDK runs — this
-# console included — never write it, so a number here can be an hour behind a
-# heavy session. Better a percentage stamped with how old it is than a dash.
-#
-# Age is not the whole story either. Once a window's resets_at has passed, its
-# percentage is not stale, it is void — the quota rolled over and the number
-# describes a window that no longer exists. That is why the 5h chip was the
-# wrong one so much more often than the 7d chip: five hours is short enough
-# that an unrefreshed cache is usually describing a dead window, while the
-# week's number is merely a little behind. The console drops the percentage
-# for a window whose reset has passed (see mergeUsage), which is why resets_at
-# travels with every window here even when we have no percent to pair it with.
+# Age travels with the response, and so does resets_at: past it a percentage is void,
+# not stale, and the console drops it (mergeUsage).
 CLAUDE_CONFIG = Path.home() / ".claude.json"
 
-# Past this the percentage renders dimmed. It stays on screen either way — a
-# number that admits its age beats a dash — but a quarter of an hour into a
-# five-hour window it has drifted far enough that it should not look
-# authoritative.
+# Past this the percentage renders dimmed (still shown: a number that admits its age beats a dash).
 USAGE_STALE_SECONDS = 15 * 60
 
-# limits[].kind -> the rate_limit_type the stream uses for the same window, so
-# a live event and a cached percentage land on one chip instead of two.
+# limits[].kind -> the stream's rate_limit_type, so a live event and a cached percentage share a chip.
 USAGE_KINDS = {"session": ("five_hour", "5h"), "weekly_all": ("seven_day", "7d")}
 USAGE_SEVERITY = {"normal": "allowed", "warning": "allowed_warning",
                   "critical": "rejected", "exceeded": "rejected",
@@ -81,8 +57,7 @@ def _usage_window(entry: dict) -> dict | None:
     kind = str(entry.get("kind") or "")
     key, label = USAGE_KINDS.get(kind, ("", ""))
     if not key:
-        # A scoped week (Opus, Sonnet) names its model; anything else we have
-        # never seen still renders under its own kind rather than vanishing.
+        # A scoped week names its model; an unknown kind renders under its own name.
         model = ((entry.get("scope") or {}).get("model") or {}).get("display_name")
         if kind == "weekly_scoped" and model:
             key, label = f"seven_day_{str(model).lower()}", f"7d {str(model).lower()}"
@@ -96,21 +71,17 @@ def _usage_window(entry: dict) -> dict | None:
             "is_active": bool(entry.get("is_active"))}
 
 
-# The API names these windows with the same strings the rate_limit stream
-# uses, so its rows land on the console's existing chips without translation.
+# Same strings as the rate_limit stream, so rows land on the existing chips.
 FLAT_WINDOW_LABELS = {"five_hour": "5h", "seven_day": "7d",
                       "seven_day_opus": "7d opus", "seven_day_sonnet": "7d sonnet"}
 
 
-# The API's usage object, verbatim. The CLI stores exactly this under
-# cachedUsageUtilization.utilization, so its cache and a live fetch parse
-# through the same function rather than through two that drift apart.
+# Takes the API's usage object, which the CLI also stores as cachedUsageUtilization.utilization: one parser for both.
 def _windows_from_utilization(util: dict) -> list[dict]:
     windows = [w for w in (_usage_window(e) for e in (util.get("limits") or [])
                            if isinstance(e, dict)) if w]
     if not windows:
-        # Older shape: the windows as flat keys instead of a limits[] list.
-        # Same numbers, no severity or scope.
+        # Older shape: flat keys instead of limits[]; no severity or scope.
         for key, label in FLAT_WINDOW_LABELS.items():
             entry = util.get(key)
             if not isinstance(entry, dict):
@@ -123,13 +94,10 @@ def _windows_from_utilization(util: dict) -> list[dict]:
                             "resets_at": _usage_reset_ts(entry.get("resets_at")),
                             "is_active": False})
 
-    # Paid overage rides in the same list under the key its rate_limit event
-    # uses, so a live "rejected" and the cached percentage share one chip
-    # instead of arguing next to each other.
+    # Paid overage uses its rate_limit event's key so live and cached share one chip.
     credits = util.get("extra_usage") or {}
     if credits.get("is_enabled") and isinstance(credits.get("utilization"), (int, float)):
-        # Credits are counted in minor units (cents); everything else here is
-        # already a percent.
+        # Credits are in minor units (cents).
         scale = 10 ** (credits.get("decimal_places") or 0)
         windows.append({
             "key": "overage", "label": "credits",
@@ -148,8 +116,7 @@ def _cli_snapshot() -> tuple[list[dict], float | None] | None:
     try:
         raw = json.loads(CLAUDE_CONFIG.read_text())
     except (OSError, json.JSONDecodeError):
-        # The CLI rewrites this file wholesale, so a read can land mid-write.
-        # It is a cache; the next poll gets it.
+        # The CLI rewrites this file wholesale; a mid-write read is retried next poll.
         return None
 
     cached = raw.get("cachedUsageUtilization") or {}
@@ -159,42 +126,10 @@ def _cli_snapshot() -> tuple[list[dict], float | None] | None:
 
 
 # --- asking the API ourselves ------------------------------------------------
-#
-# The file above is somebody else's cache, and it goes quiet exactly when you
-# want it most: the moment you stop using the interactive UI. A local proxy
-# used to poll the endpoint on its own timer and give us a second, fresher
-# reading, but it is gone and the CLI's cache alone is
-# routinely hours or days stale — so this fetch is the only way the
-# console sees a live number.
-#
-# Which credential to ask with. This used to be "the environment and nowhere
-# else", on the principle that a dashboard has no business lifting the CLI's
-# login out of the system keystore. That principle cost the feature outright,
-# so it was overturned deliberately — the reasoning, because it is easy to
-# argue the opposite:
-#
-# A `claude setup-token` token does not work here and never did. It lacks the
-# one scope the endpoint demands, which the endpoint states plainly:
-#
-#     403  OAuth token does not meet scope requirement user:profile
-#          required_scopes: ["user:profile"]
-#
-# setup-token has no flag to ask for more (`--help` offers only -h), there is
-# no `claude usage` subcommand, and `claude auth status` reports login but no
-# usage. The CLI's own ~/.claude.json cache is not a fallback either: it freezes
-# and does not resume — not from `-p`, not from `--bg`, and not
-# from a real interactive TUI launched on a pty (all three tried). So the login
-# keychain is not the convenient option, it is the only one.
-#
-# What makes it defensible: we read, never write. The CLI owns this credential
-# and rotates it (~3h lifetime, its own refresh token); because we re-read on
-# every fetch rather than caching the string, rotation is simply picked up on
-# the next poll. We still never refresh it — that would rewrite a credential
-# the CLI owns, which remains off limits.
-#
-# CLAUDE_CODE_OAUTH_TOKEN still wins when set, as an escape hatch for a token
-# minted elsewhere with the right scopes. Do not point it at setup-token
-# output: that silently reinstates the 403 this replaced.
+# The CLI cache alone is routinely hours stale, so this fetch is the only live number.
+# The credential is the CLI's keychain login, read on every fetch and never written or
+# refreshed. CLAUDE_CODE_OAUTH_TOKEN wins when set, but never a `setup-token` token: it
+# lacks the `user:profile` scope (403).
 KEYCHAIN_SERVICE = "Claude Code-credentials"
 
 
@@ -211,22 +146,23 @@ def _oauth_token() -> str:
         return str(oauth.get("accessToken") or "").strip()
     except Exception:  # absent, locked, not macOS, garbage body
         return ""
+
+
+def oauth_token() -> str:
+    """The slot's access token, for another module asking as the CLI does."""
+    return _oauth_token()
+
+
 USAGE_API = "https://api.anthropic.com/api/oauth/usage"
 USAGE_API_BETA = "oauth-2025-04-20"
 
-# How often a plain poll may ask. This was five minutes, copying the CLI's own
-# throttle, and with the console polling every minute the chips ran up to six
-# minutes behind a turn. A minute is still one request
-# per minute however many tabs poll, and a 429 below backs it off on its own.
+# One request per minute however many tabs poll; a 429 backs off separately.
 USAGE_FETCH_INTERVAL = 60
-# A turn just finished, which is the moment the number moved: the console asks
-# with fresh=1 and may get a new reading this soon after the last attempt.
+# fresh=1 (a turn just ended) may refetch this soon after the last attempt.
 USAGE_FRESH_INTERVAL = 15
-# A token we cannot use will not start working on its own — only a new
-# setup-token does — so back off hard rather than asking every five minutes.
+# An unusable token won't fix itself: back off hard.
 USAGE_AUTH_BACKOFF = 3600
-# Too many requests: wait what the server says, or five minutes — the CLI's
-# own cadence, which it has never been told off for.
+# On 429: the server's Retry-After, else five minutes (the CLI's own cadence).
 USAGE_RATE_BACKOFF = 300
 USAGE_TIMEOUT = 10
 
@@ -241,8 +177,12 @@ def _retry_after(exc: urllib.error.HTTPError) -> float:
 
 
 def _fetch_usage() -> tuple[list[dict] | None, float]:
-    """(windows, extra seconds to wait before trying again)."""
-    token = _oauth_token()
+    """(windows, extra seconds to wait before trying again), for the account
+    in the CLI's slot."""
+    return _fetch_with(_oauth_token())
+
+
+def _fetch_with(token: str) -> tuple[list[dict] | None, float]:
     if not token:
         return None, USAGE_AUTH_BACKOFF
 
@@ -254,9 +194,7 @@ def _fetch_usage() -> tuple[list[dict] | None, float]:
         with urllib.request.urlopen(req, timeout=USAGE_TIMEOUT) as resp:
             payload = json.loads(resp.read())
     except urllib.error.HTTPError as exc:
-        # 401/403 is a token only a new setup-token can replace; 404 is an
-        # account with no subscription windows to report. Neither improves by
-        # being asked again in five minutes.
+        # 401/403: bad token; 404: no subscription windows. Asking again won't help.
         if exc.code in (401, 403, 404):
             return None, USAGE_AUTH_BACKOFF
         return None, _retry_after(exc) if exc.code == 429 else 0.0
@@ -268,10 +206,7 @@ def _fetch_usage() -> tuple[list[dict] | None, float]:
 
 
 class _LiveUsage:
-    """The last answer the API gave us, and when to bother it again.
-
-    Process-local on purpose: it is a cache of a cache, worth nothing across a
-    restart, and app.db is for data the vault owns."""
+    """The last API answer and when to ask again. Process-local on purpose (not app.db)."""
 
     def __init__(self) -> None:
         self.lock = threading.Lock()
@@ -284,39 +219,100 @@ class _LiveUsage:
 
 _live = _LiveUsage()
 
+# Each saved account has its own _LiveUsage and throttle. `_live` is the slot account's;
+# set_active trades it with the parked one so chips switch at once.
+_parked: dict[str, _LiveUsage] = {}
+_active = ""      # account uuid in the slot, as claude_accounts last saw it
+_swap = threading.Lock()
+
+
+def active_key() -> str:
+    return _active
+
+
+def set_active(uuid: str) -> None:
+    global _live, _active
+    with _swap:
+        if uuid == _active:
+            return
+        if _active:
+            _parked[_active] = _live
+        elif _live.windows:
+            # Read before anyone knew whose it was: the slot's, which is this.
+            _parked.setdefault(uuid, _live)
+        _live = _parked.pop(uuid, None) or _LiveUsage()
+        _active = uuid
+
+
+def _cache_of(uuid: str) -> _LiveUsage | None:
+    with _swap:
+        return _live if uuid == _active else _parked.get(uuid)
+
+
+def poll_account(uuid: str, token: Callable[[], str]) -> None:
+    """Refresh a parked account's reading if its throttle allows; `token` is called only when due."""
+    with _swap:
+        if uuid == _active:
+            return
+        live = _parked.setdefault(uuid, _LiveUsage())
+    _snapshot_of(live, lambda: _fetch_with(token()), True, False)
+
+
+def account_windows(uuid: str) -> list[dict] | None:
+    live = _cache_of(uuid)
+    if live is None:
+        return None
+    with live.lock:
+        return list(live.windows) if live.windows else None
+
+
+def account_age(uuid: str) -> float | None:
+    live = _cache_of(uuid)
+    if live is None or not live.windows:
+        return None
+    return max(0.0, time.time() - live.fetched)
+
+
+def forget_account(uuid: str) -> None:
+    with _swap:
+        _parked.pop(uuid, None)
+
 
 def _live_snapshot(fetch: bool = True, fresh: bool = False) -> tuple[list[dict], float] | None:
-    """Windows from the API, refetched at most once per USAGE_FETCH_INTERVAL —
-    or once per USAGE_FRESH_INTERVAL when `fresh` (a turn just ended), unless
-    the server told us to back off. fetch=False hands back the last answer
-    without asking."""
+    """The slot account's API windows, refetched per USAGE_FETCH_INTERVAL (USAGE_FRESH_INTERVAL when
+    `fresh`) unless backing off. fetch=False returns the last answer."""
+    return _snapshot_of(_live, _fetch_usage, fetch, fresh)
+
+
+def _snapshot_of(live: _LiveUsage, fetcher: Callable[[], tuple[list[dict] | None, float]],
+                 fetch: bool, fresh: bool) -> tuple[list[dict], float] | None:
     now = time.time()
-    with _live.lock:
-        due = now >= _live.next_try or (
-            fresh and not _live.backoff and now - _live.tried >= USAGE_FRESH_INTERVAL)
+    with live.lock:
+        due = now >= live.next_try or (
+            fresh and not live.backoff and now - live.tried >= USAGE_FRESH_INTERVAL)
         mine = fetch and due
         if mine:
             # Claim the slot before letting go of the lock, so two open tabs
             # cannot put two requests in flight at once.
-            _live.next_try = now + USAGE_FETCH_INTERVAL
-            _live.tried = now
-            _live.backoff = False
+            live.next_try = now + USAGE_FETCH_INTERVAL
+            live.tried = now
+            live.backoff = False
 
     if mine:
-        windows, backoff = _fetch_usage()
-        with _live.lock:
+        windows, backoff = fetcher()
+        with live.lock:
             if windows:
-                _live.windows, _live.fetched = windows, time.time()
+                live.windows, live.fetched = windows, time.time()
             if backoff:
-                _live.next_try = max(_live.next_try, time.time() + backoff)
-                _live.backoff = True
+                live.next_try = max(live.next_try, time.time() + backoff)
+                live.backoff = True
 
-    with _live.lock:
+    with live.lock:
         # A previous answer stays on offer after a failed refetch; console_usage
         # weighs it against the files by age like any other source.
-        if not _live.windows:
+        if not live.windows:
             return None
-        return list(_live.windows), _live.fetched
+        return list(live.windows), live.fetched
 
 
 @router.get("/api/console/usage")
@@ -332,14 +328,12 @@ def console_usage(fresh: bool = False) -> dict:
 
 
 def usage_snapshot(fetch: bool = True, fresh: bool = False) -> dict:
-    """console_usage's answer. fetch=False never touches the network — for
-    callers on the event loop, where a 10s urlopen would freeze the backend."""
+    """console_usage's answer. fetch=False never touches the network (for event-loop callers)."""
     snaps = [s for s in (_live_snapshot(fetch, fresh), _cli_snapshot()) if s]
     if not snaps:
         return {"windows": [], "age_seconds": None, "stale": True}
 
-    # A snapshot with no fetch time is of unknown age, so it only wins by
-    # default — any dated snapshot beats it.
+    # No fetch time = unknown age: any dated snapshot beats it.
     windows, fetched = max(
         snaps, key=lambda snap: snap[1] if snap[1] is not None else float("-inf"))
     age = None if fetched is None else max(0.0, datetime.now().timestamp() - fetched)

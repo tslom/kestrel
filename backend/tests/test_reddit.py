@@ -1,10 +1,4 @@
-"""providers/reddit — the Arctic Shift cache and the live search.
-
-Nothing here touches the network: _api (or urlopen under it) is stubbed.
-What's worth pinning is the stuff that only bites in production — the 4am
-fold deciding which day a post lands on, a quiet day not being mistaken for a
-gap, and a missing score staying NULL rather than a real-looking zero.
-"""
+"""providers/reddit — the Arctic Shift cache and the live search; the network is stubbed."""
 
 import io
 import json
@@ -22,10 +16,7 @@ DAY = "2026-08-12"
 
 @pytest.fixture
 def today(monkeypatch):
-    """Pin what 'today' is without breaking the fold itself: db.day_key() with
-    no argument answers DAY, db.day_key(dt) still does the real 4am arithmetic
-    (conftest's frozen_day flattens both, which would hide _day_of's whole job).
-    """
+    """Pin day_key() to DAY while day_key(dt) keeps the real 4am fold."""
     real = db.day_key
     monkeypatch.setattr(
         db, "day_key", lambda dt=None: DAY if dt is None else real(dt))
@@ -84,12 +75,7 @@ def _http_error(code: int, body: str) -> urllib.error.HTTPError:
 
 
 def _stub_http(monkeypatch, script: list) -> dict:
-    """urlopen playing a scripted list of payloads and HTTPErrors, in order.
-
-    Stubs one layer lower than _arctic: these tests are about _api's own retry,
-    which _arctic replaces wholesale. The returned dict counts the attempts —
-    a retry that silently didn't happen is the failure worth catching.
-    """
+    """urlopen playing scripted payloads and HTTPErrors in order; the returned dict counts attempts."""
     state = {"n": 0}
 
     def fake(req, timeout=None):
@@ -140,8 +126,7 @@ def test_sync_buckets_posts_by_day_key(dbfile, today, subs, monkeypatch):
 
 def test_quiet_day_is_marked_synced_and_not_refetched(dbfile, today, subs,
                                                       monkeypatch):
-    """A day with no posts is an answer, not a gap. Without the reddit_sync
-    marker every later read would re-fetch it forever."""
+    """A day with no posts is marked synced, not a gap."""
     calls: list = []
     _arctic(monkeypatch, [], calls=calls)
     con = db.connect()
@@ -159,8 +144,7 @@ def test_quiet_day_is_marked_synced_and_not_refetched(dbfile, today, subs,
 
 
 def test_days_still_ahead_are_never_marked(dbfile, today, subs, monkeypatch):
-    """A this-week read on a Wednesday used to mark Thu–Sun synced-and-empty,
-    and a marked day is never revisited — so those days' posts never came."""
+    """A this-week read never marks future days synced."""
     calls: list = []
     _arctic(monkeypatch, [], calls=calls)
     reddit.get(parse_range("2026-08-11..2026-08-15"))
@@ -187,8 +171,7 @@ def test_get_backfills_only_never_synced_days(dbfile, today, subs, monkeypatch):
 
 
 def test_fetch_window_stops_when_a_page_adds_nothing(monkeypatch):
-    """Pagination advances on created_utc; a full page sharing one timestamp
-    can't advance the cursor, so the loop has to notice it learned nothing."""
+    """A full page sharing one created_utc can't advance the cursor; the loop stops."""
     same = [_post(f"p{i}", "2026-08-11T12:00:00") for i in range(reddit.PAGE_LIMIT)]
     calls = []
 
@@ -224,8 +207,7 @@ def test_one_bad_subreddit_does_not_kill_the_sync(dbfile, today, monkeypatch):
 
 def test_a_failed_day_is_retried_rather_than_cached_as_empty(
         dbfile, today, subs, monkeypatch):
-    """The trap this heads off: mark the day synced after a 429 and nothing
-    ever looks at it again — the outage becomes a permanent 'no posts'."""
+    """A 429 leaves the day unmarked, so the outage isn't a permanent 'no posts'."""
     fail = {"yes": True}
 
     def flaky(path, params):
@@ -242,7 +224,7 @@ def test_a_failed_day_is_retried_rather_than_cached_as_empty(
 
 
 def test_a_partial_outage_still_serves_what_answered(dbfile, today, monkeypatch):
-    """One sub down is not an outage — the subs that replied are real data."""
+    """One sub down still keeps the subs that replied."""
     monkeypatch.setattr(reddit, "REDDIT_SUBREDDITS", ["good", "bad"])
 
     def half(path, params):
@@ -259,10 +241,7 @@ def test_a_partial_outage_still_serves_what_answered(dbfile, today, monkeypatch)
 
 def test_an_empty_today_makes_no_reddit_request(dbfile, today, subs,
                                                 monkeypatch):
-    """There is no .rss fallback for a today the archive hasn't ingested:
-    every Reddit feed answers 404, so it only ever added a failure to each
-    sync's errors. An empty archive reply for today is just that, marked
-    synced and error-free, with nothing sent to reddit.com."""
+    """An empty archive reply for today is marked synced and error-free; nothing goes to reddit.com."""
     urls: list[str] = []
 
     def fake(req, timeout=None):
@@ -383,8 +362,7 @@ def test_search_is_live_and_writes_nothing(dbfile, today, monkeypatch):
 
 
 def _down_search(monkeypatch, posts, calls):
-    """The archive with its search down: every `query=` search refused, the
-    newest-first listing (paged on `before`) still answering."""
+    """The archive with `query=` search refused; the newest-first listing still answers."""
     def fake(path, params):
         calls.append(params)
         if "query" in params:
@@ -397,9 +375,7 @@ def _down_search(monkeypatch, posts, calls):
 
 
 def test_a_refused_search_matches_the_phrase_in_the_newest_posts(today, monkeypatch):
-    """When searches 422 the listing still answers, so the phrase is matched
-    here instead; a word-by-word match would take
-    "rain ... cover" too (55 false hits for "code mode" in r/ClaudeCode)."""
+    """When searches 422 the phrase is matched locally as a phrase, not word by word."""
     calls: list = []
     _down_search(monkeypatch, [
         _post("a", "2026-08-11T10:00:00", title="Rain cover for a 40L?"),
@@ -410,7 +386,7 @@ def test_a_refused_search_matches_the_phrase_in_the_newest_posts(today, monkeypa
     out = reddit.search('"rain cover"', "onebag", days=30)
     assert [it["day"] for it in out["data"]] == ["2026-08-11", "2026-08-10"]
     assert out["scan"] == {"posts": 3, "complete": True, "back_to": "2026-08-09"}
-    # No `after` on the listing: with a two-year one it 422'd as well.
+    # No `after` on the listing: a two-year one 422s too.
     assert "after" not in calls[1] and "query" not in calls[1]
 
 
@@ -428,7 +404,7 @@ def test_a_scan_that_stops_short_of_the_window_says_how_far_it_got(today, monkey
 
 
 def test_the_cli_brief_says_when_it_only_scanned(today, monkeypatch):
-    """Skills read `--search` through the CLI, whose head named the window."""
+    """The CLI `--search` head names the window."""
     from app.providers.__main__ import _search_brief
     calls: list = []
     _down_search(monkeypatch, [_post("a", "2026-08-11T10:00:00",
@@ -451,10 +427,7 @@ def test_a_refused_listing_is_still_archive_busy(today, monkeypatch):
 
 
 def test_search_without_a_subreddit_is_refused_before_the_call(monkeypatch):
-    """Arctic Shift 400s a query that scopes to neither a subreddit nor an
-    author, so an unscoped search is not a thing this route can do. It shipped
-    with the parameter optional, which made every such call a wasted round
-    trip and a misleading "search all of Reddit" in the tool's description."""
+    """A search scoped to neither subreddit nor author is refused (the archive 400s it)."""
     called = []
     monkeypatch.setattr(reddit, "_api", lambda p, q: called.append(p) or [])
     for missing in (None, "", "   ", "r/"):
@@ -464,10 +437,7 @@ def test_search_without_a_subreddit_is_refused_before_the_call(monkeypatch):
 
 
 def test_a_busy_archive_is_retried_once_then_named(monkeypatch):
-    """The archive's busy answer is a 422 reading "Timeout. Maybe slow down a
-    bit" — load, not a bad query: the same terms fail and then succeed seconds
-    apart. One retry turns most of those into an answer; what survives it is
-    ArchiveBusy, so a caller can say "later" rather than "wrong"."""
+    """A 422 "Timeout" is load: retried once, then raised as ArchiveBusy."""
     monkeypatch.setattr(reddit.time, "sleep", lambda s: None)
     attempts = _stub_http(monkeypatch, [_http_error(422, "Timeout."),
                                         {"data": [_post("a", f"{DAY}T09:00:00")]}])
@@ -482,8 +452,7 @@ def test_a_busy_archive_is_retried_once_then_named(monkeypatch):
 
 
 def test_a_bad_query_is_not_retried(monkeypatch):
-    """A 400 is the request being wrong and will be wrong again — retrying it
-    only doubles the wait before the caller hears why."""
+    """A 400 is not retried."""
     monkeypatch.setattr(reddit.time, "sleep", lambda s: None)
     attempts = _stub_http(monkeypatch, [_http_error(400, "'limit' must be…")])
     with pytest.raises(RuntimeError) as e:

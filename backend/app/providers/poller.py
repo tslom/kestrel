@@ -1,11 +1,8 @@
-"""Background refresh loop — an asyncio task in the FastAPI app (no celery).
+"""Background refresh loop: an asyncio task in the FastAPI app.
 
-Every PROVIDER_REFRESH_SECONDS it calls each registered provider's refresh()
-(source -> app.db cache) in a worker thread, so widget reads and CLI calls
-are always cache-fast. A provider failing (rate limit, expired token, wifi)
-logs and never kills the loop or the app. Providers refresh concurrently —
-cycle time is the slowest provider, not the sum, and one hung provider no
-longer stalls the rest.
+Every PROVIDER_REFRESH_SECONDS each provider's refresh() runs concurrently in a worker
+thread; a failure logs and never kills the loop. Post-provider steps run in POST_STEPS order.
+Design: DESIGN.md → `app/providers/poller.py`: the refresh loop.
 """
 
 import asyncio
@@ -19,9 +16,7 @@ from ..config import PROVIDER_REFRESH_SECONDS
 
 
 def _refresh_sync(name: str, fn) -> object:
-    """One provider's refresh, plus its health row. Runs whole in the worker
-    thread — the sqlite write would otherwise block the event loop for up to
-    busy_timeout while twelve providers land at once."""
+    """One provider's refresh plus its health row, whole in the worker thread (the sqlite write blocks)."""
     began = time.monotonic()
     try:
         info = fn()
@@ -46,76 +41,48 @@ def _refreshable() -> list[tuple[str, object]]:
 
 
 async def refresh_all() -> dict:
-    """Run one refresh cycle across every refreshable provider, concurrently,
-    and return {name: info | {"error": ...}}. Shared by the background loop
-    and the on-demand POST /api/sync — a failing provider never sinks the
-    others (each is already guarded in _refresh_one)."""
+    """One concurrent refresh of every provider -> {name: info | {"error": ...}}; shared with POST /api/sync."""
     items = _refreshable()
     results = await asyncio.gather(*(_refresh_one(n, fn) for n, fn in items))
     return {name: info for (name, _), info in zip(items, results)}
 
 
 def _reconcile_alarms_sync() -> object:
-    """Alarm reconcile, in a worker thread like the providers — it opens
-    app.db and would otherwise block the event loop on the same write lock."""
+    """Alarm reconcile, in a worker thread (it opens app.db)."""
     from ..alarms import reconcile
     return reconcile()
 
 
 def _flush_notify_sync() -> object:
-    """The at-desk queue, drained last in the cycle so a banner a
-    provider enqueued a moment ago goes out in the same cycle rather than
-    waiting for the next one. Same worker-thread and same guard as the alarms
-    reconcile — this one shells out to osascript, so it has more ways to hang
-    than to fail."""
+    """The at-desk queue, drained after the providers so their banners go out this cycle (shells out to osascript)."""
     from ..notify import flush
     return flush()
 
 
 def _reconcile_wake_sync() -> object:
-    """The scheduled wake, last because it reads the alarms table that
-    _reconcile_alarms_sync just wrote — running it first would schedule wakes
-    for the previous cycle's alarms. Shells out to pmset, so same guard as the
-    others: a power-management refusal must not cost the cycle."""
+    """The scheduled wake; must follow _reconcile_alarms_sync, whose table it reads (shells out to pmset)."""
     from ..wake import reconcile
     return reconcile()
 
 
 def _backup_sync() -> object:
-    """This month's app.db snapshot, if it hasn't been taken yet — the lazy
-    stand-in for the nightly cron that was never installed (see app/backup.py).
-
-    Last in the cycle, and not because it depends on anything above it: it is
-    the only step that copies the whole database, so running it earlier would
-    put a hundred megabytes of I/O in front of a notification banner eleven
-    times out of twelve for nothing. Same worker thread and same guard as the
-    others — a full disk must not cost the cycle.
-    """
+    """This month's app.db snapshot if not yet taken (app/backup.py); late because it copies the whole database."""
     from ..backup import run
     info = run()
-    # Printed on the cycle that takes one and silent on the eight thousand
-    # that don't: a hundred megabytes moving is worth a line, and "did this
-    # ever actually run" should be answerable from the log rather than only
-    # from a directory listing.
+    # Print only on the cycle that takes one.
     if "skipped" not in info:
         print(f"[backup] {info}")
     return info
 
 
 def _selftexts_sync() -> object:
-    """Route texts you sent yourself (app/selftexts.py). After the providers,
-    because it reads what the messages provider just synced; last, because
-    it may spend a model call per burst and nothing above should wait on
-    that."""
+    """Route texts you sent yourself (app/selftexts.py); after messages syncs, last (may spend a model call)."""
     from ..selftexts import run
     return run()
 
 
 def _guarded(label: str, fn) -> object:
-    """Run one post-provider step; a failure becomes `{"error": ...}` and a
-    row in the failure log, never a lost cycle. The steps used to print and
-    nothing else, so an alarm reconcile failing every cycle for a week left no
-    trace outside a /tmp log — the gap failures.py exists to close."""
+    """Run one post-provider step; a failure becomes `{"error": ...}` plus a failures row, never a lost cycle."""
     try:
         return fn()
     except Exception as e:  # never sink the cycle over one step
@@ -125,11 +92,7 @@ def _guarded(label: str, fn) -> object:
         return {"error": repr(e)}
 
 
-# The steps after the providers, in the order both sync_all() and
-# refresh_stream() run them — see each function for why it sits where it
-# does. Lambdas, not the functions themselves, so the name is looked up when
-# the step runs: the sync-route tests stub these module attributes, and a
-# tuple holding the originals would run the real ones against the real app.db.
+# Post-provider steps, in order. Lambdas so the name resolves at run time: tests stub these attributes.
 POST_STEPS = (
     ("alarms", lambda: _reconcile_alarms_sync()),
     ("notify", lambda: _flush_notify_sync()),
@@ -140,17 +103,7 @@ POST_STEPS = (
 
 
 async def sync_all() -> dict:
-    """A whole cycle: every provider, the alarm reconcile, the at-desk
-    queue, then the wake schedule that keeps the next cycle possible.
-
-    Kept distinct from refresh_all() rather than folded into it. `refresh_all`
-    means "provider name -> info" and callers read it that way; alarms are not a
-    provider (no range, no metric, no source of their own) and adding a key that
-    is not one would make the map mean two things. Reconciling runs *after* the
-    providers and not alongside them because alarms are derived from the caches
-    those providers write — diffing mid-cycle would read half-updated trips and
-    churn a fire time that was never wrong.
-    """
+    """A whole cycle: every provider, then POST_STEPS. Not folded into refresh_all(), whose map is provider -> info."""
     out = await refresh_all()
     for label, fn in POST_STEPS:
         out[label] = await asyncio.to_thread(_guarded, label, fn)
@@ -158,13 +111,8 @@ async def sync_all() -> dict:
 
 
 async def refresh_stream() -> AsyncIterator[dict]:
-    """refresh_all(), but yielding an event as each provider lands, so the UI
-    can show a sync in progress instead of a spinner that means nothing.
-
-    Providers still run concurrently — this only changes when results are
-    reported, not how they're run. Events: one `start` with the roster, one
-    `provider` per finish, one `done` at the end.
-    """
+    """refresh_all() yielding an event as each provider lands: `start` (roster), `provider`, one per
+    POST_STEPS label, `done`."""
     items = _refreshable()
     began = time.monotonic()
     yield {"event": "start", "providers": [n for n, _ in items]}
@@ -181,9 +129,7 @@ async def refresh_stream() -> AsyncIterator[dict]:
                    "ok": error is None, "error": error, "info": info,
                    "elapsed_ms": round((time.monotonic() - began) * 1000)}
 
-    # Its own event rather than a `provider` one: alarms are not a source and
-    # the UI's pending list is built from the `start` roster, which never named
-    # them. An unrecognised event is ignored by the strip, so this is additive.
+    # Own events, not `provider`: the UI's pending list comes from the `start` roster.
     for label, fn in POST_STEPS:
         yield {"event": label, "info": await asyncio.to_thread(_guarded, label, fn)}
 
@@ -191,11 +137,7 @@ async def refresh_stream() -> AsyncIterator[dict]:
 
 
 async def refresh_loop() -> None:
-    """The cycle, forever. Guarded as a whole and not just per provider: a
-    failure *outside* _refresh_sync's own try (a thread pool that can't hand
-    out a worker, an OOM in gather) would otherwise end the task silently, and
-    a dead poller looks exactly like a quiet day — every cache simply stops
-    advancing, with nothing on /api/status to say why."""
+    """The cycle, forever; guarded as a whole, since a silently dead poller looks like a quiet day."""
     while True:
         try:
             await sync_all()

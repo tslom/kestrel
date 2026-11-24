@@ -1,15 +1,8 @@
-"""Snoozes — push an ask out of the "needs you" list until a time.
+"""Snoozes: push an ask out of the "needs you" list until a time.
 
-The plan view's list has one way out per row: act, snooze, or open. A snooze
-is what makes a permanent-amber card livable — a habit that needs you can be
-pushed to tonight instead of glowing all day — so the list can stay strict
-about what it shows without nagging about what you've already decided to
-leave.
-
-Times are local wall-clock ISO datetimes, like everything else in app.db.
-"tonight", "tomorrow" and "the day before a deadline" resolve here against
-`db.day_key()` and its 4am rollover, never the browser clock: between
-midnight and 4am the browser's "tomorrow" is a day ahead of the app's.
+Times are local wall-clock ISO datetimes. "tonight", "tomorrow" and "the day
+before a deadline" resolve here against `db.day_key()` (4am rollover), never
+the browser clock. Design: DESIGN.md → The "needs you" list.
 """
 
 from datetime import datetime, timedelta
@@ -21,9 +14,7 @@ from . import db
 
 router = APIRouter(prefix="/api/snoozes")
 
-# Where each preset lands on its day key. Tonight is when the evening nudge
-# starts (HabitsWidget's `evening`); tomorrow and a deadline's eve are the
-# start of a working morning, not the 4am the day key technically begins at.
+# Preset times on a day key: tonight = HabitsWidget's `evening`; the others a working morning, not 4am.
 TONIGHT = "20:00"
 MORNING = "08:00"
 
@@ -118,8 +109,7 @@ def post_snooze(body: SnoozeIn) -> dict:
     return snooze(body.ask_id, at)
 
 
-# A body rather than a path segment: ask ids carry colons and may carry
-# slashes (a note path), which a path parameter would mangle.
+# Body, not path segment: ask ids carry colons and slashes (note paths).
 @router.post("/wake")
 def post_wake(body: WakeIn) -> dict:
     return {"ask_id": body.ask_id, "woke": wake(body.ask_id)}

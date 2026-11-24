@@ -1,13 +1,6 @@
-// Picking a tab back up after the usage limit cut it off (console/LimitBanner.jsx).
-// Plain functions over the windows and the tab's record, so node can test
-// them (tests/autoResume.test.mjs, run by pytest).
-//
-// The rules: once the window that shut has reset, wait a few seconds more
-// (each tab its own offset, so a window of cut-off tabs doesn't fire at
-// once), then send the Resume button's message. A resume the limit refuses
-// again waits for the next reset, and attempts are never closer than
-// MIN_GAP_MS, doubling each time. A tab the user stopped, or told not to,
-// is left alone.
+// Picking a tab back up after the usage limit cut it off (console/LimitBanner.jsx); plain functions (tests/autoResume.test.mjs).
+// Once the shut window resets, wait a per-tab offset (cut-off tabs don't fire at once), then send Resume's message.
+// A refused resume waits for the next reset; attempts are at least MIN_GAP_MS apart, doubling. Stopped or opted-out tabs are left alone.
 
 export const AUTO_KEY = "console_auto_resume";          // "0" = off; on by default
 export const MIN_GAP_MS = 5 * 60_000;
@@ -33,9 +26,7 @@ export function writeAuto(tab, v) {
   } catch { /* a nicety */ }
 }
 
-// The tab's own rate_limit events ({ type: { status, resets_at, utilization } })
-// as windows, to sit beside the polled ones: they arrive the moment a window
-// shuts, while the poll is minutes behind (and stops while the page is hidden).
+// The tab's own rate_limit events as windows: they arrive the moment a window shuts; the poll is minutes behind (and pauses when hidden).
 export function eventWindows(rateLimits) {
   return Object.entries(rateLimits || {}).map(([key, ev]) => ({
     key, status: ev.status, resets_at: ev.resets_at ?? null,
@@ -83,8 +74,7 @@ export function planResume({ limited, windows, model = null, tab, auto = { last:
                              now = Date.now(), on = true }) {
   if (!on || !limited || limited.manual) return null;
   const { open, resetsAt } = windowState(windows, { model, now });
-  // Every case is anchored to a fixed time (a reset, the cut, the last try),
-  // never to `now`, or the moment would move off as the clock reached it.
+  // Anchored to fixed times (reset, cut, last try), never `now`, or the moment would run away.
   let at;
   if (resetsAt) at = resetsAt + jitterMs(tab);
   // Open, with no reset known: the readings predate the cut. Give it the gap.

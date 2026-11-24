@@ -1,16 +1,7 @@
-"""Debts (and beers), user lists, and watchlist — the small lists the old vault kept as
-hand-edited markdown tables. app.db is truth for all three; nothing here reads
-or writes the old .md files.
-
-Each one is the same four routes (read / add / flip done / delete), so the
-shared mechanics live in db.list_rows / set_row_done / delete_row and only
-the create step is per-domain.
-
-Debts and the watchlist are fixed domains with their own columns. The middle
-section is not: it started as a single shopping list and is now `lists` +
-`list_items`, where the list itself is a row the user makes — shopping,
-packing for college, a party — so it carries a second layer of routes for the
-lists themselves on top of the usual four for the items.
+"""Debts (and beers), user lists and watchlist, app.db-truth (the old vault's
+markdown tables are not read). Shared mechanics are db.list_rows / set_row_done /
+delete_row; only create is per-domain. User lists are `lists` + `list_items`
+rows the user makes, so they carry extra list-level routes.
 """
 
 from fastapi import APIRouter, HTTPException
@@ -81,8 +72,7 @@ def delete_debt(debt_id: int):
     return _drop("debts", debt_id, "no such debt")
 
 
-# Beers ride on the debts card but is its own table: a beer has no dollar value,
-# so it stays out of the owed-to-you total and out of the nudges.
+# Beers: own table (no dollar value), so outside the owed-to-you total and nudges.
 
 class BeerIn(BaseModel):
     person: str

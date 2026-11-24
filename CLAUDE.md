@@ -96,6 +96,7 @@ discards) is blocked by a machine-level hook outside this repo,
 | The verify skill's selectors, card ids and palette titles exist in frontend/src; each feature file has its four sections | `backend/tests/test_verify_skill.py` |
 | Every `# noqa` names a code that fires there and says why; every `eslint-disable` says `-- why` and disables something | `backend/ruff.toml` (PGH004, RUF100), `frontend/eslint.config.js`, `.claude/hooks/comment_checks.py`, `backend/tests/test_comments.py` |
 | No new dated comments ("(MM-DD)", "MM-DD:"): history goes in the commit or DESIGN.md. Existing ones are a ratchet; the hook refuses an edit that adds one | `.claude/hooks/comment_checks.py`, `backend/tests/comments_baseline.json`, `backend/tests/test_comments.py` |
+| Comments are one line of why; long reasoning goes in DESIGN.md, in the module's section, and the code points there. A file's comment+docstring lines only go down (`--tighten` lowers the baseline), and the hook refuses an edit that adds a block over 6 lines | `.claude/hooks/comment_checks.py`, `.claude/hooks/lint_on_edit.py`, `backend/tests/comments_baseline.json`, `backend/tests/test_comments.py` |
 | No `timeout`/`gtimeout` (macOS has neither); no sqlite3 dot-command after SQL in one argument | `.claude/hooks/bash_check.py`, `backend/tests/test_bash_check.py` |
 | Every worktree gets the venv, `.env`, data and node_modules | `.claude/hooks/session_start.py`, `backend/tests/test_session_start.py` |
 | Only Claude sees personal data: a non-Claude agent gets a scrubbed brief, an allowlisted env and the seatbelt sandbox, through `delegates/boundary.launch` and nowhere else; the package imports nothing personal | `backend/tests/test_delegate_boundary.py` |
@@ -110,7 +111,7 @@ discards) is blocked by a machine-level hook outside this repo,
   `cd backend && .venv/bin/python -m evals.tool_choice.run --repeat 2` (Haiku,
   about 100k tokens a pass) and add a case for any new tool. It measures which tool
   gets picked, not how it's used, so don't cut a rule just because the score held.
-  Baseline 11-22: 90 of 94, varying a point or two by run. `test_tool_eval.py` holds the size budget for free.
+  Baseline 11-23: 92 to 96 of 99 a pass over four passes, varying a few points by run. It shows Haiku each tool's description, not its argument descriptions. `test_tool_eval.py` holds the size budget for free.
 - **UI looks:** judging any look uses the global `ui-review`, with `/ui-pass`
   as Kestrel's layer. The reviewer loop runs only when asked, on a named view,
   three rounds at most.

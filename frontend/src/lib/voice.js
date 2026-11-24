@@ -1,18 +1,7 @@
-// Microphone in, speech out — the browser half of app/voice.py.
-//
-// The audio lives in the browser for one reason beyond convenience: echo
-// cancellation. The mic hears the speakers, and the wake word is spotted while
-// the console is talking (that is how you interrupt it), so without
-// cancellation a reply that reads the phrase aloud summons itself. getUserMedia's
-// echoCancellation is the OS feature (macOS Voice Processing I/O) rather than
-// a model, and it cancels what *the browser* is playing. So the console's own
-// voice is played back through this same AudioContext instead of by the
-// backend: rendering it here is what puts it in the reference signal. On
-// headphones none of this matters and it costs nothing.
-//
-// Frames leave the machine's process only for localhost, and only while the
-// mic is armed: with wake spotting off, nothing is transmitted unless you are
-// holding the talk button or the console is mid-sentence (barge-in).
+// Microphone in, speech out: the browser half of app/voice.py. Audio lives here for echo cancellation:
+// the console's voice must play through this AudioContext to be in the cancellation reference, or a reply
+// that says the wake phrase summons itself. Frames leave only for localhost and only while armed.
+// Design: DESIGN.md → Voice.
 import { timer, withTimeout } from "./timers.js";
 
 const WS_URL = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/voice`;
@@ -21,10 +10,7 @@ const SAMPLE_RATE = 16000;
 const FRAME = 480;                  // 30ms, what the backend's VAD wants
 const PLAY_IDLE_MS = 900;           // how long a gap between sentences may be
 
-// Runs on the audio thread: buffers the 128-sample render quanta into 30ms
-// frames and converts to the signed 16-bit PCM the backend reads. Shipped as
-// a blob URL because a worklet must be loaded from a URL, and inlining it
-// keeps the audio path in one file instead of a build-config special case.
+// Audio thread: 128-sample quanta into 30ms signed-16-bit PCM frames. A blob URL, since a worklet loads from a URL.
 const WORKLET_SRC = `
 class MicFrames extends AudioWorkletProcessor {
   constructor() { super(); this.buf = new Float32Array(${FRAME}); this.n = 0; }
@@ -67,15 +53,8 @@ export function createVoice({ onEvent }) {
   let ptt = false;            // talk button held
   const queue = [];           // pending speech, in the order it was written
   let source = null;          // what's playing right now
-  // `source` cannot double as the "busy" flag, because it is assigned inside
-  // decodeAudioData's callback: between shifting a chunk off the queue and the
-  // buffer actually starting, nothing is playing and nothing is marked
-  // pending. A sentence arriving in that window would start a second, parallel
-  // chain — two of them talking over each other, and then whichever lost the
-  // race to assign `source` left an `onended` that chained into nothing, so
-  // the reply stopped halfway. Kokoro is what made it common: synthesizing
-  // several times faster than audio plays means sentences arrive in bursts,
-  // and the window is exactly where they land.
+  // `source` can't be the busy flag: it is set inside decodeAudioData's callback, so a sentence arriving
+  // between shift() and start() would fork a second playback chain (Kokoro makes bursts common).
   let decoding = false;       // a chunk is between shift() and start()
   let generation = 0;         // bumped to strand decodes that stopSpeech outran
   let playing = false;
@@ -83,14 +62,10 @@ export function createVoice({ onEvent }) {
 
   const emit = (ev) => { try { onEvent(ev); } catch { /* never break the audio path */ } };
 
-  // Frames are sent only when something is actually listening for them. With
-  // wake off this is the difference between "the mic is available" and "the
-  // mic is transmitting", which is the whole reason an open mic is livable.
+  // Frames go out only when something listens: the difference between mic available and mic transmitting.
   const armed = () => wake || ptt || playing;
 
-  // Speech out needs an output context and nothing else. Keeping this separate
-  // from start() is what lets "speak" be on with the mic shut: turning on audio
-  // out must not light the browser's recording indicator.
+  // Speech out needs only an output context: turning it on must not light the recording indicator.
   async function ensureCtx() {
     if (!ctx) {
       ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
@@ -103,11 +78,7 @@ export function createVoice({ onEvent }) {
     if (ws && ws.readyState === WebSocket.OPEN && node) return;
     if (starting) return starting;
     starting = (async () => {
-      // Raced against a clock because "no answer" is a real outcome here, not
-      // a hypothetical: inside a WKWebView whose UI delegate doesn't handle
-      // capture permission, WebKit drops the request and this promise never
-      // settles either way. Denial is easy to report; silence is what leaves
-      // the mic button lit forever with nothing to show.
+      // Raced against a clock: a WKWebView with no capture-permission delegate never settles this promise.
       stream = await withTimeout(
         navigator.mediaDevices.getUserMedia({
           audio: {
@@ -154,9 +125,7 @@ export function createVoice({ onEvent }) {
     emit({ type: "listening", on: false });
   }
 
-  // Closing the mic the moment push-to-talk ends would also close it in the
-  // middle of a reply you might want to talk over, so it only shuts down when
-  // nothing else still wants it.
+  // Shut the mic only when nothing else wants it (push-to-talk ending must not cut a reply you may talk over).
   function releaseIfIdle() {
     if (!wake && !ptt && !playing) stop();
   }
@@ -185,15 +154,8 @@ export function createVoice({ onEvent }) {
     send({ type: "ptt", down: false });
   }
 
-  // The backend uses this to know a wake hit is an interruption rather than a
-  // fresh summons — it keeps spotting the phrase either way, and echo
-  // cancellation is what stops a synthesizer that reads the wake word aloud
-  // from summoning the console.
-  //
-  // Going quiet is delayed because sentences arrive with gaps in them: the
-  // next one is still being synthesized when the last finishes playing. With
-  // the mic off, flapping this flag in those gaps tore the audio context down
-  // between two halves of the same reply. `now` is for a real stop.
+  // Tells the backend a wake hit is an interruption. Going quiet is delayed (PLAY_IDLE_MS): sentences arrive
+  // with gaps, and flapping tore the audio context down mid-reply. `now` is for a real stop.
   function setPlaying(on, now = false) {
     idleTimer.clear();
     if (on) {
@@ -219,9 +181,7 @@ export function createVoice({ onEvent }) {
     decoding = true;
     const gen = generation;
     const done = (fn) => (arg) => {
-      // A decode that was in flight when stopSpeech ran belongs to a reply
-      // that is over. Without the generation check it would start playing
-      // *after* the stop, which is the same bug seen from the other side.
+      // A decode in flight across stopSpeech belongs to a finished reply: don't play it.
       if (gen !== generation) return;
       decoding = false;
       if (ctx) fn(arg);
@@ -235,11 +195,9 @@ export function createVoice({ onEvent }) {
     }), done(() => playNext()));
   }
 
-  // Called per sentence as the reply streams, so the queue is what keeps them
-  // in order — decode is async and would otherwise reorder short sentences.
+  // Per sentence as the reply streams; the queue keeps order (async decode would reorder short ones).
   async function enqueueSpeech(b64) {
-    // Barge-in needs the mic open, so a reply spoken while wake is armed keeps
-    // the whole path up; with the mic off, speech out is output only.
+    // Barge-in needs the mic open; with wake off, speech out is output only.
     if (wake) await start(); else await ensureCtx();
     queue.push(b64ToBytes(b64));
     setPlaying(true);
@@ -259,8 +217,7 @@ export function createVoice({ onEvent }) {
     setPlaying(false, true);
   }
 
-  // Something is happening that has no sound of its own: a four-second
-  // provider call is a visible chip on screen and dead air in the room.
+  // Sound for silent work (a four-second provider call is dead air in the room).
   async function earcon() {
     await ensureCtx();
     const osc = ctx.createOscillator();

@@ -9,51 +9,23 @@ import { fmtDur, shortDay } from "../lib/time";
 import { palette } from "../lib/tokens.js";
 import { PlaceNamer, VisitList } from "./MapPlaces.jsx";
 
-// The location half as a map.
-//
-// Every other location surface is a number per day — kilometres, minutes at
-// home, a count of places — and none of them can answer "where was I". This
-// draws the fixes themselves: one path per day, and a disc at every place the
-// same clustering the `places` metric uses says you stopped.
-//
-// Three decisions worth keeping.
-//
-// **The basemap comes from our own origin.** Tiles are fetched once by
-// `app/tiles.py` and cached; the frontend never talks to a tile server. That
-// was forced (blocked image hosts, localhost app) but it also means panning is
-// free after the first look, and a dead network degrades to the vector-only
-// map rather than to a broken sheet.
-//
-// **Integer zoom only.** A slippy map with fractional zoom needs scaled tile
-// blits and a resample on every frame; stepping whole zoom levels keeps every
-// tile pixel-aligned and crisp, and the thing being read here is a campus at
-// four or five fixed scales, not a continuous flight.
-//
-// **Places are the provider's, not the map's.** Same stay detection, same
-// 3-minute dwell floor as `location.places`. A map that clustered its own way
-// would disagree with the card, and the disagreement would be invisible.
-// A place carries a `name` when the vault declares one (see app/places.py),
-// and `ambiguous_with` when another declared place is close enough that no
-// coordinate could tell the two apart — say so rather than pick.
+// The location half as a map: one path per day, a disc at every stay.
+// Basemap tiles come from our own origin (`app/tiles.py`), integer zoom only,
+// places are the provider's clustering, never the map's own.
+// Design: DESIGN.md → `frontend/src/widgets/MapSheet.jsx`.
 
 const TILE = 256;
-// How many places get a numbered pin. Matches the `.map-list` slice below, so
-// every pin on the map has a row beside it and every row has a pin — a number
-// pointing at nothing is worse than no number.
+// Must match the `.map-list` slice below: every pin has a row and every row a pin.
 const PIN_TOP_N = 8;
 const PIN_R = 8;        // pin head radius
 const PIN_H = 19;       // anchor point to head centre
 const MIN_Z = 3, MAX_Z = 19;
-// Wheel delta banked before one zoom level is spent. 90 is roughly one
-// deliberate mouse notch, or a short trackpad flick — tuned by hand on this
-// machine's trackpad, where a lazy two-finger swipe emits ~40 events of
-// deltaY 1-4 and should move one or two levels, not six.
+// Wheel delta banked per zoom level: ~one mouse notch; a lazy trackpad swipe is ~40 events of deltaY 1-4.
 const WHEEL_STEP = 90;
 const WHEEL_STEP_PINCH = 24;
 const WHEEL_IDLE_MS = 180;      // gap after which a flick counts as a new one
 
-// Web Mercator, in world pixels at a zoom. The only projection maths here;
-// everything else is offsets from the view centre.
+// Web Mercator, in world pixels at a zoom.
 const worldSize = (z) => TILE * 2 ** z;
 const lonToX = (lon, z) => ((lon + 180) / 360) * worldSize(z);
 const latToY = (lat, z) => {
@@ -66,9 +38,7 @@ const yToLat = (y, z) => {
   return (180 / Math.PI) * Math.atan(Math.sinh(n));
 };
 
-// A view that shows everything, without zooming past what the tiles can do.
-// A single-point day has no extent at all, so it gets a default scale rather
-// than an infinite one.
+// Fits all bounds; a single-point day has no extent, so it falls to MAX_Z.
 function fitView(bounds, w, h) {
   if (!bounds) return { lat: 0, lon: 0, z: 3 };
   const lat = (bounds.min_lat + bounds.max_lat) / 2;
@@ -82,10 +52,7 @@ function fitView(bounds, w, h) {
 }
 
 export default function MapSheet({ onPin }) {
-  // A month, not the week the rest of the location surfaces default to. A
-  // routine is the thing a map shows that a number can't, and it needs more
-  // than one instance of each weekday to be visible at all — on a Monday,
-  // "this week" is a map of this morning.
+  // A month, not a week: a routine needs several of each weekday to show.
   const [range, setRange] = useState("this-month");
   const [ranges, setRanges] = useState(null);
   const [trace, setTrace] = useState(null);
@@ -108,9 +75,7 @@ export default function MapSheet({ onPin }) {
       .catch(() => setRanges([]));
   }, []);
 
-  // Pulled out of the effect so naming a place can re-run it: a correction has
-  // to redraw the map it was made on, and `keepView` is why it doesn't also
-  // throw away the pan and zoom you were looking at when you made it.
+  // `keepView`: naming a place reloads without losing the pan and zoom.
   const load = useCallback((keepView = false) => {
     const mine = ++seq.current;
     setLoading(true);
@@ -137,9 +102,7 @@ export default function MapSheet({ onPin }) {
 
   const reload = useCallback(() => load(true), [load]);
 
-  // One draw of everything, called on any change of data, view or size. Tiles
-  // that aren't loaded yet kick off a load and redraw when they arrive, so the
-  // map appears in one pass and fills in rather than blocking on the network.
+  // One draw of everything; unloaded tiles start a load and redraw on arrival.
   const draw = useCallback(() => {
     const cv = canvasRef.current;
     if (!cv || !view || !trace) return;
@@ -178,11 +141,7 @@ export default function MapSheet({ onPin }) {
           tilesRef.current.set(key, img);
         }
         if (img.complete && img.naturalWidth) {
-          // Desaturated and lightened on the way down. The only keyless tile
-          // server left is osm.org's standard style, which is a finished map
-          // in its own right — greens, reds, bold labels — and a basemap's job
-          // here is to be the paper the fixes are drawn on. Where ctx.filter
-          // isn't supported the tiles simply land in full colour.
+          // Mute osm's loud standard style into paper; without ctx.filter tiles stay full colour.
           ctx.save();
           ctx.filter = "grayscale(0.9) contrast(0.82) brightness(1.06)";
           ctx.globalAlpha = 0.72;
@@ -195,8 +154,7 @@ export default function MapSheet({ onPin }) {
 
     // --- home
     const hx = px(trace.home.lon), hy = py(trace.home.lat);
-    // The home radius is a real distance, so it has to be drawn as one: metres
-    // per pixel at this latitude, not a fixed circle that lies at every zoom.
+    // Real metres per pixel at this latitude, not a fixed-size circle.
     const mPerPx = (156543.03392 * Math.cos((view.lat * Math.PI) / 180)) / 2 ** view.z;
     const hr = trace.home.radius_m / mPerPx;
     ctx.beginPath();
@@ -221,8 +179,7 @@ export default function MapSheet({ onPin }) {
       for (let i = 0; i < day.points.length; i++) {
         const [lat, lon, t] = day.points[i];
         const prev = day.points[i - 1];
-        // A break is a break: joining across a gap would draw a straight line
-        // through a journey nobody recorded.
+        // Never join across a gap: it draws a line through an unrecorded journey.
         if (!prev || t - prev[2] > gapS) pen = false;
         if (!pen) { ctx.moveTo(px(lon), py(lat)); pen = true; }
         else ctx.lineTo(px(lon), py(lat));
@@ -244,12 +201,7 @@ export default function MapSheet({ onPin }) {
       ctx.stroke();
     }
 
-    // --- pins: the disc says how long, the pin says which one.
-    //
-    // Two different questions, so two marks. Size already carries dwell
-    // honestly and carrying identity in it too would mean reading rank off an
-    // area, which nobody can do. The number in the head is the row number in
-    // the list beside the map, which is what makes the two halves one view.
+    // --- pins: the disc says how long, the pin's number is its list row.
     //
     // Not every place gets one. Twenty-one pins is a thicket, and the ones
     // worth labelling are the ones you can act on: whatever the list is
@@ -291,9 +243,7 @@ export default function MapSheet({ onPin }) {
       ctx.textAlign = "center";
       ctx.fillText(String(rank), x, head);
 
-      // A name is the whole point of declaring a place, so show it — but only
-      // where it fits. Ranked order means a clash is resolved in favour of the
-      // longer stay, rather than by whichever happened to be drawn last.
+      // Labels only where they fit; ranked order lets the longer stay win a clash.
       if (!p.name) continue;
       ctx.font = "500 10px ui-sans-serif, system-ui, sans-serif";
       ctx.textAlign = "left";
@@ -314,14 +264,8 @@ export default function MapSheet({ onPin }) {
 
   useEffect(() => { draw(); }, [draw]);
 
-  // Fullscreen on the frame rather than the sheet: the places list is a
-  // separate scroll region and taking it fullscreen too would just make a
-  // tall column of text with a map wedged above it.
-  //
-  // `full` tracks the *browser's* opinion via fullscreenchange, never the
-  // click, because Escape and the system chrome can leave fullscreen without
-  // telling us — a flag set on click alone goes stale on the first Escape and
-  // the button then lies about what it does.
+  // Fullscreen the frame, not the sheet. `full` follows fullscreenchange, never
+  // the click: Escape leaves fullscreen without telling us.
   const toggleFull = useCallback(() => {
     const box = boxRef.current;
     if (!box) return;
@@ -332,10 +276,7 @@ export default function MapSheet({ onPin }) {
   useEffect(() => {
     const onChange = () => {
       setFull(document.fullscreenElement === boxRef.current);
-      // The frame's box changes before the browser paints; draw() re-reads
-      // clientWidth/Height and resizes the canvas, so one more pass is all
-      // fullscreen needs. rAF rather than a timeout so it lands on the frame
-      // the new size is first true for.
+      // draw() re-reads the frame size; rAF lands on the first frame the new size is true.
       requestAnimationFrame(() => draw());
     };
     document.addEventListener("fullscreenchange", onChange);
@@ -348,14 +289,8 @@ export default function MapSheet({ onPin }) {
     return () => window.removeEventListener("resize", onResize);
   }, [draw]);
 
-  // Pan. Tracked in pixels and converted back to a centre on release of each
-  // move, so the view state stays a lat/lon/zoom and nothing else has to know
-  // about pixels.
   const onPointerDown = (e) => {
-    // Only the canvas starts a drag. Capturing the pointer on the frame
-    // retargets the eventual `click` to the frame, which silently ate every
-    // press on the zoom controls sitting inside it — the buttons looked dead
-    // and the map deselected instead.
+    // Only the canvas starts a drag: capturing on the frame retargets `click` and kills the zoom buttons.
     if (e.target !== canvasRef.current) return;
     dragRef.current = { x: e.clientX, y: e.clientY, moved: 0 };
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -390,8 +325,7 @@ export default function MapSheet({ onPin }) {
     setPicked(best);
   };
 
-  // Zoom about the cursor: the point under the pointer stays under it, which
-  // is the only zoom that feels like a map rather than like a slideshow.
+  // Zoom about the cursor: the point under the pointer stays under it.
   const zoomAt = (dz, mx, my) => {
     setView((v) => {
       const z = Math.max(MIN_Z, Math.min(MAX_Z, v.z + dz));
@@ -415,33 +349,21 @@ export default function MapSheet({ onPin }) {
   const zoomRef = useRef(zoomAt);
   zoomRef.current = zoomAt;
 
-  // Wheel is bound by hand rather than through React's onWheel: React registers
-  // wheel passively, so preventDefault there is ignored with a console warning
-  // and the dock scrolls out from under the map while you zoom.
-  //
-  // The delta is *accumulated* rather than acted on per event, which is the
-  // whole difference between a map and a slot machine. One two-finger flick on
-  // a trackpad emits dozens of small wheel events; stepping a full zoom level
-  // on each one crossed six levels before the fingers left the glass, so the
-  // map appeared to teleport and the only way back was the fit button.
-  // Zoom is integer here because the basemap draws whole tiles at integer z,
-  // so smoothing has to happen on the input side: bank the deltas, spend one
-  // level each time the threshold is crossed.
+  // Bound by hand: React's onWheel is passive, so preventDefault is ignored and the dock scrolls.
+  // Deltas are banked and spent one level per WHEEL_STEP; a trackpad flick otherwise crosses six levels.
   useEffect(() => {
     const box = boxRef.current;
     if (!box) return;
     const onWheel = (e) => {
       e.preventDefault();
       const now = performance.now();
-      // A new gesture starts from zero. Without this the tail of one flick
-      // adds to the head of the next and the second one over-shoots.
+      // A new gesture starts from zero, or the second flick over-shoots.
       if (now - wheelRef.current.at > WHEEL_IDLE_MS) wheelRef.current.acc = 0;
       wheelRef.current.at = now;
       // deltaMode 1 is lines (Firefox, some mice), 2 is pages.
       const scale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 100 : 1;
       wheelRef.current.acc += e.deltaY * scale;
-      // A pinch arrives as ctrl+wheel on macOS. It is a deliberate zoom rather
-      // than a scroll that happens to be over the map, so it earns a lower bar.
+      // A pinch arrives as ctrl+wheel on macOS; it is deliberate, so a lower bar.
       const step = e.ctrlKey ? WHEEL_STEP_PINCH : WHEEL_STEP;
       if (Math.abs(wheelRef.current.acc) < step) return;
       const dz = wheelRef.current.acc < 0 ? 1 : -1;
@@ -500,8 +422,7 @@ export default function MapSheet({ onPin }) {
             >{full ? "⤡" : "⤢"}</button>
           </div>
 
-          {/* Attribution is not optional and not decorative: these are other
-              people's tiles, and the licence asks for the credit on the map. */}
+          {/* The OSM licence requires this credit on the map. */}
           <span className="map-credit">© OpenStreetMap contributors</span>
         </div>
 

@@ -8,33 +8,19 @@ import { fmtAgo, fmtDay, fmtHM, shortDay, timeRange } from "../lib/time";
 import { dragPin } from "../lib/drag.js";
 import EventTime, { EventEnd } from "../ui/EventTime.jsx";
 
-// The Calendar sheet — a schedule, not a list of rows.
-//
-// The generic panel showed events as a flat day-grouped list, which answers
-// "what is on my calendar" and nothing else. The three questions actually
-// asked of a calendar are *what's next*, *how full is this*, and *where are
-// the holes* — so this sheet leads with the next few events and their
-// countdowns, charts booked hours per day, and draws the gaps between events
-// as rows of their own. A free afternoon is information; a list can only show
-// it as an absence.
-//
-// One read per range. All wall-clock times come out of the ISO string rather
-// than a Date, so the backend's per-date zone choice (`app/tz.py`) survives —
-// see `lib/time`. Durations are the exception: those are real elapsed time,
-// so they go through Date, which is what the offsets are for.
+// The Calendar sheet: next up, booked hours per day, and gaps as rows. One read per range.
+// Wall-clock times come from the ISO string, not a Date, so the backend's zone choice (`app/tz.py`,
+// `lib/time`) survives; durations go through Date. Design: DESIGN.md → Sheets are written to the subject, not the provider.
 
 const VIEWS = [null];
 
 const MINUTE = 60000;
 
-// A banner frames the day instead of filling it: all-day events, and timed
-// ones over a day long, which the provider hands out as all-day with `span`
-// (providers/calendar.py SPAN_SQL; a mis-dated 1h appointment once read as
-// 696h booked for the week).
+// Banners: all-day events and timed ones over a day long (`span`, providers/calendar.py SPAN_SQL;
+// a mis-dated 1h appointment once read as 696h booked).
 const isBanner = (ev) => ev.all_day;
 
-// The ISO's own offset ("-08:00"), so the day's midnight is in the zone the
-// backend expressed this row in (app/tz.py), not the browser's.
+// The ISO's own offset ("-08:00"): the day's midnight is in the backend's zone, not the browser's.
 const offsetOf = (iso) => /([+-]\d\d:\d\d|Z)$/.exec(iso)?.[1] || "";
 function nextDay(day) {
   const d = new Date(`${day}T12:00:00Z`);
@@ -42,10 +28,8 @@ function nextDay(day) {
   return d.toISOString().slice(0, 10);
 }
 
-// Minutes this row books on its own day. The provider emits one row per day
-// an event touches, each carrying the event's full start and end, so a row
-// counts only the part between its day's midnights: a 10pm-1am event is 2h
-// on the first day and 1h on the second, not 3h on both.
+// Minutes booked on the row's own day: rows carry the event's full span, so clip to the day's
+// midnights (10pm-1am is 2h then 1h, not 3h twice).
 function minutes(ev) {
   if (isBanner(ev) || !ev.start || !ev.end) return 0;
   let s = new Date(ev.start), e = new Date(ev.end);
@@ -59,9 +43,7 @@ function minutes(ev) {
 
 const fmtSpan = fmtHM;
 
-// "in 25m" / "in 3h" / "in 2 days" — the form the answer is wanted in. A past
-// event says nothing rather than counting up, because a calendar that reports
-// how long ago something started is describing a thing you already missed.
+// "in 25m" / "in 3h" / "in 2 days"; a past event says nothing rather than counting up.
 function until(iso) {
   const ms = new Date(iso) - Date.now();
   if (ms <= 0) return null;
@@ -84,13 +66,10 @@ function groupByDay(events) {
   return byDay;
 }
 
-// A gap is only worth a row once it's long enough to put something in; below
-// half an hour it's the walk between two meetings.
+// Below half an hour a gap is the walk between meetings, not a row.
 const GAP_MIN = 30;
 
-// One day in the order the day happens: all-day banners first (they frame it
-// rather than sit in it), then timed events with the free stretches between
-// them called out.
+// One day: banners first (they frame it), then timed events with the free stretches called out.
 function Day({ day, events }) {
   const banners = events.filter(isBanner);
   const timed = events.filter((e) => !isBanner(e))
@@ -111,9 +90,7 @@ function Day({ day, events }) {
         );
       }
     }
-    // No "1h 30m" duration at the row's end: it opens with the span itself,
-    // so that would be the same fact said twice — and the day's total is in
-    // the header, which is where "how full is this" gets answered.
+    // No duration at the row's end: the span already says it, and the day total is in the header.
     const when = timeRange(ev.start, ev.end);
     list.push(
       <li key={`${day}-${ev.id}`} {...dragPin(`event · ${ev.summary}`, ev)}>
@@ -158,9 +135,7 @@ export default function CalendarSheet({ onPin }) {
   const timed = events.filter((e) => !isBanner(e));
   const bookedTotal = timed.reduce((s, e) => s + minutes(e), 0);
 
-  // "Next up" only makes sense while some of the range is still ahead — a look
-  // back at last week has no next, and a countdown to nothing is clutter. An
-  // event over midnight has a row per day; it's next up once.
+  // Only while some of the range is ahead; an event over midnight has a row per day but is next once.
   const upcoming = timed
     .filter((e, i) => new Date(e.start) > Date.now() && timed.findIndex((o) => o.id === e.id) === i)
     .sort((a, b) => new Date(a.start) - new Date(b.start))
@@ -197,8 +172,7 @@ export default function CalendarSheet({ onPin }) {
               <Band title="Next up" pin={[`next up · ${range}`, upcoming]}>
                 <ul className="cal-next">
                   {upcoming.map((ev) => {
-                    // Already all one faint trailing note here, so the span
-                    // reads as one string rather than two weights.
+                    // One faint trailing note, so the span is one string, not two weights.
                     const when = timeRange(ev.start, ev.end);
                     return (
                       <li key={ev.id} {...dragPin(`event · ${ev.summary}`, ev)}>

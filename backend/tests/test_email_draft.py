@@ -1,11 +1,8 @@
 """Writing a draft into Gmail (`POST /api/email/draft`, the console's
 email_draft tool).
 
-The write itself is one API call; what's worth testing is the RFC822 message
-built for it. A reply that carries only `threadId` still opens a fresh thread
-on the recipient's side — Gmail groups on In-Reply-To/References — so the
-headers below are the feature, not decoration. The other half is that this can
-only ever create a draft: nothing here may reach `messages/send`.
+Tests the RFC822 message: Gmail threads on In-Reply-To/References, not `threadId`
+alone, so the headers are the feature. Also that nothing reaches `messages/send`.
 """
 
 import base64
@@ -63,8 +60,7 @@ def test_a_reply_is_threaded_on_the_message_it_answers(gmail):
 
     msg = sent_message(gmail)
     assert msg["In-Reply-To"] == "<parent@mail.example.org>"
-    # References is the whole chain, oldest first — dropping the prior value
-    # restarts threading halfway down a long thread.
+    # References is the whole chain, oldest first (dropping it restarts threading).
     assert msg["References"] == "<older@mail.example.org> <parent@mail.example.org>"
     post = [c for c in gmail if "/drafts" in c["url"]][-1]
     assert post["body"]["message"]["threadId"] == PARENT["threadId"]
@@ -217,14 +213,12 @@ def test_the_console_tool_says_the_draft_is_unsent(gmail):
     said = _call(body="Tuesday works.", reply_to=PARENT_ID)
 
     assert "events@universityparkifc.org" in said
-    # The one thing the model must relay correctly: a draft is not a sent
-    # reply, and the user still has to do something.
+    # The model must relay that a draft is not a sent reply.
     assert "NOT been sent" in said
 
 
 def test_the_console_tool_drops_blank_optionals(gmail):
-    """A model filling every field with "" would otherwise send an empty To
-    header instead of falling back to the parent's sender."""
+    """Blank "" fields fall back to the parent's sender, not an empty To header."""
     _call(body="ok", reply_to=PARENT_ID, to="", subject="", cc="")
 
     assert sent_message(gmail)["To"] == "events@universityparkifc.org"
@@ -241,9 +235,7 @@ def test_the_console_tool_reports_a_refusal_instead_of_raising(monkeypatch):
 
 # ---------- revising a draft ----------
 #
-# Session 56a834a2: asked to revise a USC parking email, Kestrel called
-# email_draft again and a second draft was saved, leaving the first — with its
-# "[USC ID]" placeholder — in Gmail beside it.
+# A revision replaces the draft in place; a second email_draft call used to leave the first beside it.
 
 def test_replaces_rewrites_the_draft_in_place(gmail):
     out = email_routes.create_draft(body="v2", reply_to=PARENT_ID,

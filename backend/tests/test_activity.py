@@ -19,8 +19,7 @@ NOT_CALLERS = {"activity.py"}
 
 
 def test_every_unattended_task_write_is_logged():
-    """A file that creates tasks on its own must also record them, or the
-    card never hears about it."""
+    """A file that creates tasks on its own must record them for the activity card."""
     missing = []
     for p in APP.rglob("*.py"):
         src = p.read_text()

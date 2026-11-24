@@ -1,10 +1,5 @@
-/* Flexoki: the look Kestrel shipped with until round 2, kept so the
-   new baseline always has its "before" one keystroke away. Paper and ink in
-   Flexoki colours, orange as the one loud colour, JetBrains Mono as the UI
-   face, paper grain, 4/8px corners and wide-tracked caps. It rides on the
-   round-2 type and spacing scale (those were normalized in styles.css, not
-   tokenized per look), so it is the old *palette and face*, not a pixel
-   replay of the old app: `git show a4736a2:frontend/src/styles.css` is that. */
+/* Flexoki: the pre-round-2 palette and face on the current type/spacing scale, not a pixel
+   replay (`git show a4736a2:frontend/src/styles.css` is that). */
 :root[data-look="flexoki"] {
   --paper: #F2F0E5; --paper-raise: #FFFCF0;
   --paper-line: #E6E4D9; --paper-line-2: #DAD8CE; --paper-line-3: #B7B5AC;

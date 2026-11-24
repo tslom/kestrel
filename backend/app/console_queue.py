@@ -1,26 +1,9 @@
-"""Messages held for the next turn, per console tab (New Features #92).
+"""Messages held for the next turn, per console tab (the "queue" half of Enter mid-turn).
 
-Two ways to type into a turn that's running (the composer's "Enter
-mid-turn" setting picks which Enter does, ⌥Enter the other):
-
-- **steer**: straight to the CLI, which reads it at the next tool boundary
-  (console.py, `queue_id`; the CLI's own queue). In the turn, can be taken
-  back unread, can't be edited or reordered: the CLI already has it.
-- **queue** (this module): held here until the turn ends, then sent as a
-  turn of its own, oldest first. Editable, reorderable, and "steer now"
-  hands one to the CLI mid-turn after all.
-
-Held in app.db rather than in the page or the Link because a backend reload
-ends both: the page reconnects under the same tab id and gets the list back
-(the `held` frame is sticky, console_link.STICKY). A held message's pills
-come back whole except images, which live in console._held_images only;
-those go as "the image is gone, ask for it again", as any stale image does.
-
-The drain (console.read_session → a `held_next` frame on the Link's inbox)
-runs only after a turn that ended cleanly: not after a Stop (which hands the
-list back to the prompt instead), an error or a usage cut, where the next
-message would only hit the same wall. After a reload the list waits for a
-turn to end or for "send now".
+Held in app.db, not the page or Link, because a backend reload ends both; the sticky
+`held` frame gives the list back. Images live only in console._held_images and are
+lost on reload. The drain runs only after a clean turn end (not Stop, error or usage
+cut). Design: DESIGN.md → Console (Enter mid-turn).
 """
 
 from __future__ import annotations
@@ -56,8 +39,7 @@ def count(tab: str) -> int:
 
 
 def add(tab: str, payload: dict) -> str | None:
-    """Hold a message; its id (a uuid, so "steer now" can hand it to the CLI
-    under it), or None when the queue is full."""
+    """Hold a message; its id (a uuid, reused when "steer now" hands it to the CLI), or None if full."""
     keep = {k: payload.get(k) for k in ("text", "context", "typed", "verify_url", "reports")
             if payload.get(k) is not None}
     keep["text"] = str(keep.get("text") or "")[:TEXT_MAX]
@@ -111,8 +93,7 @@ def take(tab: str, qid: str | None = None) -> dict | None:
 
 
 def clear(tab: str) -> list[dict]:
-    """Remove them all; their payloads, oldest first (Stop hands the texts
-    back to the prompt)."""
+    """Remove them all; their payloads, oldest first."""
     with db.session() as con, con:
         rows = _rows(con, tab)
         con.execute("DELETE FROM console_queue WHERE tab=?", (tab,))

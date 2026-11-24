@@ -52,19 +52,11 @@ import AgentLayer from "./AgentLayer.jsx";
 import { currentLayout, useLook } from "../lib/look.js";
 import { useScheduledPrompts } from "../lib/schedules.js";
 
-// The plan view. One window that never scrolls:
-// the glance strip and brief across the top, the stage (the console and the
-// map, side by side, never over each other), and on the right the "needs you"
-// list, which is where you act. A card opens into the side column; its full
-// view takes the window as a tab.
-//
-// It replaced the rail desk (a column of ranked, foldable cards beside the
-// console) outright; git history holds the desk.
+// The plan view: strip and brief, the stage (console + map), the "needs you" list.
+// Design: DESIGN.md → Layout: the plan view (`plan/PlanApp.jsx`).
 const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 const minutesFrom = (n) => new Date(Date.now() + n * 60000).toISOString();
-// Day-key arithmetic at local noon, so DST never tips a date over, and read
-// back in local parts — toISOString would give the UTC date, a day off east
-// of UTC.
+// Local noon, read back in local parts: DST-safe, and toISOString is a day off east of UTC.
 const dayBefore = (key) => {
   const d = new Date(`${key}T12:00:00`);
   d.setDate(d.getDate() - 1);
@@ -84,19 +76,14 @@ export default function PlanApp() {
 
   // The side column: the list, one card, or Sources.
   const [side, setSide] = useState({ view: "list" });
-  // On a narrow window the side column is closed until asked for, and then
-  // takes the map's place: nothing floats over the console or the map.
+  // Narrow: closed until asked for, then takes the map's place. Wide: can be put away (per browser).
   const [sideOpen, setSideOpen] = useState(false);
-  // …and on a wide one it can be put away, leaving the map and the console:
-  // the strip's "need you" chip or a node brings it back beside them.
-  // Kept per browser, like the theme.
   const [sideHidden, setSideHidden] = useState(() => {
     try { return localStorage.getItem(SIDE_HIDDEN) === "1"; } catch { return false; }
   });
   const hideSide = useCallback(() => {
     setSideOpen(false);
-    // Narrow, × only closes it. Remembering that as "put away" would leave
-    // the column gone when the window widens again.
+    // Narrow: × only closes; saving it as "put away" would hide the column on widening.
     if (window.matchMedia(NARROW).matches) return;
     setSideHidden(true);
     try { localStorage.setItem(SIDE_HIDDEN, "1"); } catch { /* per-viewer nicety */ }
@@ -106,8 +93,7 @@ export default function PlanApp() {
     setSideHidden(false);
     try { localStorage.removeItem(SIDE_HIDDEN); } catch { /* fine */ }
   }, []);
-  // Narrowing the window is asking for the console and the map alone, whatever
-  // was open at full width; the chip brings the column back.
+  // Narrowing closes the column; the chip brings it back.
   useEffect(() => {
     const mq = window.matchMedia(NARROW);
     const onChange = (e) => { if (e.matches) setSideOpen(false); };
@@ -122,9 +108,7 @@ export default function PlanApp() {
   const sal = useLastWord(cards);
   useEffect(() => { watchDayRollover(); }, []);
 
-  // The map's inputs beyond the cards: each source's last 24 syncs, what the
-  // console is doing, and which card the pointer is on (shared with the list,
-  // so hovering either lights the other).
+  // Map inputs beyond the cards: source syncs, console activity, and the hovered card (shared with the list).
   const { data: status, reload: reloadStatus } = useWidgetData("/api/status");
   useVisiblePoll(reloadStatus, 60000);
   const sources = useMemo(() => Object.fromEntries(
@@ -134,23 +118,18 @@ export default function PlanApp() {
   const agents = useMemo(() => workingTabs(ctabs.tabs, trace.tabs), [ctabs.tabs, trace.tabs]);
   const [hot, setHot] = useState(null);
   const [keyed, setKeyed] = useState(false);
-  // Claude's view takes the map's place. A new picture mid-turn brings it up,
-  // unless it was closed during that turn: a browser session sends one a step,
-  // and closing it should stick.
+  // Claude's view takes the map's place; a new picture brings it up unless closed this turn.
   const [viewing, setViewing] = useState(false);
   const closedTurn = useRef(null);
   const newestView = trace.views.at(-1)?.src;
   useEffect(() => {
     if (newestView && trace.running && closedTurn.current !== trace.startedAt) setViewing(true);
   }, [newestView]); // eslint-disable-line react-hooks/exhaustive-deps -- fires on a new picture only; running/startedAt are read at that moment, not watched
-  // A computer-use job, whichever tab started it. One asking for an answer
-  // comes up even over a closed pane, since it can't go on without you.
+  // A computer-use job from any tab; one asking for an answer opens even a closed pane.
   const job = Object.values(trace.tabs).find((t) => t.computer)?.computer || null;
   useEffect(() => { if (job?.show) setViewing(true); }, [job?.show, job?.id]);
   const closeView = () => { closedTurn.current = trace.startedAt; setViewing(false); setViewOn(null); };
-  // A dev tab asking for its preview (ProjectBar.jsx: the preview button, or
-  // autoOpenPreview once its server listens) brings the pane up. Only a new
-  // ask from the tab on screen: switching tabs isn't one.
+  // A new preview ask from the tab on screen brings the pane up; switching tabs isn't one.
   const previewAsk = { tab: ctabs.active, n: trace.preview?.n || 0 };
   const [seenAsk, setSeenAsk] = useState(previewAsk);
   // The pane's first tab when an ask is what opened it.
@@ -163,19 +142,11 @@ export default function PlanApp() {
     }
   }
 
-  // The console beside the map, in one of three states: "read" (the two
-  // share the stage, which is where it opens), "peek" (the console folded to
-  // its status bar, the map has the room) and "full" (the conversation takes
-  // the window). The prompt stays on screen in all three. ⌘J and a click on
-  // the bar go between read and peek; ⌘F goes in and out of full (taking the
-  // browser's find — the conversation is the thing worth reading at full size,
-  // and find still works from the menu).
-  // Round 5's hybrid opens with the console folded to its floating ask bar.
+  // Console state: "read" (beside the map), "peek" (folded to its bar), "full" (takes the window).
+  // ⌘J toggles read/peek; ⌘F toggles full (shadowing the browser's find). Hybrid opens peeked.
   const [sheet, setSheet] = useState(() => (currentLayout() === "hybrid" ? "peek" : "read"));
   const [labOpen, setLabOpen] = useState(false);   // the look lab (ui/LookLab.jsx)
-  // The desk's layout (lib/look.js: "hybrid", the rooms desk in Rooms.jsx, or
-  // "classic"), and where in the rooms you are (a room id, or "map").
-  // Switching layout starts over.
+  // Layout ("hybrid" rooms desk or "classic") and the room you're in; switching layout resets both.
   const { layout } = useLook();
   const [cview, setCview] = useState(null);
   const [cfocus, setCfocus] = useState(null);
@@ -186,10 +157,7 @@ export default function PlanApp() {
   }
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
-  // The floating top bar's height, as --top-h on .plan: the rooms desk lays
-  // its pages and the open console under it, and it is one line or two (the
-  // focus line), or more where a narrow window wraps it. Read by a
-  // ResizeObserver from the header's own ref (an external system, no effect).
+  // The floating top bar's height as --top-h on .plan (one line, two, or wrapped); a ResizeObserver, not an effect.
   const topObs = useRef(null);
   const measureTop = useCallback((el) => {
     topObs.current?.disconnect();
@@ -199,10 +167,7 @@ export default function PlanApp() {
     topObs.current = new ResizeObserver(() => plan?.style.setProperty("--top-h", `${Math.ceil(el.offsetHeight)}px`));
     topObs.current.observe(el);
   }, []);
-  // The folded console's height (its bar and the composer under it, which
-  // grows with queued messages, the task strip and a long draft), as --dock-h:
-  // a room's page leaves that much room at its foot, so the dock never sits
-  // over its last card. Same pattern as the top bar's.
+  // The folded console's height (bar + growing composer) as --dock-h, so a room's foot clears the dock.
   const dockObs = useRef(null);
   const measureDock = useCallback((stage) => {
     dockObs.current?.disconnect();
@@ -225,17 +190,14 @@ export default function PlanApp() {
     ctabs.show(id);
     setSheet((s) => (s === "peek" ? "read" : s));
   }, [ctabs.show]);   // eslint-disable-line react-hooks/exhaustive-deps -- ctabs is a new object each render; its methods are stable useCallbacks
-  // Window-level ways in: ⌘J/⌘F, and a click on one of Kestrel's native
-  // notifications, which desktop_shell.py delivers as a `kestrel:notification`
-  // event naming the tab it was about (the app is already in front by then).
+  // ⌘J/⌘F, and `kestrel:notification` (desktop_shell.py: a clicked banner naming its tab).
   useEffect(() => {
     const onKey = (e) => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
       if (e.key === "j") { e.preventDefault(); toggleSheet(); }
       else if (e.key === "f") { e.preventDefault(); setSheet((s) => (s === "full" ? "read" : "full")); }
     };
-    // A tab closed since the banner went out: show() ignores ids it doesn't
-    // have, and the window still comes forward.
+    // show() ignores a tab closed since the banner went out.
     const onNotification = (e) => { if (e.detail?.tab) showTab(e.detail.tab); };
     window.addEventListener("keydown", onKey);
     window.addEventListener("kestrel:notification", onNotification);
@@ -244,27 +206,18 @@ export default function PlanApp() {
       window.removeEventListener("kestrel:notification", onNotification);
     };
   }, [toggleSheet, showTab]);
-  // A reply doesn't raise the sheet: a turn that ends where you can't see it
-  // — the sheet at its peek, or in a tab that isn't showing — leaves an unread
-  // mark on that tab, on the bar and on Kestrel, until the conversation is
-  // opened. Kept per tab, because a background tab finishing is exactly the
-  // case worth a mark.
+  // A turn ending out of sight (peeked sheet, background tab) marks that tab unread until opened.
   const [unreadTabs, setUnreadTabs] = useState(() => new Set());
   const wasRunning = useRef({});
   const wasAsking = useRef({});
-  // A turn ending arrives over another component's socket (Console) and
-  // reaches here only as trace.tabs changing, so there's no handler to move
-  // this into.
+  // Turn ends arrive over Console's socket as trace.tabs changing: no handler to move this into.
   useEffect(() => {
     const ended = [], started = [];
     for (const [id, t] of Object.entries(trace.tabs)) {
       // eslint-disable-next-line react-you-might-not-need-an-effect/no-event-handler -- reacts to trace.tabs, which Console's socket drives; no event here to handle (above)
       if (wasRunning.current[id] && !t.running && (id !== ctabs.active || sheet === "peek")) ended.push(id);
-      // Finished while you weren't looking. at_desk() in app/notify.py decides
-      // the rest, so a locked screen doesn't collect these.
-      // Only your own tabs (#79): one open_tab started reports back to its
-      // parent through the handoff instead, unless you've typed in it since,
-      // which makes it your conversation. Asks still notify from any tab.
+      // Notify only your own tabs (#79): a spawned one reports to its parent unless you've typed in it.
+      // at_desk() in app/notify.py gates the rest.
       const tab = ctabs.tabs.find((x) => x.id === id);
       if (wasRunning.current[id] && !t.running && (!tab?.spawned || tab.engaged)
           && (id !== ctabs.active || document.hidden || !document.hasFocus())) {
@@ -272,8 +225,7 @@ export default function PlanApp() {
                                           body: tab?.title || "A tab finished its turn" }).catch(() => {});
       }
       if (t.running) started.push(id);
-      // A child stopped on a question can't go on without you: its parent
-      // hears so with your next message there, once per question.
+      // A child stopped on a question: tell its parent, once per question.
       const q = t.waiting?.question ? t.waiting.requestId : null;
       if (q && wasAsking.current[id] !== q) {
         const tab = ctabs.tabs.find((x) => x.id === id);
@@ -296,15 +248,12 @@ export default function PlanApp() {
       return next;
     });
   }, [trace.tabs]);   // eslint-disable-line react-hooks/exhaustive-deps -- runs per change of trace.tabs; unreadTabs is only read to skip a no-op update
-  // Seeing a tab's conversation reads it; a closed tab has nothing to read.
-  // Adjusted during render, so the mark is gone in the same paint that
-  // shows the conversation.
+  // Seeing a conversation reads it; adjusted in render so the mark clears in the same paint.
   const readNow = [...unreadTabs].filter((id) => !ctabs.tabs.some((t) => t.id === id)
                                                   || (id === ctabs.active && sheet !== "peek"));
   if (readNow.length) setUnreadTabs((u) => new Set([...u].filter((id) => !readNow.includes(id))));
   const unread = unreadTabs.has(ctabs.active);
-  // A question card can only be answered in the conversation, so it raises
-  // the sheet too; a permission can be answered from the bar.
+  // A question card is answered in the conversation, so it raises the sheet; a permission can use the bar.
   useEffect(() => {
     if (trace.waiting?.question) setSheet((s) => (s === "peek" ? "read" : s));
   }, [trace.waiting]);
@@ -313,29 +262,24 @@ export default function PlanApp() {
     ctabs.open();
     setSheet((s) => (s === "peek" ? "read" : s));
   }, [ctabs.open]);   // eslint-disable-line react-hooks/exhaustive-deps -- ctabs is a new object each render; its methods are stable useCallbacks
-  // A tab mid-turn doesn't close: unmounting would cut the turn off, and the
-  // strip's × says so rather than doing it.
+  // A tab mid-turn doesn't close: unmounting would cut the turn off.
   const closeTab = useCallback((id) => {
     const t = trace.tabs[id];
     if (t?.running || t?.waiting) return;
-    // Read before the close drops the tab from both.
+    // Read before the close drops the tab.
     const tree = t?.worktree?.path || ctabs.tabs.find((x) => x.id === id)?.worktree;
     ctabs.close(id);
-    // The socket's close sweeps the repo (console_worktree.release); what it
-    // left is the left-behind list's. A tab with no tree of its own leaves
-    // nothing there.
+    // What the socket's release (console_worktree.release) left is the left-behind list's.
     if (tree) releasedRef.current?.(tree);
   }, [trace.tabs, ctabs.tabs, ctabs.close]);   // eslint-disable-line react-hooks/exhaustive-deps -- ctabs is a new object each render; its methods are stable useCallbacks
   const releasedRef = useRef(null);
-  // Snooze (`until`) or settle a tab (#91): refused mid-turn, as closing is,
-  // since resting unmounts it. Its worktree stays: it's coming back.
+  // Snooze (`until`) or settle a tab (#91): refused mid-turn like closing; its worktree stays.
   const restTab = useCallback((id, { until = null } = {}) => {
     const t = ctabs.tabs.find((x) => x.id === id);
     if (!t || !canRest(t, trace.tabs[id]).ok) return;
     ctabs.rest(id, { until });
   }, [trace.tabs, ctabs.tabs, ctabs.rest]);   // eslint-disable-line react-hooks/exhaustive-deps -- ctabs is a new object each render; its methods are stable useCallbacks
-  // Regenerate a tab's title from its whole session (#102). Resolves to an
-  // error line for the menu, or null once the tab has its new name.
+  // Retitle from the whole session (#102). Resolves to an error line, or null on success.
   const sessionOf = (id) => { try { return localStorage.getItem(`console_session:${id}`); } catch { return null; } };
   const canRetitle = useCallback((id) => !!sessionOf(id), []);
   const retitleTab = useCallback(async (id) => {
@@ -351,9 +295,7 @@ export default function PlanApp() {
       return `Couldn't name it: ${err.message}`;
     }
   }, [ctabs.tabs, ctabs.rename]);   // eslint-disable-line react-hooks/exhaustive-deps -- ctabs is a new object each render; its methods are stable useCallbacks
-  // Once a minute, hidden or not: snoozes whose time came, back in the bar;
-  // tabs that settle themselves (merged and looked away from, or a week
-  // idle; lib/tabRest.js), onto the Settled list.
+  // Each minute, hidden or not: wake due snoozes; settle tabs (lib/tabRest.js).
   useTicker(() => {
     const { tabs, active, turns } = capsRef.current;
     const due = dueToWake(tabs);
@@ -362,41 +304,28 @@ export default function PlanApp() {
   }, 60000, { whenHidden: true });
   const unreadRef = useRef(unreadTabs);
   unreadRef.current = unreadTabs;
-  // A tab's model handing work off (console_tools.open_tab → Console's
-  // onOpenTab). Answered here because only the window knows the caps: a tab
-  // slot free, and fewer than MAX_WORKING tabs mid-turn — every one draws on
-  // the same 5-hour window. Read through a ref so the callback stays stable
-  // and the memoised panes don't re-render on every turn event.
+  // open_tab handoffs (console_tools.open_tab → onOpenTab) are admitted here: only the window knows the caps.
+  // Read through a ref so the callback stays stable and memoised panes don't re-render per turn event.
   const capsRef = useRef({});
   capsRef.current = { tabs: ctabs.tabs, active: ctabs.active, turns: trace.tabs,
                       working: Object.values(trace.tabs).filter((t) => t.running).length };
-  // Past MAX_WORKING the brief is queued, not refused: the tab waits greyed
-  // under its parent and starts by itself (nextQueued, below). Full (MAX_TABS
-  // mounted) is still a refusal: the model can see the tabs and close
-  // finished ones (manageTabs below, console_tools.tabs).
+  // Past MAX_WORKING the brief queues (nextQueued, below); past MAX_TABS it is refused.
   const handOff = useCallback(({ mode, project, brief, from, model = null, effort = null }) => {
     const { tabs, turns } = capsRef.current;
     const verdict = admit(tabs, turns, { from, maxWorking: MAX_WORKING, maxTabs: MAX_TABS });
     if (verdict.refuse) return { ok: false, reason: verdict.refuse };
-    // The id is made here, not in open(), so the model hears it: it's how
-    // message_tab names this tab later. `model` / `effort` (open_tab's, already
-    // checked against the CLI's list) ride on the tab, so a queued one still
-    // has them when it starts.
+    // The id is made here so the model hears it (message_tab names it later); model/effort ride on the tab for queued starts.
     const id = Math.random().toString(36).slice(2, 8);
     const spec = { id, profile: mode, project: project || null, spawned: true, parent: from || null, brief,
                    ...(model ? { model } : {}), ...(effort ? { effort } : {}) };
     ctabs.open(verdict.queue ? { ...spec, queued: true, queuedAt: Date.now() } : spec);
-    // Read again at once by a second open_tab in the same turn: the state
-    // update hasn't rendered yet, so the ref carries the new tab meanwhile.
+    // A second open_tab in the same turn reads the ref before the state renders.
     capsRef.current = { ...capsRef.current, tabs: [...tabs, { ...spec, queued: !!verdict.queue,
                                                               queuedAt: verdict.queue ? Date.now() : null }] };
     return verdict.queue ? { ok: true, id, queued: verdict.queue, reason: `queued #${verdict.queue}` }
       : { ok: true, id, reason: "" };
   }, [ctabs.open]);   // eslint-disable-line react-hooks/exhaustive-deps -- ctabs is a new object each render; its methods are stable useCallbacks; the rest is read from capsRef
-  // ⌘Enter in a composer (#93): the prompt as the first message of a new tab
-  // in the same mode and project (and the tab's own model and effort, if it
-  // has them), opened behind. The user's tab, not a child: no parent, nothing
-  // reported, free to hand off itself.
+  // ⌘Enter (#93): the prompt opens in a new tab behind, same mode/project/model/effort. The user's tab, not a child.
   const backgroundTab = useCallback(({ text, pills, from }) => {
     const { tabs } = capsRef.current;
     if (tabs.filter(isLive).length >= MAX_TABS) return { ok: false, reason: `${MAX_TABS} tabs is the most` };
@@ -411,9 +340,7 @@ export default function PlanApp() {
   }, [ctabs.open]);   // eslint-disable-line react-hooks/exhaustive-deps -- ctabs is a new object each render; its methods are stable useCallbacks; the rest is read from capsRef
   // Scheduled prompts (Settings → Scheduled prompts) come in by handOff's door.
   useScheduledPrompts(handOff);
-  // A tab's model following up with a child it opened (message_tab): the
-  // text becomes the child's next brief (lib/children.js followUp says
-  // whether it may), so it reports back here as the first one did.
+  // message_tab: the text becomes the child's next brief (lib/children.js followUp decides if it may).
   const messageChild = useCallback(({ id, text, from }) => {
     const { tabs, turns } = capsRef.current;
     const verdict = followUp(tabs, turns, { id, from, maxWorking: MAX_WORKING, maxTabs: MAX_TABS });
@@ -426,18 +353,12 @@ export default function PlanApp() {
       : t.done ? "the done tab reopens and starts on it" : "it's starting on it now";
     return { ok: true, label, text: `sent to ${label} (tab ${id}); ${when}. Its report wakes this tab` };
   }, [ctabs.followUp]);   // eslint-disable-line react-hooks/exhaustive-deps -- ctabs is a new object each render; its methods are stable useCallbacks; the rest is read from capsRef
-  // A queued child's turn: started here, in render (an update to this
-  // component's own state, which React re-renders on before painting), so a
-  // freed slot is taken the moment the trace or the tab list says it's free.
+  // Start a queued child in render (own-state update) so a freed slot is taken before paint.
   {
     const next = nextQueued(ctabs.tabs, trace.tabs, { maxWorking: MAX_WORKING, maxTabs: MAX_TABS });
     if (next) ctabs.start(next);
   }
-  // A tab's model looking at the window's tabs, and closing the ones it
-  // names (console_tools.tabs, New Features #57). Closing is refused for a
-  // tab mid-turn, waiting on you, on screen, or the one asking — the same
-  // rule as the strip's ×, plus "not what you're looking at". A closed tab's
-  // session stays resumable from the sessions panel.
+  // console_tools.tabs (#57): list tabs, close named ones. Refused for working, waiting, on-screen or the asker.
   const manageTabs = useCallback(({ close = [], from }) => {
     const { tabs, active, turns } = capsRef.current;
     const label = (t) => (t.profile === "dev" ? `dev · ${(t.project || "").split("/").pop()}`
@@ -476,19 +397,12 @@ export default function PlanApp() {
     ].filter(Boolean).join("\n");
     return { ok: true, text, closed: closed.map((t) => t.title || label(t)) };
   }, [ctabs.close]);   // eslint-disable-line react-hooks/exhaustive-deps -- ctabs is a new object each render; its methods are stable useCallbacks; the rest is read from capsRef
-  // …and the outcome coming back: into the tab that handed off, marked
-  // unread there if you aren't looking at it.
+  // A report goes into the parent's tab, unread there unless on screen.
   const viewRef = useRef({});
   viewRef.current = { active: ctabs.active, sheet };
-  // A report that's `held` isn't one: the brief's turn ended short of the
-  // work (an error, a stop), so the tab is marked as waiting and the parent
-  // hears nothing until the turn that does finish it.
-  //
-  // A finished report is also where a child closes itself (lib/children.js,
-  // landing): if its work landed (no commits left beyond its base, nothing
-  // uncommitted, no `Needs you:` line) it's done, closed into the parent's
-  // group; else it stays open marked "needs you", and the report says why.
-  // Not one the user has typed in: that's their conversation now.
+  // A `held` report isn't one (the turn ended short): the parent hears nothing until a turn finishes.
+  // A finished one closes the child if its work landed (lib/children.js landing), else it stays
+  // marked "needs you". Never for a tab the user has typed in.
   const tellParent = useCallback((parent, report) => {
     if (!parent) return;
     reportConsole(parent, report);
@@ -515,17 +429,14 @@ export default function PlanApp() {
     tellParent(parent, { ...report, status: "needs you",
       text: needsLine(report.text) ? report.text : `${report.text}\n\nNeeds you: ${land.why}. The tab is still open.` });
   }, [tellParent]);   // eslint-disable-line react-hooks/exhaustive-deps -- ctabs is a new object each render; its methods are stable useCallbacks; the rest is read from capsRef
-  // The picker's answer; Esc on it closes the tab (or, on the last one,
-  // makes it the general console rather than leave a window with none).
+  // Esc on the picker closes the tab, or makes the last one the general console.
   const pickMode = useCallback((id, profile, project) => ctabs.configure(id, profile, project),
     [ctabs.configure]);   // eslint-disable-line react-hooks/exhaustive-deps -- ctabs is a new object each render; its methods are stable useCallbacks
   const cancelPick = useCallback((id) => {
     if (ctabs.tabs.filter(isLive).length > 1) ctabs.close(id); else ctabs.configure(id, "general");
   }, [ctabs.tabs, ctabs.close, ctabs.configure]);   // eslint-disable-line react-hooks/exhaustive-deps -- ctabs is a new object each render; its methods are stable useCallbacks
 
-  // ⌥T new, ⌥W close, ⌥1–9 go to. Not ⌘T/⌘W/⌘1: in Chrome those are the
-  // browser's and never reach the page. e.code, because ⌥ turns the key
-  // itself into a symbol on a Mac.
+  // ⌥T new, ⌥W close, ⌥1–9 go to (⌘ versions never reach the page in Chrome). e.code: ⌥ remaps e.key.
   useEffect(() => {
     const onKey = (e) => {
       if (!e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return;
@@ -542,20 +453,13 @@ export default function PlanApp() {
     return () => window.removeEventListener("keydown", onKey);
   }, [openTab, closeTab, showTab, ctabs.active, ctabs.tabs]);
 
-  // The turn's timeline, under the conversation; `failedOnly` is what the
-  // status bar's "N failed" opens.
   const [timeline, setTimeline] = useState(null);   // null | "all" | "failed"
 
-  // Where the console renders its prompt (under the stage, outside the sheet).
+  // Portal targets for the console: its prompt, its document pane (console/DocPane.jsx), its bar.
   const [composerEl, setComposerEl] = useState(null);
-  // Where the console draws a document it's talking about: the map's place,
-  // so the PDF and the conversation sit side by side (console/DocPane.jsx).
   const [docEl, setDocEl] = useState(null);
-  // Where the showing tab's bar (model, mode, ⋯) renders: in the status bar.
   const [barEl, setBarEl] = useState(null);
-  // What the status bar folded for room, and its own actions, for the
-  // console's ⋯ (lib/barHost.js). The actions sit in a ref, refreshed every
-  // render, so the context changes only when the fold does.
+  // What the status bar folded, plus its actions (lib/barHost.js); actions sit in a ref so the context changes only with the fold.
   const [barCut, setBarCut] = useState("");
   const barHost = useRef({});
   barHost.current = {
@@ -572,8 +476,7 @@ export default function PlanApp() {
   };
   const barHostValue = useMemo(() => ({ cut: barCut, host: barHost }), [barCut]);
 
-  // Pins dropped on the sheet or on Kestrel land in the prompt's pills, the
-  // same as a drop on the prompt itself (which the console handles).
+  // A pin dropped on the sheet or Kestrel lands in the prompt's pills.
   const pinDrop = useMemo(() => ({
     onDragOver: (e) => {
       if (!e.dataTransfer.types.includes(PIN_MIME)) return;
@@ -589,12 +492,7 @@ export default function PlanApp() {
     },
   }), [pinContext]);
 
-  // Usage: every card is on screen in some band (a row, a line), and the band
-  // is half of what makes the usage sheet readable — an untouched card that
-  // sat in `needs` all week was read at a glance, one in `quiet` all week was
-  // furniture. Only once a card has reported: before that it has no band, and
-  // logging a guess would make `days_active` never zero. usage.js dedupes per
-  // band, so this fires on a band changing, not on renders.
+  // Usage: log each card's band (needs/has/quiet) once it has reported; a guess would make days_active never zero.
   const bands = DESK_IDS.map((id) => `${id}:${sal[id]?.level ?? ""}`).join(" ");
   useEffect(() => {
     for (const id of DESK_IDS) {
@@ -603,21 +501,14 @@ export default function PlanApp() {
     }
   }, [bands]);   // eslint-disable-line react-hooks/exhaustive-deps -- bands is sal's levels as a string, so this fires on a band changing, not on every sal object (above)
 
-  // A card waiting in the console is the one ask that blocks something: it
-  // goes to the top of the list, answerable there (a question only in the
-  // conversation, so its row raises the sheet).
-  // Every tab's: a background tab's card is the case the list is for, since
-  // nothing else on screen is showing it. Each row answers into its own tab.
+  // A card waiting in any tab tops the list and answers into its own tab (a question's row raises the sheet).
   const waiting = trace.waiting;
   const waitingByTab = useMemo(() => ctabs.tabs
     .map((t, i) => ({ tab: t, n: i + 1, w: trace.tabs[t.id]?.waiting }))
     .filter((x) => x.w), [ctabs.tabs, trace.tabs]);
-  // The one tab whose card opens mid-screen: the showing tab's, else the
-  // first tab asking. One at a time — two modals would fight over the keys.
+  // One modal at a time (two would fight over keys): the showing tab's card, else the first asking.
   const modalTab = trace.tabs[ctabs.active]?.waiting ? ctabs.active : waitingByTab[0]?.tab.id || null;
-  // A card that turns up while Kestrel isn't the window in front is a
-  // native notification too — a turn blocked on you goes nowhere until you
-  // look. One per card (`id` is its request); at_desk() gates the rest.
+  // A card arriving while Kestrel isn't in front also notifies, once per request; at_desk() gates.
   const askedRef = useRef(new Set());
   useEffect(() => {
     for (const { tab, w } of waitingByTab) {
@@ -633,12 +524,8 @@ export default function PlanApp() {
         .catch(() => {});
     }
   }, [waitingByTab]);
-  // Tabs the usage limit cut off mid-work: one row for all of them, which
-  // offers Resume once the window is open again (console/LimitBanner.jsx).
   const usageWindow = useUsageWindow();
-  // Tabs a quit (or a dead backend) cut off mid-work (console_work.py): one
-  // row offering Resume for all of them, and a banner in each tab. Nothing
-  // resumes without the click. Settled ones leave at once, here and on disk.
+  // Tabs a quit or dead backend cut off (console_work.py): one Resume row plus a banner per tab; nothing resumes unclicked.
   const { data: intData } = useWidgetData("/api/console/interrupted");
   const [intGone, setIntGone] = useState(() => new Set());
   const interrupted = useMemo(() => {
@@ -655,20 +542,16 @@ export default function PlanApp() {
     resumeInterruptedConsole(r.tab, resumeText(r));
     settleInterrupted(r.tab);
   });
-  // Less any a quit also cut off: that row's Resume (a click) covers them,
-  // and two rows would offer the same tab two resumes.
+  // Usage-limited tabs (LimitBanner), less any a quit also cut off: that row already resumes them.
   const limitedTabs = useMemo(() => ctabs.tabs
     .map((t, i) => ({ tab: t, n: i + 1 }))
     .filter(({ tab }) => trace.tabs[tab.id]?.limited && !trace.tabs[tab.id]?.running
                          && !interrupted.some((r) => r.tab === tab.id)),
   [ctabs.tabs, trace.tabs, interrupted]);
-  // Branches closed tabs and finished --worktree sessions left holding work
-  // (console_worktree.orphans), less any an open tab here holds but hasn't
-  // reconnected to yet. One row in the list; the panel has the rest.
+  // Left-behind branches (console_worktree.orphans), less any an open tab still holds.
   const { data: orphanData, setData: setOrphanData, reload: reloadOrphans } = useWidgetData("/api/console/orphans");
   useVisiblePoll(reloadOrphans, 120000);
-  // After a close, asked with the closed tab's tree: the backend answers once
-  // that socket's release has swept it (console.console_orphans).
+  // After a close: the backend answers once that socket's release has swept the tree (console.console_orphans).
   releasedRef.current = (tree) =>
     fetchJSON(`/api/console/orphans?released=${encodeURIComponent(tree)}`)
       .then(setOrphanData).catch(() => reloadOrphans());
@@ -679,8 +562,7 @@ export default function PlanApp() {
     return (orphanData?.orphans || []).filter((o) => !o.path || !held.has(o.path));
   }, [orphanData, heldTrees]);
   const [orphanReview, setOrphanReview] = useState(null);
-  // The tab on screen, if a quit or the usage limit cut it off: the status
-  // bar carries its Resume, since a folded console hides the banner.
+  // The status bar carries Resume for the tab on screen: a folded console hides the banner.
   const cutRow = interrupted.find((r) => r.tab === ctabs.active);
   const activeLimited = !cutRow && limitedTabs.some(({ tab }) => tab.id === ctabs.active);
   const cutoff = cutRow ? {
@@ -710,8 +592,7 @@ export default function PlanApp() {
       title: limitedTabs.length === 1
         ? `A tab was stopped by the usage limit${many ? ` · tab ${limitedTabs[0].n}` : ""}`
         : `${limitedTabs.length} tabs were stopped by the usage limit`,
-      // With auto-resume on (lib/autoResume.js) each tab's banner does it,
-      // a minute or two after the reset; the row still offers it now.
+      // With auto-resume (lib/autoResume.js) each tab's banner resumes a minute or two after reset.
       why: (usageWindow.open ? "the window is open again: pick up where they left off"
         : `resumable once the window resets${usageWindow.resetsAt
           ? ` at ${new Date(usageWindow.resetsAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}`)
@@ -740,9 +621,7 @@ export default function PlanApp() {
         : [{ label: "Yes", style: "go", run: () => answerConsole(w.requestId, true, tab.id) },
            { label: "No", run: () => answerConsole(w.requestId, false, tab.id) }],
     }));
-    // One cause, one row: when Messages can't be read, the People row carries
-    // the fix too, and sorts as the broken source it is — two rows would
-    // read as two problems.
+    // One cause, one row: a broken Messages folds into the People row.
     const msgs = sources.messages;
     const msgsBroken = msgs && (msgs.persistently_failing || msgs.state === "broken");
     const merge = (a) => (msgsBroken && a.id === "people" ? {
@@ -755,8 +634,7 @@ export default function PlanApp() {
       .map((a) => (a.note ? a : { ...a, note: noteFor(a, courses) }));
   }, [cards, waitingByTab, limitedTabs, usageWindow.open, usageWindow.resetsAt, sources, ctabs.tabs.length, orphans, interrupted]);   // eslint-disable-line react-hooks/exhaustive-deps -- resumeInterrupted only reads settleInterrupted, which is stable
 
-  // Snoozes (/api/snoozes): an ask snoozed until a time leaves the list and
-  // comes back on its own. Re-read every minute, and at the next expiry.
+  // Snoozes (/api/snoozes): re-read every minute and at the next expiry.
   const { data: snz, reload: reloadSnoozes } = useWidgetData("/api/snoozes");
   useVisiblePoll(reloadSnoozes, 60000);
   const [clock, setClock] = useState(Date.now());
@@ -769,11 +647,8 @@ export default function PlanApp() {
   const snoozed = useMemo(() => asks.filter((a) => until[a.id]).map((a) => ({ ask: a, until: until[a.id] })),
     [asks, until]);
 
-  // What "later" offers, fitted to the ask: a clock gets minutes, a deadline
-  // gets its eve, anything else the end of your next event, tonight or
-  // tomorrow. At most four, so 1–4 on the keyboard covers them.
-  // (only while the calendar card shows today — switched to tomorrow, its
-  // events aren't "your next" anything)
+  // "Later" options per ask (clock: minutes; deadline: its eve; else next event end, tonight, tomorrow), max four for keys 1–4.
+  // todays is empty when the calendar card shows tomorrow.
   const todays = cards.calendar?.view === "today" ? cards.calendar.upcoming || [] : [];
   const nextEvent = todays.find((ev) => !ev.all_day && ev.end);
   const snoozeOptions = useCallback((a) => {
@@ -792,8 +667,7 @@ export default function PlanApp() {
     return o.slice(0, 4);
   }, [nextEvent, snz]);
 
-  // Snooze, then offer the undo. Resolves to the until it was given (the
-  // list shows the row "until …" in place until it settles), or null.
+  // Snooze, then offer undo. Resolves to the `until` given, or null.
   const snoozeAsk = useCallback((a, o) => {
     const body = { ask_id: a.id, ...(o.preset ? { preset: o.preset } : o.day ? { day: o.day } : { until: o.until }) };
     return postJSON("/api/snoozes", body).then((res) => {
@@ -808,8 +682,7 @@ export default function PlanApp() {
   const wake = useCallback((a) => postJSON("/api/snoozes/wake", { ask_id: a.id }).then(reloadSnoozes),
     [reloadSnoozes]);
 
-  // The map's badges count what's still asking; a card whose every ask is
-  // snoozed draws as "today", dashed, until they come back.
+  // Map badges count unsnoozed asks; a card with every ask snoozed draws as "today", dashed.
   const askCount = useMemo(() => {
     const n = {};
     for (const a of active) if (a.card) n[a.card] = (n[a.card] || 0) + 1;
@@ -833,14 +706,12 @@ export default function PlanApp() {
   }, []);
 
   const openFull = useCallback((key) => {
-    // Every route into a full view lands here — a row, a card's expand
-    // button, ⌘K — so this is the one place the open is counted.
+    // Every route into a full view lands here, so the open is counted once.
     sheetOpened(key);
     setStack((s) => (s.includes(key) ? s : [...s, key]));
     setShowing(key);
   }, []);
 
-  // Back to the list, and away again where the list isn't normally showing.
   const closeSide = useCallback(() => {
     setSide({ view: "list" });
     setSideOpen(false);
@@ -861,9 +732,7 @@ export default function PlanApp() {
     setShowing(null);
   }, [stack]);
 
-  // Esc unwinds whatever is on top: a full-screen console (unless a card in
-  // it is waiting — Esc is its "no"), the newest full view, else a card or
-  // Sources back to the list. The palette owns it while it's up.
+  // Esc unwinds the top: full console (unless a card waits: Esc is its "no"), newest full view, then card/Sources. The palette owns it while up.
   const escape = useCallback(() => {
     if (paletteOpen) return;
     if (sheet === "full") { if (!waiting) setSheet("read"); }
@@ -872,8 +741,7 @@ export default function PlanApp() {
     else closeSide();
   }, [paletteOpen, sheet, waiting, stack, closeFull, closeSide, cview, side.view]);
   useStackEscape(escape);
-  // Esc inside the console belongs to the console — except leaving full
-  // screen, which is the one Esc a full-screen conversation has to answer.
+  // Esc inside the console is the console's, except leaving full screen.
   useEffect(() => {
     if (sheet !== "full") return;
     const onKey = (e) => {
@@ -904,12 +772,9 @@ export default function PlanApp() {
     refreshAll: broadcastRefresh,
     focusConsole: () => focusComposer.current?.(),
     openLookLab: () => setLabOpen(true),
-    // rebuilt on each open, so a command that reads state (the theme's
-    // "use the other one") is current
   }), [openFull, openCard, paletteOpen]);   // eslint-disable-line react-hooks/exhaustive-deps -- rebuilt on each palette open so state-reading commands are current; the setters are stable (above)
 
-  // ⌘K's Notes group: from the second letter typed, notes matching it, each
-  // opening as a tab.
+  // ⌘K's Notes group, from the second letter.
   const searchNotes = useCallback((q) => fetchJSON(`/api/vault/search?q=${encodeURIComponent(q)}&limit=8`)
     .then((r) => r.notes.map((n) => ({
       id: `note:${n.path}`, title: n.title, group: "Notes", section: true, positions: [],
@@ -920,9 +785,7 @@ export default function PlanApp() {
   const full = stack.length > 0;
   const wide = side.view !== "list";
   const loading = Object.keys(sal).length === 0;
-  // The model's line on today's list: the top bar's second line on the
-  // classic desk; on the rooms desk that line is the focus line, so it goes
-  // under Today's heading.
+  // Classic: the top bar's second line. Rooms: that line is the focus line, so this goes under Today.
   const brief = <BriefLine asks={active} onPin={pinContext} onFull={() => openFull("brief")} />;
 
   return (
@@ -951,14 +814,8 @@ export default function PlanApp() {
             onPin={pinContext} onOpen={openFull} />
         )}
 
-        {/* The work column: the console with the prompt under it, and the
-            map beside them (above them when it's narrow). Always mounted: the
-            console holds a live session. Over a full view only the prompt
-            stays (styles.css, .plan.full). */}
-        {/* Before the work column in the DOM (the grid places both by area),
-            so Tab reaches the rooms before the console. Under 860px the open
-            console takes the page, so going to a room folds it: the room is
-            what you asked to see. */}
+        {/* The work column stays mounted: the console holds a live session. */}
+        {/* Rooms precede it in the DOM so Tab reaches them first; under 860px a room folds the console. */}
         {layout === "hybrid" && (
           <Rooms view={cview} setView={(v) => {
               setCview(v); setCfocus(null);
@@ -1006,10 +863,7 @@ export default function PlanApp() {
                 newTab={<NewTabButton count={ctabs.tabs.filter(isLive).length} onOpen={openTab} />}
                 barSlot={setBarEl} onCut={setBarCut} cutoff={cutoff}
                 ownMenu={!ctabs.tabs.find((t) => t.id === ctabs.active)?.profile} />
-              {/* Every tab mounted, one showing: a hidden tab keeps its
-                  socket, so its turn runs on while you're in another. Not a
-                  queued child (it hasn't started) or a done one (closed into
-                  its group) unless it's the one on screen, which resumes it. */}
+              {/* Every live tab stays mounted (a hidden one keeps its socket); queued/done ones only when on screen. */}
               {ctabs.tabs.filter((t) => t.id === ctabs.active || isLive(t)).map((t) => (
                 <main key={t.id} className={`console-pane${t.id === ctabs.active ? "" : " tab-hidden"}`}>
                   {t.profile ? (
@@ -1043,9 +897,7 @@ export default function PlanApp() {
             </BarHostContext.Provider>
             <div className="prompt-bar" ref={setComposerEl} />
             <div className="doc-stage" ref={setDocEl} />
-            {/* A left-behind branch's review: the review pane itself, with no
-                tab behind it (so no comments), merging through the panel's
-                own endpoint. In the document's place, as a tab's would be. */}
+            {/* A left-behind branch's review: no tab behind it, so no comments; merges via the panel's endpoint. */}
             {orphanReview && docEl && createPortal(
               <DiffPane key={`${orphanReview.project}:${orphanReview.branch}`} scope="branch"
                 project={orphanReview.project} busy={false} connected
@@ -1058,13 +910,8 @@ export default function PlanApp() {
           </section>
         </div>
 
-        {/* An open card (or Sources) stacks over the list rather than
-            replacing it: the card takes the height it needs, up to most of
-            the column, and the list keeps the rest — so a three-line card
-            doesn't leave the column empty, and the next card is one click
-            away instead of behind a back button. */}
-        {/* On the rooms desk the column only opens as a sheet (Sources, a
-            left-behind branch); a click off it puts it away, like Esc. */}
+        {/* An open card stacks over the list rather than replacing it. */}
+        {/* On the rooms desk the column opens only as a sheet; a click off it puts it away, like Esc. */}
         {layout === "hybrid" && wide && !full && <div className="hy-scrim" onClick={closeSide} aria-hidden="true" />}
         <aside className="plan-side">
           {side.view === "card" ? (

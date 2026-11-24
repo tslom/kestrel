@@ -1,14 +1,7 @@
-/* The rooms desk (plan/Rooms.jsx, plan/FocusLine.jsx), html[data-layout=hybrid]:
-   the default desk (New Features #46, the look lab's round 5).
-     a sidebar of rooms and a page per room, Today as home
-     a floating glass top bar: the day as a sentence, the glance chips, and
-       the focus line (the one most urgent ask) under them
-     the console as a centred ask bar over the page; ⌘J opens it as a column
-   Nothing is re-parented (the console holds live sessions): the existing
-   panes are re-gridded around the rooms' own elements. Classic (no rules
-   here) is still in the look lab.
-   Dark first (CLAUDE.md): judged in dark, light only kept legible. Checked
-   in WebKit, the app's engine, at 1417px (the usual window) down to 700px. */
+/* The rooms desk (plan/Rooms.jsx, plan/FocusLine.jsx), html[data-layout=hybrid], the default:
+   sidebar of rooms, floating top bar + focus line, console as an ask bar (⌘J: a column).
+   Nothing is re-parented (the console holds live sessions): existing panes are re-gridded.
+   Checked in WebKit at 1417px down to 700px. */
 
 /* ---- shared parts: icons, badges, cards, asks, doors ------------------- */
 
@@ -32,10 +25,7 @@
 .cx-icon-btn:hover { background: color-mix(in srgb, var(--paper-ink) 7%, transparent); color: var(--paper-ink); }
 .cx-card .grow, .cx-nav .grow { flex: 1; }
 
-/* A card, whole. inline-flex, not flex: WebKit ignores break-inside on a
-   flex box in a multi-column flow, so a card split across two columns and
-   left a sliver of its foot on top of the next column. An inline box can't
-   be split. */
+/* inline-flex, not flex: WebKit ignores break-inside on a flex box in a multi-column flow. */
 .cx-card {
   display: inline-flex; flex-direction: column; width: 100%; vertical-align: top;
   break-inside: avoid; margin: 0 0 12px; min-width: 0; overflow: hidden;
@@ -43,9 +33,7 @@
   box-shadow: 0 0 0 0.5px var(--paper-line-2), 0 1px 2px rgba(0, 0, 0, 0.04);
   transition: box-shadow 300ms;
 }
-/* No position on a card or anything in it: WebKit then paints nothing of an
-   inline box past the first column (three of the Plans page's five cards
-   were laid out and invisible). */
+/* No position on a card or anything in it: WebKit paints nothing of an inline box past the first column. */
 .cx-card.focus { box-shadow: 0 0 0 2px var(--accent), 0 6px 20px rgba(0, 0, 0, 0.08); }
 .cx-card-head { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 8px 10px 0 16px; }
 .cx-card-head h3 { margin: 0; min-width: 0; font: 600 var(--text-md) var(--sans); letter-spacing: -0.01em; color: var(--paper-ink);
@@ -53,12 +41,8 @@
 .cx-card-head .band-pill { flex: none; }
 .band-pill.snoozed { color: var(--paper-mid); border-style: dashed; }
 .cx-card-body { padding: 0 16px 14px; min-width: 0; overflow-wrap: anywhere; }
-/* The widget brings its own frame and title; the card is the frame and its
-   head the title. Where the widget's header is only buttons (refresh, pin,
-   edit), they ride up into the card's head row, by the expand button,
-   instead of taking a row of their own: pulled up by a negative margin, not
-   positioned (above). A header with more in it (the calendar's day switch,
-   a filter) keeps its row. */
+/* The card is the widget's frame and title. A button-only widget header rides up into the
+   card's head row by a negative margin (not positioned, see above); one with more keeps its row. */
 .cx-card-body > .widget { border: 0; border-radius: 0; background: none; padding: 0; box-shadow: none; }
 .cx-card-body > .widget > header h2 { display: none; }
 .cx-card-body > .widget > header { min-height: 26px; margin-bottom: 8px; align-items: center; }
@@ -67,8 +51,7 @@
 }
 .cx-card:not(:has(.cx-icon-btn)) .cx-card-body > .widget > header:not(:has(> :not(h2, .widget-actions))) { margin-right: -6px; }
 .cx-card-body > .widget .widget-actions button:not(.pin):not(:disabled) { opacity: 1; }
-/* a room page has the height a side-column card didn't: the tasks list's
-   9.5em scroll box cut its fifth row in half */
+/* a room page has the height for the full task list (the 9.5em box cut a row) */
 .cx-card-body .task-list { max-height: none; }
 
 /* An ask, compact. */
@@ -182,10 +165,7 @@
   box-shadow: var(--shadow-pop);
 }
 :root[data-layout="hybrid"] .plan:not(.full):not(.console-full) .plan-top .glance { flex: none; flex-wrap: nowrap; min-width: 0; }
-/* the sentence says the day and what's next, so the strip's own day and
-   "next" chip go, and the leave chip keeps only its time (the sentence names
-   the event). The "N need you" chip opened the side column, which this desk
-   doesn't have: the focus line and the Today badge say it. */
+/* the sentence already says the day, next event and what needs you (the side column is gone) */
 :root[data-layout="hybrid"] .plan:not(.full):not(.console-full) .plan-top
   :is(.glance-mast, .glance-chip.next, .glance-spacer, .glance-chip.needs-toggle, .glance-chip.leave .k) { display: none; }
 
@@ -244,10 +224,7 @@
 .hy-later button:hover { background: color-mix(in srgb, var(--accent) 16%, transparent); }
 .hy-later-hint { color: var(--paper-faint); font-size: var(--text-xs); }
 
-/* A full view (⌘K's sheets) and the full-screen console (⌘F) keep the
-   classic desk's own rules, which know nothing of the sidebar or a room's
-   page: left in, they were stray grid cells, the sidebar stretched across
-   the whole full-screen conversation. */
+/* Full views and the full-screen console use the classic rules, which don't know the sidebar or a room page. */
 :root[data-layout="hybrid"] .plan:is(.full, .console-full) :is(.cx-nav, .cx-room) { display: none; }
 
 /* the list lives in the rooms, not a column: shown only as the sheet below */
@@ -265,11 +242,8 @@
 :root[data-layout="hybrid"] .plan:not(.full):not(.console-full):not([data-cview="map"]) .plan-stage:not(.peek):not(.full):is(.viewing, :has(> .doc-stage:not(:empty))) {
   grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto; grid-template-areas: "map" "console" "prompt";
 }
-/* Folded (the default): the dock, centred at the page's foot: the console's
-   bar with the composer under it, one stack laid out in flow, so a composer
-   that grows (queued messages, the task strip, a long draft) pushes the bar
-   up instead of sliding under it. The work column lies over the page and
-   lets clicks through, but for the dock. */
+/* Folded (default): the dock, bar plus composer in one in-flow stack so a growing composer
+   pushes the bar up. The work column lies over the page and passes clicks through but for the dock. */
 :root[data-layout="hybrid"] .plan:not(.full):not(.console-full):has(.plan-stage.peek) .plan-work {
   grid-area: page; position: relative; z-index: 5; pointer-events: none;
 }
@@ -291,9 +265,7 @@
 :root[data-layout="hybrid"] .plan:not(.full):not(.console-full) .plan-stage.peek > .prompt-bar {
   background: var(--ink-raise); border-radius: var(--r2);
 }
-/* A document or Claude's view opened while the console is folded (a PDF from
-   a card, the files pane): a pane over the page, under the top bar, above
-   the dock, rather than nowhere. */
+/* A document or Claude's view opened while folded: a pane over the page, under the top bar, above the dock. */
 :root[data-layout="hybrid"] .plan:not(.full):not(.console-full) .plan-stage.peek > :is(.view-pane, .doc-stage:not(:empty)) {
   position: absolute; z-index: 3; top: var(--under-top); bottom: calc(var(--dock-h, 120px) + 12px); left: 0; right: 0;
   margin: 0 auto; width: min(980px, calc(100% - 16px)); box-shadow: var(--shadow-pop); border-radius: 12px;
@@ -316,15 +288,9 @@
 :root[data-layout="hybrid"] .plan:not(.full):not(.console-full)[data-cview="map"] .map-wrap { margin-top: calc(var(--top-h, 48px) + 8px); }
 
 /* ---- the ask bar, folded ----------------------------------------------
-   One row, always whole: the tab strip, the turn's state and action (with
-   Yes / No, Answer or Resume when it needs you), usage, the console's own
-   controls (model · effort, mode, review, ⋯), new tab, full screen, and the
-   open / fold chevron. Where it runs out of room the priority fold
-   (lib/barHost.js) moves the least-needed into ⋯, a real button like every
-   other one, so everything is a click or a Tab away with the chat folded.
-   (Round 5 hid all of it until hovered, and wrapped what it showed, which
-   never let the fold run: unreachable by keyboard, and a jumble on hover.)
-   Queued messages, the task strip and attachments are the composer's, under it. */
+   One row, always whole (never hidden until hover, never wrapped): the priority fold
+   (lib/barHost.js) moves the least-needed controls into ⋯ so all stay a click or Tab away.
+   Queued messages, the task strip and attachments belong to the composer under it. */
 :root[data-layout="hybrid"] .plan-stage.peek .status-bar { padding-left: 12px; padding-right: 6px; }
 /* folded, what it's doing is the point of the bar: controls fold before it does */
 :root[data-layout="hybrid"] .plan-stage.peek .status-bar .st-action:not(:empty) { min-width: min(240px, 36%); }
@@ -337,8 +303,7 @@
 .plan:is(.full, .console-full) .undo-toast { bottom: 84px; }
 /* a turn waiting on you keeps the accent edge, so it reads from across the room */
 :root[data-layout="hybrid"] .plan-stage.peek .stage-sheet.waiting { box-shadow: 0 0 0 1.5px var(--accent-ink), var(--shadow-pop); }
-/* the page fades out under the ask bar, so the gap between the bar and the
-   prompt isn't a slice of half-read text (not on the map, which runs to the edge) */
+/* the page fades out under the ask bar (not on the map, which runs to the edge) */
 :root[data-layout="hybrid"] .plan:not(.full):not(.console-full):not([data-cview="map"]) .plan-stage.peek::before {
   content: ""; position: absolute; left: 0; right: 0; bottom: -14px; height: 190px; z-index: 2; pointer-events: none;
   background: linear-gradient(to bottom, transparent, var(--paper) 62%);
@@ -364,8 +329,7 @@
 .hy-rooms { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
 
 /* ---- the sheet: Sources, a left-behind branch -------------------------- */
-/* the column opens only as a sheet here, holding the panel, not the list
-   (every ask is already on its room's page and Today) */
+/* the column opens only as a sheet, holding the panel, not the list */
 :root[data-layout="hybrid"] .plan:not(.full):not(.console-full).side-wide .plan-side {
   display: flex; position: fixed; z-index: 40; top: calc(var(--top-h, 48px) + 20px); bottom: 96px;
   left: calc(50% - min(330px, 45vw)); width: min(660px, 90vw);

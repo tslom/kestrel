@@ -1,9 +1,6 @@
-"""What counts as a message when reading chat.db.
+"""What counts as a message when reading chat.db: tapbacks and group housekeeping live in `message` too.
 
-`message` is not a table of things people said — it also holds tapbacks and
-group housekeeping. Both look like inbound texts once the rows land in
-app.db, which is how a ❤️ on your own message became "they wrote and you
-never replied".
+Design: DESIGN.md → §9 Messages, "Tapbacks are kept, not dropped".
 """
 
 import sqlite3
@@ -88,8 +85,7 @@ def test_unreacting_and_stickers_are_dropped(dbfile, chat_con, assoc):
 
 @pytest.mark.parametrize("assoc", [2000, 2001, 2004, 2006, 2007])
 def test_tapbacks_are_kept_but_flagged(dbfile, chat_con, assoc):
-    """Not messages, but not nothing — the waiting feed needs to tell a
-    reaction you left from one left on you."""
+    """Tapbacks are stored (the waiting feed must tell yours from theirs) but flagged."""
     _add(chat_con, 1, 'Loved "Yes we will lock each other in"', assoc=assoc)
     app_con = db.connect()
     assert _run(app_con, chat_con) == 1
@@ -100,8 +96,7 @@ def test_tapbacks_are_kept_but_flagged(dbfile, chat_con, assoc):
 
 @pytest.mark.parametrize("item", [1, 2, 3, 4])
 def test_group_housekeeping_is_not_a_message(dbfile, chat_con, item):
-    """Renames and joins/leaves carry no text, so they land as a blank
-    message from whoever triggered them."""
+    """Renames and joins/leaves land as a blank message from whoever triggered them."""
     _add(chat_con, 1, None, item=item)
     app_con = db.connect()
     assert _run(app_con, chat_con) == 0
@@ -116,8 +111,7 @@ def test_group_housekeeping_is_not_a_message(dbfile, chat_con, item):
     ("dyn.age81a5dzq7y066dbtf0g82peqf4hk2pdrb00n5xy", "(attachment)"),
 ])
 def test_an_uncaptioned_attachment_is_named(dbfile, chat_con, mime, want):
-    """chat.db puts U+FFFC where the attachment renders, so the row stored
-    as bare mojibake. It's still a real thing they sent."""
+    """U+FFFC (attachment placeholder) is a real send, not mojibake."""
     _add(chat_con, 1, "￼")
     _attach(chat_con, 1, mime)
     app_con = db.connect()
@@ -126,8 +120,7 @@ def test_an_uncaptioned_attachment_is_named(dbfile, chat_con, mime, want):
 
 
 def test_a_lossy_decode_placeholder_is_stripped_too(dbfile, chat_con):
-    """U+FFFD shows up beside U+FFFC when attributedBody hit an unmappable
-    byte — 'Ivy Brooks' rendered as '�￼' in the live feed."""
+    """U+FFFD beside U+FFFC (unmappable attributedBody byte) is still an attachment."""
     _add(chat_con, 1, "�￼")
     _attach(chat_con, 1, "image/heic")
     app_con = db.connect()
@@ -161,8 +154,7 @@ def test_a_caption_wins_over_the_label(dbfile, chat_con):
 
 
 def test_expired_media_is_still_named(dbfile, chat_con):
-    """Deleted or expired media leaves the U+FFFC but drops the `attachment`
-    row. Something was sent, so a blank line is the wrong answer."""
+    """Deleted media leaves U+FFFC but no `attachment` row: still something sent, not blank."""
     _add(chat_con, 1, "￼")
     app_con = db.connect()
     _run(app_con, chat_con)
@@ -178,10 +170,7 @@ def test_a_message_with_no_content_at_all_stays_empty(dbfile, chat_con):
 
 
 def test_a_tapback_does_not_shadow_the_message_before_it(dbfile, chat_con):
-    """The bug in the wild: the newest row in the thread was a tapback, so
-    the feed dated the silence from the ❤️. Both rows are stored now; the
-    flag is what keeps the real message visible downstream (see
-    test_messages_unanswered.py)."""
+    """Both tapback and message rows are stored; the flag keeps the real message visible downstream."""
     _add(chat_con, 1, "ill put u on to hella ABGs", mins_ago=90)
     _add(chat_con, 2, 'Loved "see you then"', assoc=2000, mins_ago=30)
     app_con = db.connect()
@@ -192,8 +181,7 @@ def test_a_tapback_does_not_shadow_the_message_before_it(dbfile, chat_con):
 
 
 def _read(con, rowid, *, mins_ago):
-    """What chat.db does when the other side opens a message: stamps the
-    existing row in place. No new row, so ROWID never moves."""
+    """chat.db stamps a read receipt on the existing row in place (ROWID never moves)."""
     con.execute("UPDATE message SET is_read=1, date_read=?, is_delivered=1,"
                 " date_delivered=? WHERE ROWID=?",
                 (_apple(datetime.now() - timedelta(minutes=mins_ago)),
@@ -217,8 +205,7 @@ def test_a_receipt_already_there_is_stored_on_insert(dbfile, chat_con):
 
 
 def test_a_receipt_that_arrives_later_reaches_the_cached_row(dbfile, chat_con):
-    """The bug: the row was synced unread, then read — and the watermark sync
-    never looks at a ROWID twice, so it stayed unread in app.db forever."""
+    """A row synced unread then read must flip (the ROWID watermark never revisits it)."""
     _add(chat_con, 1, "on my way")
     app_con = db.connect()
     _run(app_con, chat_con)
@@ -234,8 +221,7 @@ def test_a_receipt_that_arrives_later_reaches_the_cached_row(dbfile, chat_con):
 
 
 def test_first_receipt_pass_backfills_rows_older_than_the_window(dbfile, chat_con):
-    """Rows cached before receipts were stored at all get them once; after
-    that only the recent window is re-read."""
+    """Rows cached before receipts existed are backfilled once; after that only the recent window."""
     old = messages.RECEIPT_WINDOW_DAYS * 24 * 60 + 600
     _add(chat_con, 1, "from last month", mins_ago=old)
     app_con = db.connect()

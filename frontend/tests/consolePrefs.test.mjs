@@ -9,8 +9,19 @@ globalThis.localStorage = {
   setItem: (k, v) => store.set(k, String(v)),
   removeItem: (k) => store.delete(k),
 };
-const { FALLBACK_MODELS, cachedDefault, cachedModels, effortsFor, modelChoices, modelLabel,
+const { cachedDefault, cachedModels, effortsFor, modelChoices, modelLabel,
         prettyModel, rememberDefault, rememberModels } = await import("../src/lib/consolePrefs.js");
+const { refusedWhy } = await import("../src/lib/models.js");
+
+// /api/models, trimmed (backend model_catalog.get_models): the live catalog's
+// picker rows, and what the account in use may not run.
+const INFO = { claude: {
+  choices: [
+    { value: "fable", resolved: "claude-fable-5-2", label: "Fable 5.2", family: "fable", efforts: [] },
+    { value: "opus", resolved: "claude-opus-5-5", label: "Opus 5.5", family: "opus", efforts: [] },
+    { value: "claude-fable-5-2", resolved: "claude-fable-5-2", label: "Fable 5.2", family: "fable", efforts: [] },
+  ],
+  blocked: { fable: "Fable requires usage credits" } } };
 
 // The shape console.session_models sends, trimmed from a real CLI (2.1.328).
 const CLI = [
@@ -25,9 +36,21 @@ const CLI = [
 
 beforeEach(() => store.clear());
 
-test("before any session has reported, the static aliases stand in, fable included", () => {
-  assert.deepEqual(cachedModels("dev").map((m) => m.value), ["sonnet", "opus", "haiku", "fable"]);
-  assert.equal(cachedModels("dev"), FALLBACK_MODELS);
+test("before any session has reported, the backend's live catalog stands in", () => {
+  store.set("models_info", JSON.stringify(INFO));
+  assert.deepEqual(cachedModels("dev").map((m) => m.value), ["fable", "opus", "claude-fable-5-2"]);
+});
+
+test("a model the account in use can't run is marked with why, whichever name it goes by", () => {
+  assert.equal(refusedWhy(INFO, { value: "fable" }), "Fable requires usage credits");
+  assert.equal(refusedWhy(INFO, { value: "claude-fable-5-1" }), "Fable requires usage credits");
+  assert.equal(refusedWhy(INFO, { value: "opus", resolved: "claude-opus-5-5" }), null);
+  assert.equal(refusedWhy(INFO, { value: "default", resolved: "claude-fable-5-2" }), null);
+  assert.equal(refusedWhy(null, { value: "fable" }), null);
+  const { main, pinned } = modelChoices(CLI, "opus", "default", INFO);
+  assert.deepEqual(main.find(([v]) => v === "fable"), ["fable", "fable · Fable 5.2", "Fable requires usage credits"]);
+  assert.equal(main.find(([v]) => v === "opus")[2], null);
+  assert.ok(pinned.every(([, , why]) => why === null));   // Haiku 4.5, Opus 4.6
 });
 
 test("the list is cached per profile, and a profile with none borrows another's", () => {
@@ -44,15 +67,17 @@ test("choices: default named by what it resolves to, aliases, pinned apart, the 
   rememberDefault("dev", "opus");
   const { main, pinned } = modelChoices(CLI, cachedDefault("dev"), "default");
   assert.deepEqual(main, [
-    ["default", "default · Opus 5.5"], ["opus", "opus · Opus 5.5"], ["fable", "fable · Fable 5.2"],
-    ["sonnet", "sonnet · Sonnet 5.5"], ["haiku", "haiku · Haiku 5.5"]]);
-  assert.deepEqual(pinned, [["claude-haiku-4-5-20251001", "Haiku 4.5"], ["claude-opus-4-6", "Opus 4.6"]]);
+    ["default", "default · Opus 5.5", null], ["opus", "opus · Opus 5.5", null],
+    ["fable", "fable · Fable 5.2", null], ["sonnet", "sonnet · Sonnet 5.5", null],
+    ["haiku", "haiku · Haiku 5.5", null]]);
+  assert.deepEqual(pinned, [["claude-haiku-4-5-20251001", "Haiku 4.5", null],
+                            ["claude-opus-4-6", "Opus 4.6", null]]);
 });
 
 test("a stored model the list doesn't have is still shown", () => {
   const { main } = modelChoices(CLI, "sonnet", "mythos");
   assert.deepEqual(main.at(-1), ["mythos", "mythos"]);
-  assert.equal(modelLabel(FALLBACK_MODELS, "fable"), "fable");
+  assert.equal(modelLabel([], "fable"), "fable");
   assert.equal(modelLabel(CLI, "default"), "default");
 });
 
@@ -60,7 +85,7 @@ test("effort levels follow the model, default through what it resolves to", () =
   assert.deepEqual(effortsFor(CLI, "default", "sonnet"), ["low", "medium", "high", "xhigh", "max"]);
   assert.deepEqual(effortsFor(CLI, "claude-opus-4-6"), ["low", "medium", "high", "max"]);
   assert.deepEqual(effortsFor(CLI, "claude-haiku-4-5-20251001"), []);
-  assert.deepEqual(effortsFor(FALLBACK_MODELS, "fable"), []);
+  assert.deepEqual(effortsFor(INFO.claude.choices, "fable"), []);
 });
 
 test("an id the list doesn't name still reads as a model", () => {

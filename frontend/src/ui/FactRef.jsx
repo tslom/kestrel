@@ -1,6 +1,4 @@
-// A Brain fact the console named by id ("f997"), which on its own says nothing.
-// The id stays as written; hovering it shows the fact. An id that isn't a fact
-// (f150, the truck) just never shows a card.
+// A Brain fact id ("f997"): stays as written, hover shows the fact; a non-fact id never shows a card.
 import Peek from "./Peek.jsx";
 import { fetchJSON } from "../lib/api";
 import { fmtDay } from "../lib/time";

@@ -1,11 +1,7 @@
 """providers/spotify.artist_key — the identity that survives the import seam.
 
-`plays.artist_id` holds Spotify's real id on rows the poller wrote and a
-synthetic "sha:" hash on the ~266k rows the GDPR importer wrote, because
-neither export carries an artist id. Grouping on it split every artist in two
-at the seam, which pinned `novelty` at ~1.0 for twelve days — a six-year
-favourite counted as brand-new the first time the poller saw it. These tests
-pin the fix: one artist, two ids, one key.
+`plays.artist_id` is a real id from the poller and a synthetic "sha:" hash from the importer: one artist, two ids, one key.
+Design: DESIGN.md → §8 Spotify, "Artist identity across the import seam".
 """
 
 from datetime import date, timedelta
@@ -20,9 +16,7 @@ NOW = "2026-07-22T10:00:00"
 
 
 def _pin_today(monkeypatch, day):
-    """Pin only the no-arg "today" call — day_key(dt) still has to compute the
-    real key, because _day_key_of uses it to bucket each play's instant (same
-    caveat as test_spotify.py)."""
+    """Pin only the no-arg "today" call; day_key(dt) must still compute (as in test_spotify.py)."""
     real = db.day_key
     monkeypatch.setattr(db, "day_key",
                         lambda *a, **k: day if not a and not k else real(*a, **k))
@@ -30,8 +24,7 @@ def _pin_today(monkeypatch, day):
 
 def _play(con, played_at, day, artist, artist_id, *, track="t", ms=180000,
           artist_key=None):
-    """Insert deliberately without artist_key unless asked — that's the state
-    every pre-v35 row is in, and what ensure_artist_keys has to repair."""
+    """Insert without artist_key unless asked: the pre-v35 state ensure_artist_keys repairs."""
     with con:
         con.execute(
             "INSERT INTO plays (played_at, day, track_id, track, artist,"
@@ -54,8 +47,7 @@ def test_artist_key_normalizes(raw, expected):
 
 
 def test_sqlite_lower_would_not_have_worked(dbfile):
-    """Why the key is computed in Python. If SQLite's lower() could do this,
-    artist_key could have been a plain SQL expression in the migration."""
+    """Why the key is computed in Python: SQLite's lower() can't fold these."""
     con = db.connect()
     row = con.execute("SELECT lower(?) AS l", ("VÎĘZË ÃSBÆK",)).fetchone()
     con.close()
@@ -77,9 +69,7 @@ def test_ensure_artist_keys_backfills_and_is_idempotent(dbfile):
 
 
 def test_novelty_survives_the_import_seam(dbfile, monkeypatch):
-    """The regression. An artist listened to for months under the importer's
-    synthetic id must not read as novel when the poller first sees them under
-    Spotify's real id."""
+    """An artist known under the importer's id is not novel under the poller's id."""
     today = "2026-07-22"
     _pin_today(monkeypatch, today)
     con = db.connect()
@@ -96,8 +86,7 @@ def test_novelty_survives_the_import_seam(dbfile, monkeypatch):
 
 
 def test_novelty_still_counts_a_genuinely_new_artist(dbfile, monkeypatch):
-    """The fix must not flatten novelty to zero — an artist with no history is
-    still novel."""
+    """An artist with no history is still novel."""
     today = "2026-07-22"
     _pin_today(monkeypatch, today)
     con = db.connect()
@@ -112,8 +101,7 @@ def test_novelty_still_counts_a_genuinely_new_artist(dbfile, monkeypatch):
 
 
 def test_summary_top_artist_unifies_across_the_seam(dbfile, monkeypatch):
-    """Two ids for one artist also split the week's top-artist count, which is
-    how an artist you played 30 times could lose to one you played 20 times."""
+    """Two ids for one artist don't split the top-artist count."""
     today = "2026-07-22"
     _pin_today(monkeypatch, today)
     con = db.connect()

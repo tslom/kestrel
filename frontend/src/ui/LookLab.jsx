@@ -9,15 +9,9 @@ import { AGENT_STYLES, GROUNDS, LAYOUTS, LOOKS, ROUND, agentsById, groundById, l
 import { nodeForDetail } from "../lib/turn.js";
 import { startReplay } from "../plan/AgentLayer.jsx";
 
-// The look lab: pick UI design variants, pin two layouts to flip between
-// (⌥⇧L), step the map's ground (⌥⇧M), and say what you think of what's on
-// screen. Verdicts go to app.db (/api/looks) for the next redesign round to
-// read. Opens from ⌘K ("Look lab"); on the classic desk a small chip at the
-// bottom right says which variants are on, flips back, and reopens this.
-//
-// Three axes since round 4 (looks/index.js): layout, map ground, colour. A
-// vote is about one of them, picked under "Your verdict"; layouts and grounds
-// are stored prefixed (`layout-rooms`, `ground-dots`).
+// The look lab: pick variants, pin two layouts to flip (⌥⇧L), step the map ground (⌥⇧M), record verdicts
+// (app.db /api/looks). Opens from ⌘K; the classic desk shows a chip. Three axes (looks/index.js): layout,
+// ground, colour; a vote is about one, stored prefixed (`layout-rooms`, `ground-dots`).
 
 const AXES = {
   layout: { label: "Layout", byId: layoutById, key: (id) => `layout-${id}` },
@@ -28,8 +22,7 @@ const AXES = {
 
 export function LookChip({ onOpen }) {
   const { look, layout, ground } = useLook();
-  // Only on the fallback desk, as its way back. On the rooms desk it sat on
-  // the composer's send button whenever a ground or colour variant was on.
+  // Fallback desk only (on the rooms desk it covered the composer's send button).
   if (layout === LAYOUTS[0].id) return null;
   const on = [layoutById(layout).name,
               ground !== GROUNDS[0].id && groundById(ground).name,
@@ -45,8 +38,7 @@ export function LookChip({ onOpen }) {
 }
 
 export default function LookLab({ onClose, view }) {
-  // Focus moves in on open, so Esc (handled on the dialog) works without a
-  // click first; from ⌘K it was ignored until something in the lab was clicked.
+  // Focus moves in on open so Esc works without a click first.
   const grabFocus = useCallback((el) => el?.focus(), []);
   const { look, layout, ground, pair, agents, themes } = useLook();
   const onTheme = themes.find((t) => t.id === look);
@@ -59,8 +51,7 @@ export default function LookLab({ onClose, view }) {
     (r.looks || []).map((s) => [s.look, s])))).catch(() => {});
   useEffect(() => { load(); }, []);
 
-  // The agent visualizer's replay: a recent session's tool calls, mapped to
-  // the places they touch, handed to plan/AgentLayer.jsx.
+  // The agent visualizer's replay (plan/AgentLayer.jsx): a recent session's tool calls.
   const [sessions, setSessions] = useState(null);
   const [loadingReplay, setLoadingReplay] = useState(null);
   const [replayNote, setReplayNote] = useState({});

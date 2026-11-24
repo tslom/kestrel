@@ -8,18 +8,10 @@ import { fmtTime, shortDay } from "../lib/time";
 import { dragPin } from "../lib/drag.js";
 import Folded from "../ui/Folded.jsx";
 
-// Deliveries + travel on the desk. Both endpoints also feed the brief, but
-// without a card a package arriving today is visible only if that morning's
-// brief happens to mention it, and a flight only in prose.
-//
-// The two live on one card on purpose: each is empty most days, and two
-// separate cards that are both usually blank is exactly the "everything
-// visible at equal weight" the salience pass was built to end. Together they
-// earn a slot on the days something is moving and collapse to a line when
-// nothing is.
+// Deliveries + travel on one card (each is empty most days; together they collapse to a line).
+// Design: DESIGN.md → `frontend/src/widgets/` desk cards.
 
-// A flight inside this window is the one you need to act on — the brief uses
-// the same horizon for its Travel section.
+// A flight inside this window needs action; the brief's Travel section uses the same horizon.
 const SOON_MS = 48 * 60 * 60 * 1000;
 
 const STATUS_LABEL = {
@@ -35,11 +27,8 @@ function fmtDepart(iso) {
     + d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
-// When a flight lands, appended to when it leaves. `dep_local` and `arr_local`
-// are each local to their own airport (`app/tz.py`), which is how anyone reads
-// a boarding pass — but it means the pair is not a duration, so the row says
-// the two clock times and never the span between them. `+1` for a red-eye that
-// lands on the next date, compared on the date strings so the zones stay put.
+// `dep_local`/`arr_local` are each local to their airport (`app/tz.py`): never show the span
+// between them. `+1` compares the date strings so the zones stay put.
 function arrival(t) {
   if (!t.arr_local) return null;
   const nextDay = t.arr_local.slice(0, 10) > (t.dep_local || "").slice(0, 10);
@@ -53,8 +42,7 @@ function TripRow({ t, soon, off, onPin }) {
     <li className={soon ? "soon" : ""} {...dragPin(label, t)}>
       <span className="travel-key">{t.carrier}{t.flight_no}</span>
       <span className="travel-desc">
-        {/* JSX text, so the arrow has to be the character \u2014 an escape here is
-            six literal characters, which is what the row was printing. */}
+        {/* JSX text: an escape here prints literally, so the arrow is the character. */}
         {t.dep_airport}{"\u2192"}{t.arr_airport}
         {t.gate && <span className="travel-meta"> · gate {t.gate}</span>}
         {off && <span className="travel-alert"> · {t.status}</span>}
@@ -102,11 +90,7 @@ export function useTravelCard() {
     Promise.all([fetchJSON("/api/packages"), fetchJSON("/api/trips")])
       .then(([p, t]) => ({ packages: p.data, trips: t.data, day: p.day })), "travel");
 
-  // The two corrections a delivery card actually needs. Both reload rather
-  // than patching `payload` in place: marking delivered doesn't drop the row
-  // (it stays three days for returns) and a delete can free the merchant's
-  // one open order for the extractor's next follow-up match, so what the
-  // list looks like afterwards is the backend's answer, not one we can guess.
+  // Both corrections reload rather than patch: the list afterwards is the backend's answer.
   const pkgPath = (p) => `/api/packages/${encodeURIComponent(p.order_key)}`;
 
   function markDelivered(p) {
@@ -114,11 +98,8 @@ export function useTravelCard() {
       .then(reload).catch((e) => setError(e.message));
   }
 
-  // Not "it arrived" — that's markDelivered. This is for a row that was never
-  // a real parcel: a promotion the extractor read as an order, or one parcel
-  // showing up twice because the confirmation and the shipping notice shared
-  // no id. No confirm step, same as the other list cards; a later email about
-  // the order re-opens the row anyway.
+  // For a row that was never a real parcel (promo read as an order, or a duplicate); no confirm step,
+  // a later email about the order re-opens it.
   function drop(p) {
     fetchJSON(pkgPath(p), { method: "DELETE" })
       .then(reload).catch((e) => setError(e.message));
@@ -127,24 +108,18 @@ export function useTravelCard() {
   const packages = payload?.packages || [];
   const trips = payload?.trips || [];
 
-  // "Today" is the backend's day_key (4am rollover), not the browser's — an
-  // eta_day is a day_key, so comparing it against a local `new Date()` would
-  // disagree with the rest of the app between midnight and 4am.
+  // `eta_day` is a day_key: compare to the backend's day, not a local Date.
   const landingToday = (p) =>
     p.status !== "delivered"
     && (p.status === "out_for_delivery" || p.eta_day === payload?.day);
   const departingSoon = (t) => new Date(t.dep_local) - Date.now() <= SOON_MS;
-  // Anything AeroAPI came back with that isn't a normal confirmed flight —
-  // a delay, a gate change, a cancellation.
+  // Any AeroAPI status that isn't normal: delay, gate change, cancellation.
   const offNominal = (t) => t.status && !/^(confirmed|on time)$/i.test(t.status);
 
   const urgent = packages.some(landingToday) || trips.some(departingSoon)
     || trips.some(offNominal);
 
-  // What the card renders at full weight: a parcel landing today, a flight
-  // inside the 48h horizon, anything AeroAPI flagged. A parcel that arrives
-  // next Tuesday is real, and it is not something you do anything about
-  // today — so it folds instead of taking a row.
+  // Full weight: parcel landing today, flight inside 48h, anything flagged; the rest folds.
   const liveTrips = trips.filter((t) => departingSoon(t) || offNominal(t));
   const laterTrips = trips.filter((t) => !liveTrips.includes(t));
   const livePkgs = packages.filter(landingToday);
@@ -154,8 +129,7 @@ export function useTravelCard() {
                      laterTrips.length && `${laterTrips.length} trip${laterTrips.length > 1 ? "s" : ""} booked`]
     .filter(Boolean).join(" · ");
 
-  // Counts, not the nearest item: a parcel and a flight are different enough
-  // that "2 parcels · 2 flights" beats naming one of them and hiding the rest.
+  // Counts, not the nearest item: "2 parcels · 2 flights" beats naming one and hiding the rest.
   const landing = packages.filter(landingToday).length;
   const soon = trips.filter((t) => departingSoon(t) || offNominal(t)).length;
   const level = !payload ? null : urgent ? NEEDS : packages.length + trips.length ? HAS : QUIET;

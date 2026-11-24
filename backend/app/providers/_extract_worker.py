@@ -1,84 +1,29 @@
 """Parses one untrusted file, in a process that is expected to die.
 
 Run as a child of providers/attachments.py, never imported by the backend:
-
-    python -I app/providers/_extract_worker.py <path> <mime>
-
-Standalone on purpose — it imports nothing from `app`, so it can run under
-`python -I` (which drops cwd from sys.path) with no package on the path.
-
-Everything here assumes the input is hostile. A PDF that arrived by text
-message is attacker-authored in the literal sense — whoever sent it chose
-every byte — so the design goal is not "parse safely" (no parser promises
-that) but "contain the blast": limits are set before the file is opened, and
-anything that trips one takes down a child process holding nothing.
-
-What the limits actually stop:
-  - RLIMIT_CPU     parser infinite loops and quadratic blowup, and most
-                   decompression bombs — inflating gigabytes burns CPU, so
-                   this fires well before the machine notices.
-  - RLIMIT_FSIZE=0 no file can receive a single byte (EFBIG at flush, verified
-                   — creating an empty file still succeeds, so this bounds
-                   content, not existence). A parser bug that becomes an
-                   arbitrary-write primitive has nowhere to put a payload.
-  - RLIMIT_NPROC   no fanning out into more processes.
-  - RLIMIT_CORE=0  no core dumps of the file's contents.
-
-Memory is NOT capped here, and that's a platform fact rather than a choice:
-Darwin accepts RLIMIT_AS/DATA/RSS in the API and then refuses every attempt to
-lower them ("current limit exceeds maximum limit" even when the hard limit
-reads as unlimited) — `ulimit -v` is likewise a no-op on macOS. So the memory
-ceiling is enforced from the outside, by the parent watching this process's
-RSS and killing it (attachments.py `_run_guarded`). Everything settable is
-still set here, because the ones that do work are worth having and this file
-should stay correct if it ever runs on Linux, where RLIMIT_AS does work.
-
-Each limit is applied independently: one unsettable limit must not skip the
-rest, which is exactly the bug that a single try-block around all of them
-would create.
-
-What they don't stop: a memory-safety exploit in a C extension that achieves
-code execution *within* these limits. Nothing here is a security boundary
-against that — it's a macOS process with the user's normal privileges. The
-mitigation for that class is upstream, in what we're willing to parse at all:
-only pypdf (pure Python), plain text, the JSON inside a .pkpass, and the XML
-inside a .docx (expat, with any DTD refused before it parses) run here.
-Image decoding — the whole libjpeg/libwebp/libtiff CVE family — deliberately
-never happens locally; see attachments.py, which sends image bytes to the model
-instead of decoding them. That rule is why a pass gives up its text but not its
-artwork: the same zip holds PNGs this will not open. A Word file's pictures go
-one step further — their bytes are handed back undecoded, signature-checked
-only, for the parent to show a vision model.
-
-stdout is one JSON object and nothing else, so a parser that scribbles on
-stdout can't forge a result; the parent treats unparseable output as failure.
+`python -I app/providers/_extract_worker.py <path> <mime>`. Imports nothing from
+`app` (so `-I` works), hence the by-hand mime duplicates below. stdout is one JSON
+object and nothing else. Images are never decoded here. Memory is NOT capped here
+(Darwin refuses); the parent's RSS watchdog does it.
+Design: DESIGN.md → Attachments.
 """
 
 import json
 import resource
 import sys
 
-# Generous enough for a real 50MB scanned PDF's page tree, small enough that a
-# bomb hits it in well under a second.
-MEM_LIMIT_BYTES = 1024 * 1024 * 1024
+MEM_LIMIT_BYTES = 1024 * 1024 * 1024   # Linux only; fits a 50MB scanned PDF's page tree
 CPU_LIMIT_SECONDS = 20
 TEXT_CAP = 20_000
-# Per-page text for a document read page by page. A 300-page textbook chapter
-# runs ~600k characters, so these bound the JSON the parent reads back rather
-# than any real deck or reading; the CPU limit still bounds the work.
+# Per-page caps bound the JSON the parent reads back (a 300-page chapter is ~600k chars).
 PAGES_MAX = 1000
 PAGES_CAP = 1_500_000
 PAGE_CAP = 20_000
 
 # ---- Apple Wallet passes ----------------------------------------------------
-# Both spellings of the type, because the two carriers name the same file
-# differently: Gmail repeats the sender's header, chat.db records the UTI. Kept
-# in step with attachments.PKPASS_MIMES by hand — this module imports nothing
-# from `app` (see the docstring), so the duplication is the price of `-I`.
+# Keep in step with attachments.PKPASS_MIMES by hand (no `app` imports under `-I`).
 PKPASS_MIMES = ("application/vnd.apple.pkpass", "com.apple.pkpass")
 
-# pass.json is a form, not a document: a few dozen short fields. A megabyte is
-# already absurd for one, and well under what the CPU limit would catch.
 PKPASS_JSON_CAP = 1_000_000
 
 # A pass carries exactly one of these, and it names what the thing *is*.
@@ -90,17 +35,11 @@ PASS_STYLES = {"boardingPass": "boarding pass", "eventTicket": "event ticket",
 PASS_SECTIONS = ("headerFields", "primaryFields", "secondaryFields",
                  "auxiliaryFields", "backFields")
 
-# The barcode message is the ticket — an order id, a URL, sometimes a signed
-# blob. Worth keeping, not worth 20KB of it.
 BARCODE_CAP = 500
 
 
 def _limit(name: str, value: int) -> bool:
-    """Best-effort setrlimit. Returns whether it took.
-
-    Unsettable is normal, not exceptional — see the module docstring on
-    Darwin's memory limits — so a failure here is skipped rather than raised,
-    and never prevents the next limit from being applied."""
+    """Best-effort setrlimit; True if it took. Unsettable is normal on Darwin: skip, never raise, so the next limit still applies."""
     which = getattr(resource, name, None)
     if which is None:
         return False
@@ -112,9 +51,7 @@ def _limit(name: str, value: int) -> bool:
 
 
 def _harden() -> None:
-    """Apply every limit that this platform will accept, before the file is
-    opened. FSIZE and NPROC go first so the child loses the ability to write
-    or fork even if everything after them fails."""
+    """Apply every limit the platform accepts, before the file is opened. FSIZE and NPROC go first."""
     _limit("RLIMIT_FSIZE", 0)
     _limit("RLIMIT_NPROC", 0)
     _limit("RLIMIT_CORE", 0)
@@ -123,18 +60,13 @@ def _harden() -> None:
 
 
 def _pdf(path: str) -> tuple[str, str, list[str]]:
-    """(status, text, pages). `text` is the first TEXT_CAP characters, as it
-    always was; `pages` is every page's own text, in order, for a document the
-    console can cite by page (app/docs.py). A page that fails to extract keeps
-    its slot as "" — dropping it would renumber every page after it, and a
-    page number is the one thing a citation into this has to get right."""
+    """(status, text, pages). `text` is the first TEXT_CAP chars; `pages` is each page's text in order.
+    A page that fails to extract stays as "" — dropping it would renumber the rest and break citations."""
     from pypdf import PdfReader
 
     reader = PdfReader(path)
     if reader.is_encrypted:
-        # Empty-password decrypt covers the common "encrypted but not really"
-        # case (owner password only). A real password means no text, not an
-        # error worth retrying.
+        # Empty-password decrypt covers owner-password-only files; a real password means no text.
         try:
             if not reader.decrypt(""):
                 return "encrypted", "", []
@@ -155,12 +87,7 @@ def _pdf(path: str) -> tuple[str, str, list[str]]:
 
 
 def _scalar(value) -> str:
-    """One pass value as text, or "" if it isn't one.
-
-    Everything in pass.json was typed by whoever made the pass, so a field's
-    `value` is a string, a number, an ISO date — or a list, because nothing
-    validates it. Containers are dropped rather than str()'d: a rendered
-    `{'k': ...}` in the middle of a ticket is noise, not information."""
+    """One pass value as text, or "" if it isn't a scalar (containers are dropped, not str()'d)."""
     if value is None or isinstance(value, bool):
         return ""
     if isinstance(value, (int, float)):
@@ -169,14 +96,10 @@ def _scalar(value) -> str:
 
 
 def _pass_fields(section) -> list[str]:
-    """One `label: value` line per field, in the order the pass lists them.
+    """One `label: value` line per field, in the pass's order.
 
-    The pairing is reproduced as-authored even where it reads oddly — real
-    passes put "August 20" under the label "12:15 pm" — because the alternative
-    is guessing which half is the label, and a wrong guess quietly rewrites a
-    ticket. `attributedValue` is the fallback rather than the preference: it's
-    the same text with a link wrapped around it, and one pass here fills it
-    with the word "hello"."""
+    Pairing is kept as authored even when odd (never guess which half is the
+    label); `attributedValue` is only the fallback to `value`."""
     out: list[str] = []
     if not isinstance(section, list):
         return out
@@ -192,11 +115,8 @@ def _pass_fields(section) -> list[str]:
 
 
 def _pass_text(p: dict) -> str:
-    """pass.json → the pass as a human would read it.
-
-    Skips `authenticationToken` and `webServiceURL` deliberately: they are the
-    credential for the issuer's update endpoint, they say nothing about the
-    event, and extracted text ends up in prompts."""
+    """pass.json → the pass as a human would read it. Skips `authenticationToken` and
+    `webServiceURL` on purpose: a credential, and extracted text reaches prompts."""
     style = next((s for s in PASS_STYLES if isinstance(p.get(s), dict)), None)
     lines: list[str] = []
 
@@ -210,8 +130,7 @@ def _pass_text(p: dict) -> str:
             if isinstance(loc, dict) and (text := _scalar(loc.get("relevantText"))):
                 lines.append(f"Location: {text}")
 
-    # `barcodes` is the current spelling and `barcode` the pre-iOS 9 one; issuers
-    # still emit either, and one pass here has only the old form.
+    # `barcodes` is current, `barcode` the pre-iOS 9 form; issuers emit either.
     codes = p.get("barcodes") if isinstance(p.get("barcodes"), list) else [p.get("barcode")]
     for code in codes[:4]:
         if not isinstance(code, dict):
@@ -223,10 +142,7 @@ def _pass_text(p: dict) -> str:
     title = " — ".join(t for t in (_scalar(p.get("organizationName")),
                                    _scalar(p.get("description"))) if t)
     if not (title or style or lines):
-        # Valid JSON in the right place, saying nothing — a `{}` or a stub.
-        # Returning "" lets main() file it as `empty` rather than as a pass
-        # whose entire content is the word "pass".
-        return ""
+        return ""       # a `{}` stub: main() files it as `empty`
 
     meta = [PASS_STYLES.get(style, "pass")]
     if p.get("voided") is True:
@@ -243,23 +159,13 @@ def _pass_text(p: dict) -> str:
 
 
 def _pkpass(path: str) -> tuple[str, str]:
-    """Read the one file in a pass that is text.
-
-    A .pkpass is a zip: pass.json, artwork, a manifest of SHA-1s, and Apple's
-    detached signature. Only pass.json is opened — the PNGs would mean a local
-    image decode, which is the thing this codebase doesn't do (see
-    attachments.py) — and the signature is not checked, because it answers "did
-    the issuer write this", which is a different question from "what does it
-    say". A forged pass is a forged pass; it is not a way into this process."""
+    """Read pass.json from a .pkpass zip and nothing else: no image decode, no signature check."""
     import zipfile
 
     try:
         with zipfile.ZipFile(path) as archive:
             with archive.open("pass.json") as fh:
-                # Bounded read, not a check against ZipInfo.file_size: the
-                # declared size is a number the sender wrote in the archive, and
-                # believing it is how a 4KB file becomes 4GB of memory. One byte
-                # past the cap is enough to know it's over.
+                # Bounded read, never ZipInfo.file_size: the sender wrote that number.
                 raw = fh.read(PKPASS_JSON_CAP + 1)
     except KeyError:
         return "unsupported", ""        # a zip, but not a pass
@@ -277,18 +183,14 @@ def _pkpass(path: str) -> tuple[str, str]:
 
 
 # ---- Word (.docx) -----------------------------------------------------------
-# Kept in step with attachments.DOCX_MIME by hand, like PKPASS_MIMES above.
+# Keep in step with attachments.DOCX_MIME by hand.
 DOCX_MIME = ("application/vnd.openxmlformats-officedocument"
              ".wordprocessingml.document")
 
-# document.xml for a real handout is tens of KB; the 50-page one here is 54KB.
-DOCX_XML_CAP = 5_000_000
+DOCX_XML_CAP = 5_000_000    # a real 50-page handout's document.xml is 54KB
 
-# Embedded pictures are handed back as bytes for the parent to show a vision
-# model — never decoded here (see the module docstring). These bound the JSON
-# on stdout (attachments._STDOUT_CAP is 16MB, and base64 adds a third) and the
-# number of vision calls one file can bill. Per-image matches the parent's
-# ATTACHMENT_VISION_MAX_BYTES, which it re-checks anyway.
+# Pictures go back undecoded. Caps bound stdout JSON (parent's _STDOUT_CAP is 16MB, base64 adds a
+# third) and vision calls billed per file; per-image matches ATTACHMENT_VISION_MAX_BYTES.
 DOCX_IMAGE_MAX = 12
 DOCX_IMAGE_CAP = 3_500_000
 DOCX_IMAGES_TOTAL_CAP = 8_000_000
@@ -301,25 +203,21 @@ _PKG_REL = "{http://schemas.openxmlformats.org/package/2006/relationships}"
 
 
 def _image_sig(data: bytes) -> bool:
-    """Signature check only, the same four formats attachments._sniff accepts.
-    An EMF/WMF/TIFF in a Word file is skipped, not converted."""
+    """Signature check only: the four formats attachments._sniff accepts; others are skipped."""
     return (data[:8] == b"\x89PNG\r\n\x1a\n" or data[:3] == b"\xff\xd8\xff"
             or data[:6] in (b"GIF87a", b"GIF89a")
             or (data[:4] == b"RIFF" and data[8:12] == b"WEBP"))
 
 
 def _bounded(archive, name: str, cap: int) -> bytes | None:
-    """A member's bytes, or None past the cap. Read, not trusted from
-    ZipInfo.file_size — see _pkpass on why the declared size is no answer."""
+    """A member's bytes, or None past the cap (bounded read, not ZipInfo.file_size)."""
     with archive.open(name) as fh:
         raw = fh.read(cap + 1)
     return None if len(raw) > cap else raw
 
 
 def _safe_xml(raw: bytes):
-    """Parse, refusing any DTD. OOXML never carries one, so a DOCTYPE in a
-    .docx is either damage or an entity-expansion attempt, and either way
-    the answer is the same."""
+    """Parse, refusing any DTD (OOXML has none: damage or entity expansion)."""
     import xml.etree.ElementTree as ET
     if b"<!DOCTYPE" in raw or b"<!ENTITY" in raw:
         raise ValueError("DTD in OOXML")
@@ -329,12 +227,9 @@ def _safe_xml(raw: bytes):
 def _docx(path: str) -> tuple[str, str, list[dict]]:
     """(status, text, images) for a Word file.
 
-    Text is the body in reading order: paragraphs one per line, a table row
-    per line with its cells joined by " | " — a nutrition table's row is the
-    unit that means something. Each embedded picture becomes an "[image N]"
-    marker where it sits, and its raw bytes come back in `images` for the
-    parent to read; a handout that is all labels (most of what a USC
-    dietitian sends) is otherwise five item names and nothing else."""
+    Text is in reading order: a paragraph per line, a table row per line with cells
+    joined by " | ". Each embedded picture becomes an "[image N]" marker and its raw
+    bytes come back in `images` for the parent to read."""
     import base64
     import zipfile
 
@@ -454,8 +349,7 @@ def main() -> int:
         else:
             status, text, method = "unsupported", "", None
     except MemoryError:
-        # The bomb case, reported rather than crashed: RLIMIT_AS turned a
-        # runaway allocation into an exception we can still name.
+        # RLIMIT_AS (Linux) turns a runaway allocation into this.
         status, text, method = "too_big", "", None
     except Exception as e:  # any parser failure is just a status
         json.dump({"status": "error", "detail": str(e)[:200]}, sys.stdout)

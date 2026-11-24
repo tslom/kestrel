@@ -1,51 +1,10 @@
 """run_script: Kestrel's Code Mode, reads only (New Features #73, phase 1).
 
-Claude Code's own Code Mode refuses the Agent SDK every Kestrel tab runs on,
-so this is the Cloudflare version of the same idea: one tool that takes a
-short script, runs it in a sandbox where the console's read tools are typed
-async functions, and hands back only what the script returns. A chain of N
-reads costs one round-trip and one compact result instead of N results
-pasted through the context.
-
-**The sandbox is two layers, either of which holds on its own.**
-
-1. *Deno with every permission denied* (`--no-prompt`, no `--allow-*`): no
-   fs, net, env, run, ffi or sys. Remote and npm imports are off and the
-   module cache is cached-only, so an `import()` can't fetch either.
-2. *A macOS Seatbelt profile* (`sandbox-exec`, the same mechanism Claude
-   Code's own sandbox uses) that the kernel enforces whatever Deno does:
-   deny by default; read only the system libraries, the Homebrew kegs Deno
-   links against, and the run's own temp dir; no network, no writes, no exec
-   of anything but the Deno binary. Checked with Deno's permissions fully
-   open (`-A`) inside it: /etc/passwd, ~, app.db (even a stat), fetch,
-   127.0.0.1:8788, spawning /bin/ls and writing /tmp all fail.
-
-The process also starts with an empty environment, a V8 heap cap, a wall
-clock, a cap on what it may print, and a cap on tool calls (overall and for
-the ones that cost money or quota per call). Node was the other candidate,
-and is already installed, but its permission model is documented as "not a
-security boundary against malicious code" and leaves `process.env` and
-`process.binding` reachable; Deno is deny-all by design. No sandbox-exec
-(not macOS) or no Deno means the tool refuses: it fails closed.
-
-**The bridge.** The script's only way out is stdout/stdin, newline-delimited
-JSON. A call is `{"t":"call","id","name","args"}`; the host validates args
-against the tool's own JSON Schema, runs the same handler the direct tool
-call runs (so the tool's own rules, caching and context var all still
-apply), and answers `{"id","value"}` or `{"id","error"}`. Results are what
-the tool would have said, parsed when that's JSON (db_query's rows,
-`provider` with brief=false), else the text.
-
-**Writes are not in the bridge.** The harness defines each write tool's name
-as a function that throws "writes go through the normal tools", and the host
-refuses any name that isn't a bridged read, whatever the sandbox sends.
-
-**Phase 2 seam** (writes behind the same approval rules): `Bridge.writes` and
-`Bridge.approve`. Today `writes` holds names only, for the rejection message;
-phase 2 makes it name -> handler and has `_dispatch` await `approve(name,
-args)` (the console's can_use_tool, so a card or the auto-mode verdict)
-before running one. The harness's `_reject` stubs become `__call` for those.
-Nothing else here has to change.
+One tool takes a short JS script and runs it in a sandbox (Deno with no permissions
+inside a deny-default Seatbelt profile; fails closed without either) where the read
+tools are async functions. Only the script's return reaches the context. Writes are
+never bridged: `_dispatch` refuses any name that isn't a bridged read.
+Design: DESIGN.md → Code Mode — `run_script`.
 """
 
 from __future__ import annotations
@@ -66,9 +25,7 @@ from claude_agent_sdk import tool
 
 TIMEOUT_S = 60.0
 MAX_CALLS = 40
-# Per-tool caps for calls that cost money or third-party quota each time
-# (Google Maps, Reddit, a Gmail full-text fallback). A loop over these is
-# exactly what a script makes easy.
+# Per-call cost in money or third-party quota; a script loop makes these easy to burn.
 TOOL_CAPS = {"venue_search": 5, "venue_details": 10, "reddit_search": 5,
              "email_search": 15}
 CONCURRENCY = 4
@@ -78,23 +35,20 @@ LOG_CHARS = 2_000            # console.log output kept
 STREAM_BYTES = 8_000_000     # everything the process may print, in total
 SCRIPT_CHARS = 20_000
 
-# Tools whose bridged default differs from the direct call. `provider`'s
-# brief line is for a model to read; a script wants the rows.
+# Bridged defaults that differ from the direct call: a script wants rows, not the brief line.
 DEFAULTS = {"provider": {"brief": False}}
 RETURNS = {"db_query": "row[]", "provider": "{count, data: item[]}"}
 
 _DENO_CANDIDATES = ("/opt/homebrew/bin/deno", "/usr/local/bin/deno",
                     str(Path.home() / ".deno" / "bin" / "deno"))
 SANDBOX_EXEC = "/usr/bin/sandbox-exec"
-# No --allow-* anywhere: every Deno permission denied, and --no-prompt makes
-# a denial an exception rather than a question on a tty nobody reads.
+# No --allow-*; --no-prompt turns a denial into an exception, not a tty question.
 DENO_FLAGS = ("--no-prompt", "--no-config", "--no-lock", "--no-remote",
               "--no-npm", "--cached-only")
 
 
 def deno_path() -> str | None:
-    """The real Deno binary (symlinks resolved: Seatbelt matches the path the
-    kernel execs, not the one on PATH)."""
+    """The real Deno binary, symlinks resolved (Seatbelt matches the exec'd path)."""
     for c in (shutil.which("deno"), *_DENO_CANDIDATES):
         if c and os.access(c, os.X_OK):
             return os.path.realpath(c)
@@ -110,8 +64,7 @@ def _profile(deno: str, workdir: str) -> str:
                   "/opt/homebrew/opt", keg, workdir]
     lits = " ".join(f"(literal {q(p)})" for p in meta_dirs)
     trees = " ".join(f"(subpath {q(p)})" for p in read_trees)
-    # The mach services Deno touches at startup (logging, directory lookups,
-    # trust evaluation). Narrower than mach-lookup for all, and tested.
+    # Mach services Deno needs at startup; narrower than allowing all lookups.
     mach = " ".join(q(s) for s in (
         "com.apple.system.opendirectoryd.libinfo", "com.apple.logd",
         "com.apple.system.notification_center", "com.apple.trustd.agent",
@@ -175,8 +128,7 @@ __main().then(
 
 
 def harness(script: str, reads: list[str], writes: list[str]) -> tuple[str, int]:
-    """main.ts for one run, and the line the script's own first line lands
-    on (to turn `main.ts:57` back into `line 3` in an error)."""
+    """main.ts for one run, and the line the script's first line lands on (for `_relines`)."""
     defs = [f"const {n} = (a) => __call({json.dumps(n)}, a);" for n in reads]
     defs += [f"const {n} = _reject({json.dumps(n)});" for n in writes]
     head = _PRELUDE + "\n".join(defs) + "\nasync function __main() {\n"
@@ -195,9 +147,7 @@ def _ts_type(spec: dict) -> str:
         return "|".join(_TS.get(x, "any") for x in t)
     if t == "array" and isinstance(spec.get("items"), dict):
         return f"{_ts_type(spec['items'])}[]"
-    # A description that is nothing but "One of: a, b, c" is the vocabulary:
-    # render it as the union. (provider's `range` also takes explicit dates,
-    # so a description with more after the list stays a plain string.)
+    # A description that is only "One of: a, b, c" renders as a union; any more text stays string.
     m = re.fullmatch(r"One of: ([\w\-, ]+)\.?", spec.get("description") or "")
     if t == "string" and m:
         return "|".join(json.dumps(v.strip()) for v in m.group(1).split(","))
@@ -205,11 +155,8 @@ def _ts_type(spec: dict) -> str:
 
 
 def signature(t) -> str:
-    """`email_search({query, label?, days?: number}) → string`, in the
-    shorthand the description's header defines: an untyped parameter is a
-    string. No per-function prose — the names carry it, and each tool's
-    full description is in the tool list already. Every session carries
-    this text, so it is held to ~1.2k chars (test_tool_eval's budget)."""
+    """`email_search({query, label?, days?: number}) → string`; untyped means string.
+    Every session carries this text: held to ~1.2k chars (test_tool_eval)."""
     props = t.input_schema.get("properties", {})
     req = set(t.input_schema.get("required", []))
     args = []
@@ -224,9 +171,7 @@ def signature(t) -> str:
 # ---------- the host side ----------
 
 def _shape(result: dict) -> Any:
-    """A tool's MCP result as a script value: an error raises, JSON text
-    parses (whole, or after a one-line header like db_query's "3 rows"),
-    anything else is the text."""
+    """An error raises; JSON text parses (also after a one-line header like "3 rows"); else the text."""
     text = "\n".join(b.get("text", "") for b in result.get("content", [])
                      if b.get("type") == "text")
     if result.get("is_error"):
@@ -385,7 +330,6 @@ class Bridge:
         if not run.ok and run.error is None:
             full = err.decode(errors="replace").strip()
             tail = full[-600:]
-            # V8 says so at the top, then prints a native backtrace.
             if re.search(r"heap out of memory|out of memory|heap limit", full[:4000], re.I):
                 run.error = f"out of memory (heap capped at {HEAP_MB}MB)"
             else:
@@ -425,10 +369,8 @@ def render(run: Run) -> str:
     return f"{body}{logs}\n{foot}"
 
 
-# The app.db tables questions join, for db_query inside a script. Without it
-# a script costs 2-3 db_query calls on sqlite_master and pragma_table_info
-# first, which eats the token savings. Columns are the ones answers use, not
-# every one (tests/test_console_code.py holds them to the live schema).
+# Tables a script's db_query joins; without it a script probes the schema first and
+# loses the savings. Columns answers use, held to the live schema by test_console_code.
 SCHEMA_TABLES = {
     "fin_transactions": "transaction_id, day, merchant, name, amount, category, pending",
     "expense_reviewed": "transaction_id",
@@ -449,8 +391,7 @@ SCHEMA = (
 
 
 def make_tool(reads: list, writes: list):
-    """The run_script tool over these read tools (SdkMcpTool objects).
-    Called from console_tools, which owns the registry."""
+    """The run_script tool over these read tools (SdkMcpTool objects)."""
     sigs = "\n".join(signature(t) for t in reads)
     bridge = Bridge(reads={t.name: t for t in reads},
                     writes=[t.name for t in writes])
@@ -485,7 +426,6 @@ def make_tool(reads: list, writes: list):
     )
     async def run_script(args: dict[str, Any]) -> dict[str, Any]:
         script = args.get("script") or ""
-        # `is_error`, the key the SDK server reads (see console_tools._err).
         if not script.strip():
             return {"content": [{"type": "text", "text": "error: script is empty"}],
                     "is_error": True}

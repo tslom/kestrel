@@ -8,21 +8,14 @@ import Mark from "../ui/Mark.jsx";
 import { dayDate, fmtTime } from "../lib/time";
 import { dragPin } from "../lib/drag.js";
 
-// Glance strip: the <3-second read across the top of the window — date,
-// weather, next event, leave-by, sync, the sources dot, then navigation.
-// Same endpoints the widgets hit (all served from app.db caches); re-read on
-// mount, after a sync, and on a day-key rollover — no new data flow.
-//
-// No tasks / to-review / habits-left counts: the plan view's "needs you"
-// list is that summary, so the strip keeps only what
-// nothing else on screen shows, and its right end is ⌘K and — on a narrow
-// window, where the list is a slide-over — the chip that brings it in.
+// Glance strip: date, weather, next event, leave-by, sync, sources dot, navigation. Same endpoints
+// as the widgets; re-read on mount, sync and day-key rollover. No task/habit counts: the plan
+// view's "needs you" list is that summary (on a narrow window the strip carries its chip).
 
 // Glance chips degrade silently — a failed fetch just drops its chip.
 const getJson = (url) => fetchJSON(url).catch(() => null);
 
-// WMO weather_code -> an icon name, day/night aware for the clear/mostly-
-// clear codes. Bucketed rather than exhaustive — a rough read at a glance.
+// WMO weather_code -> icon name, day/night aware for clear codes; bucketed, not exhaustive.
 export function weatherIcon({ weather_code, is_day }) {
   const c = weather_code;
   if (c === 0 || c === 1) return is_day ? "sun" : "moon";
@@ -46,11 +39,8 @@ export default function GlanceStrip({ onExpandCalendar, onOpenStatus, onPin,
   const esRef = useRef(null);
   const linger = useTimeout();
 
-  // Force every provider to re-pull from its source now (the poller's job, on
-  // demand). Streamed (SSE) rather than a single POST so the strip can name
-  // the source it's still waiting on — a sync takes long enough that a bare
-  // "syncing…" reads as a hang. On finish, tell every widget to re-read the
-  // freshened cache; no page reload, so the console transcript survives.
+  // Force every provider to re-pull now. SSE so the strip can name the source it waits on (a bare
+  // "syncing…" reads as a hang); on finish widgets re-read, with no page reload (console transcript survives).
   function syncNow() {
     if (syncing) return;
     linger.clear();   // the last sync's list, still lingering, mustn't clear this one's
@@ -93,8 +83,7 @@ export default function GlanceStrip({ onExpandCalendar, onOpenStatus, onPin,
       setNext(ev || null);
     }),
     getJson("/api/weather/current").then(setWeather),
-    // Surface the soonest departure only when it's < 90 min out — a
-    // nudge, not a list (the brief carries the per-event leave-by times).
+    // Soonest departure only, and only inside 90 min: a nudge, not a list.
     getJson("/api/leave").then((p) => {
       const now = Date.now();
       const soon = (p?.data || [])
@@ -106,14 +95,11 @@ export default function GlanceStrip({ onExpandCalendar, onOpenStatus, onPin,
 
   const [, loading] = useLoad(load, "calendar");   // next event and leave-by
 
-  // The strip's date is the *day key*, not the wall clock: at 1am everything
-  // below it is still yesterday's data (4am rollover), so a clock-derived
-  // "Sat Jul 25" over Friday's list would just be wrong.
+  // The day key, not the wall clock: at 1am everything below is still yesterday's (4am rollover).
   const day = (dayKey ? dayDate(dayKey) : new Date())
     .toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
 
-  // The day's frame, hoisted out of the pin button's onClick so the strip can
-  // also be dragged as a whole — one shape, two gestures.
+  // Shared by pin and drag.
   const frame = {
     source: "glance", day: dayKey,
     weather: weather && { temp: weather.temp, high: weather.high,
@@ -126,9 +112,7 @@ export default function GlanceStrip({ onExpandCalendar, onOpenStatus, onPin,
 
   return (
     <div className="glance" {...dragPin(`today · ${day}`, frame)}>
-      {/* Masthead. The desk runs 11–13px almost everywhere, so the one thing
-          you look at first gets the only display size in the app — and the
-          mark next to it is what gives the window a face. */}
+      {/* Masthead: the only display size in an 11-13px app. */}
       <span className="glance-mast">
         <Mark size={20} title="Kestrel" />
         <span className={`glance-day${loading ? " loading" : ""}`}
@@ -162,13 +146,10 @@ export default function GlanceStrip({ onExpandCalendar, onOpenStatus, onPin,
           {leave.event && <span className="k">→ {leave.event}</span>}
         </button>
       )}
-      {/* One roll-up for every source's auth/freshness — the per-account chips
-          it replaces only ever spoke for Google, and only about auth. */}
+      {/* One roll-up for every source's auth/freshness. */}
       <StatusChip onOpen={onOpenStatus} />
       <span className="glance-spacer" />
-      {/* The strip is the only place the day's frame sits together — weather,
-          what's next, how much needs you. Pinning it is how you ask a question
-          about *today* without pinning five cards to reassemble it. */}
+      {/* The only place the day's frame sits together: one pin instead of five cards. */}
       <button className="glance-chip pin" title="Attach today's frame to your next console message"
         aria-label="Attach today to the console"
         onClick={() => onPin(`today · ${day}`, frame)}><Icon name="pin" /></button>
@@ -184,8 +165,7 @@ export default function GlanceStrip({ onExpandCalendar, onOpenStatus, onPin,
               : "sync"}
           </span>
         </button>
-        {/* What it's actually doing, source by source — a sync spans a dozen
-            APIs and "syncing…" alone reads like a hang. */}
+        {/* Source-by-source progress. */}
         {progress && (
           <ul className="sync-log">
             {progress.results.map((r) => (

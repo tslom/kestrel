@@ -1,10 +1,8 @@
 """A dev tab's task list — the one Claude Code keeps with TaskCreate/TaskUpdate.
 
-Read off the CLI's own files (`~/.claude/tasks/<session id>/<n>.json`, one
-per task) rather than rebuilt from the tool calls: TaskUpdate carries only
-what changed, so a replay would have to model every field the CLI merges,
-and a resumed session's list was written by calls this socket never saw.
-The files are the CLI's state, so this is read-only, like the transcripts.
+Read-only, off the CLI's own files (`~/.claude/tasks/<session id>/<n>.json`), not
+replayed from tool calls: TaskUpdate carries only a delta, and a resumed session's
+list was written by calls this socket never saw.
 """
 
 import json

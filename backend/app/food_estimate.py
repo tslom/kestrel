@@ -1,27 +1,9 @@
-"""Nutrition for USC dining-hall items, which the menu API names but
-never quantifies.
+"""Nutrition for USC dining-hall items (the menu API has names only), once per distinct name.
 
-Once per distinct item name (menus repeat — "Scrambled Eggs" is on every
-breakfast), never per day:
-
-  1. decompose — the model gives a standard dining-hall portion and 1–5
-     components with grams, constrained by the item's allergen/diet tags
-     (a "vegan" item can't come back as chicken);
-  2. match — each component searched in SR28, top candidates shown back;
-  3. pick — the model chooses a candidate id per component (or none).
-
-Nutrients are the sum of the picks scaled to grams, stored as a foods row
-(source usc_estimate, source_id = the normalized name) with confidence 0.6;
-0.5 when some component had no database match and used the model's own
-macros for it; 0.4 when the sum disagrees with the model's own calorie guess
-by more than half. The decomposition is kept on the row (detail.components), so "why does
-it think the burrito is 900 kcal" is answerable. A user correction
-(food.fix_food) sets confidence 1 and is never overwritten: rows here are
-only ever *inserted* for names with no row.
-
-Failures are recorded in food_estimates and retried at most MAX_ATTEMPTS
-times, no sooner than RETRY_AFTER. A name the model says isn't a dish
-("Condiment Bar") is recorded with attempts=MAX_ATTEMPTS and left alone.
+decompose (model, tag-constrained) -> match in SR28 -> pick; stored as a usc_estimate
+foods row, never overwritten (a food.fix_food correction is confidence 1). Failures live
+in food_estimates: MAX_ATTEMPTS, no sooner than RETRY_AFTER; non-dishes are parked.
+Design: DESIGN.md → Food (§25).
 """
 
 import asyncio
@@ -30,7 +12,7 @@ import re
 import threading
 from datetime import datetime, timedelta
 
-from . import agent, db, food
+from . import agent, db, food, model_catalog
 from .config import FOOD_ESTIMATE_MODEL
 
 BATCH = 25
@@ -119,10 +101,8 @@ def compose(components: list[dict], picks: list) -> tuple[dict, list[dict], int]
     """Σ picked SR28 nutrients × grams/100 → (nutrients, kept components,
     how many components fell back to the model's own macros).
 
-    A component with no database pick contributes the model's macro estimate,
-    so it isn't silently zero — the Beyond Burger once summed to 3 kcal from
-    its lettuce. Its micros stay unknown, and the totals then under-report
-    those micros rather than invent them."""
+    An unmatched component contributes the model's macros (never silently zero);
+    its micros stay unknown, so totals under-report them rather than invent."""
     by_id = food.sr28()["by_id"]
     parts, kept, fallback = [], [], 0
     for c, pick in zip(components, picks):
@@ -146,11 +126,9 @@ def compose(components: list[dict], picks: list) -> tuple[dict, list[dict], int]
 def estimate_dishes(items: list[dict]) -> dict[str, dict]:
     """One decompose + one pick call for up to BATCH dishes, no writes.
 
-    `items` are {key, item, where, tags}; `where` is the station or venue the
-    dish comes from. Returns {key: {"ok": True, nutrients, serving_desc,
-    serving_g, confidence, detail}} or {key: {"ok": False, error, final}}.
-    Shared by the dining-hall menus (estimate_batch) and the café seed
-    (app/food_seed.py)."""
+    `items` are {key, item, where, tags}. Returns {key: {"ok": True, nutrients,
+    serving_desc, serving_g, confidence, detail}} or {key: {"ok": False, error, final}}.
+    Shared by estimate_batch and app/food_seed.py."""
     agent.raise_if_blocked()
     ask = [{"key": it["key"], "item": it["item"], "where": it.get("where"),
             "tags": it.get("tags") or []} for it in items]
@@ -204,7 +182,8 @@ def estimate_dishes(items: list[dict]) -> dict[str, dict]:
                     "serving_g": float(grams) if grams else None, "confidence": conf,
                     "detail": {"components": kept, "kcal_guess": guess,
                                "estimated_at": datetime.now().isoformat(timespec="seconds"),
-                               "model": FOOD_ESTIMATE_MODEL}}
+                               "model": model_catalog.pick(FOOD_ESTIMATE_MODEL).model
+                               or FOOD_ESTIMATE_MODEL}}
     return out
 
 

@@ -4,12 +4,8 @@ Usage (from backend/):
     .venv/bin/python scripts/backup_app_db.py          # only if this month has none
     .venv/bin/python scripts/backup_app_db.py --force  # always
 
-Nothing needs to be scheduled: the poller takes one a month on its own (see
-app/backup.py for why lazy beat cron here). This is the "I'm about to do
-something alarming to the database" path — run it with --force first.
-
-The logic lives in app/backup.py so that the thing the poller runs every five
-minutes and the thing you run before a migration are the same code.
+The poller takes one a month on its own; run this with --force before anything
+alarming. Same code as the poller: app/backup.py.
 """
 
 import sys

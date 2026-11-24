@@ -1,22 +1,15 @@
 import { useState } from "react";
 import Icon from "./icons.jsx";
 
-// The named-range chips plus the custom date span, shared by the provider and
-// trends expansions. Both had their own copy, and the copied part that mattered
-// was the token grammar: `start..end` (double-dot, one shell-safe word) is
-// parsed by providers/ranges.py, so a second hand-rolled copy is a rule that
-// can drift away from the backend that has to accept it.
-//
-// `ranges` is null while the caller hasn't loaded its meta yet — distinct from
-// an empty list, which means the source genuinely offers no named ranges and so
-// whatever range is current must be a custom one.
+// Named-range chips plus a custom span, shared by provider and trends expansions. The token grammar
+// `start..end` is parsed by providers/ranges.py: don't hand-roll a second copy.
+// `ranges` null = meta not loaded; [] = no named ranges, so the current range must be custom.
 export default function RangePicker({ ranges, range, onPick }) {
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
 
   const customActive = !!ranges && !ranges.includes(range);
-  // The date fields are the rare case, so they stay folded until asked for —
-  // or until a custom range is the one in force and needs saying.
+  // Date fields stay folded unless asked for or a custom range is in force.
   const [customOpen, setCustomOpen] = useState(false);
   const applyCustom = () => {
     if (!start) return;

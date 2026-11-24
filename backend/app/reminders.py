@@ -1,28 +1,8 @@
-"""Alarm delivery via Reminders — the surface that reaches a shut laptop.
+"""Alarm delivery via Reminders, the surface iCloud syncs to the phone (write()/withdraw() keep it swappable).
 
-Reminders is the target for one reason: iCloud syncs it to the phone, so an
-alarm written here fires on a device the user actually has, hours after this
-machine went to sleep. Everything else about it is worse than a notification —
-no urgency control, no actions — and none of that matters next to being able to
-fire at all.
-
-Kept behind write()/withdraw() so the backend is swappable. A dedicated calendar
-was the other candidate and is easier to inspect and wipe; Reminders won on
-alert semantics (a real alarm with a snooze, not an event you have to notice).
-
-Two AppleScript traps are handled here rather than discovered later:
-
-  * **Arguments, never interpolation.** Titles carry merchant names and flight
-    numbers — user-shaped text with quotes in it. Values go through `on run
-    argv` and subprocess's argument list, so nothing is ever parsed as script.
-  * **Set `day` to 1 before setting `month`.** An AppleScript date mutates in
-    place, so writing month=2 while day=31 rolls into March. The classic
-    version of this bug only appears on 3 days of the month.
-
-A date built from components lands in the *machine's* zone, which is correct
-and not an accident: `fire_at` is an instant, Python converts it to local wall
-clock here, and Reminders stores an absolute date. Move to Pacific and the
-already-written alarm still fires at the same moment.
+Traps: values go through `on run argv`, never script interpolation; set `day` to 1 before
+`month` (AppleScript dates mutate in place); `fire_at` is an instant, converted to local wall clock.
+Design: DESIGN.md → Reaching the user (§21).
 """
 
 from __future__ import annotations
@@ -36,11 +16,8 @@ from .config import ALARM_REMINDERS_ACCOUNT, ALARM_REMINDERS_LIST
 
 _TIMEOUT = 30       # Reminders is slow on first launch; well under a poll cycle
 
-# Reminders launched by osascript has no window, and macOS terminates it a
-# few seconds after the script ends. A script that connects while it is
-# shutting down gets -609 ("Connection is invalid") or -600 ("isn't
-# running") — 273 failed deliveries in the log, 75 of 88 update cycles,
-# reproduced 1 in 4 from a shell. The retry relaunches it.
+# Windowless Reminders auto-quits after a script; connecting mid-quit gives -609/-600 (273 failed
+# deliveries in the log, reproduced 1 in 4). The retry relaunches it.
 _RELAUNCH_CODES = ("(-609)", "(-600)")
 _RETRIES = 2
 _RETRY_WAIT = 1.5   # seconds: lets the dying instance finish exiting
@@ -48,19 +25,12 @@ _RESTART_WAIT = 2.0  # seconds, after the kill and after the relaunch
 
 
 class ReminderError(RuntimeError):
-    """AppleScript failed. Always caught by the caller — a delivery failure
-    leaves the row pending and retries next cycle, it never sinks a reconcile."""
+    """AppleScript failed; callers catch it (the row stays pending, retried next cycle)."""
 
 
 def _run(script: str, *args: str) -> str:
-    # A timeout or a missing osascript is a ReminderError too — the reconcile
-    # loop's contract is one exception type per failed delivery.
-    #
-    # Retrying is safe for every script here: _DELETE answers NOTFOUND for
-    # what an earlier attempt already removed, and _CREATE adopts an
-    # identical open reminder rather than making a second — which also covers
-    # a -609 on `id of r`, after the reminder was made but before its id came
-    # back (that one used to leave an orphan on the phone every cycle).
+    # Retrying is safe: _DELETE answers NOTFOUND for what an earlier attempt removed, and
+    # _CREATE adopts an identical open reminder (else a -609 on `id of r` orphans one).
     for attempt in range(_RETRIES + 1):
         try:
             return macos.osascript(script, *args, timeout=_TIMEOUT,
@@ -72,10 +42,7 @@ def _run(script: str, *args: str) -> str:
                 last = e
                 break
             time.sleep(_RETRY_WAIT)
-    # Every retry hit -609: not the auto-quit race but a wedged instance.
-    # One can answer -609 to every attempt for several cycles running, and
-    # then an alarm never reaches the phone. Waiting doesn't clear that;
-    # killing it does (its data is in iCloud, nothing is lost).
+    # Every retry hit -609: a wedged instance; waiting won't clear it, killing does (data is in iCloud).
     _restart_reminders()
     try:
         return macos.osascript(script, *args, timeout=_TIMEOUT, error=ReminderError)
@@ -147,8 +114,7 @@ end run
 
 
 def available() -> bool:
-    """Can we talk to Reminders at all? False for a machine that isn't a Mac,
-    an Automation permission that was never granted, or a headless session."""
+    """Can we talk to Reminders at all (not a Mac, Automation not granted, or headless)?"""
     try:
         return bool(_run(_PROBE))
     except ReminderError:
@@ -156,12 +122,7 @@ def available() -> bool:
 
 
 def write(*, title: str, body: str, fire_at: str) -> str:
-    """Create the alarm; returns the Reminders id to store as external_id.
-
-    `fire_at` is offset-aware. It is converted to this machine's local wall
-    clock because that is the only frame AppleScript date components speak —
-    the instant is preserved, which is what the alarm actually promises.
-    """
+    """Create the alarm; returns the Reminders id (the `external_id`). `fire_at` is offset-aware."""
     local = datetime.fromisoformat(fire_at).astimezone()
     rid = _run(_CREATE, ALARM_REMINDERS_ACCOUNT, ALARM_REMINDERS_LIST,
                title, body or "", str(local.year), str(local.month),
@@ -172,8 +133,6 @@ def write(*, title: str, body: str, fire_at: str) -> str:
 
 
 def withdraw(external_id: str) -> bool:
-    """Delete the alarm. True once it is gone — including when it was already
-    gone, since a user who deleted it by hand has made the same decision and a
-    permanent failure here would block the row from ever being cleaned up."""
+    """Delete the alarm. True once it is gone, including already gone (hand-deleted must not block cleanup)."""
     return _run(_DELETE, ALARM_REMINDERS_ACCOUNT, ALARM_REMINDERS_LIST,
                 external_id) in ("OK", "NOTFOUND")

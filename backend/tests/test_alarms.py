@@ -1,9 +1,4 @@
-"""Alarms — the reconcile diff and the flight source.
-
-plan() is pure and takes its clock as an argument, which is deliberate: the
-dangerous half of this feature is deciding what to *withdraw*, and that decision
-is worth testing without a database, a writer, or real time anywhere near it.
-"""
+"""Alarms: the reconcile diff (pure plan() with an injected clock) and the sources."""
 
 from datetime import datetime, timedelta
 
@@ -46,8 +41,7 @@ def test_identical_alarm_is_unchanged():
 
 
 def test_moved_fire_time_is_an_update_not_a_recreate():
-    """A delayed flight must amend the alarm in place — a create would leave the
-    original on the phone announcing a departure that moved."""
+    """A delayed flight is amended in place (a create leaves the old time on the phone)."""
     old = mk()
     new = mk(fire_at="2026-08-16T20:30:00-04:00")
     p = alarms.plan([alarms.SourceResult.of("flight", [new])],
@@ -65,8 +59,7 @@ def test_dropped_future_alarm_is_withdrawn():
 
 
 def test_alarm_that_already_fired_is_reaped_not_withdrawn():
-    """It has done its job. Withdrawing a past alarm means nothing, and treating
-    it as a withdrawal would make the writer chase an item the user has seen."""
+    """A past alarm is reaped, not withdrawn."""
     a = mk(fire_at="2026-08-01T09:00:00-04:00")
     p = alarms.plan([alarms.SourceResult.of("flight", [])],
                     {a.key: written_row(a)}, now=NOW)
@@ -77,9 +70,7 @@ def test_alarm_that_already_fired_is_reaped_not_withdrawn():
 # ------------------------------------------- the three-state source protocol
 
 def test_unknown_source_holds_its_alarms_instead_of_withdrawing():
-    """The whole reason sources have three states. A failed read produces no
-    alarms, and if that counted as "no longer wanted" one unreadable table would
-    silently cancel a real alarm — _RETENTION_GATES, one store over."""
+    """A failed read is not "no longer wanted": it must not cancel a real alarm (cf. _RETENTION_GATES)."""
     a = mk()
     p = alarms.plan([alarms.SourceResult.unknown("flight", "disk on fire")],
                     {a.key: written_row(a)}, now=NOW)
@@ -88,8 +79,7 @@ def test_unknown_source_holds_its_alarms_instead_of_withdrawing():
 
 
 def test_empty_but_known_source_does_withdraw():
-    """The other half of the same rule: a confident nothing must still clean up,
-    or a cancelled flight's alarm lives forever."""
+    """A confident nothing still cleans up (else a cancelled flight's alarm lives forever)."""
     a = mk()
     p = alarms.plan([alarms.SourceResult.of("flight", [])],
                     {a.key: written_row(a)}, now=NOW)
@@ -98,9 +88,7 @@ def test_empty_but_known_source_does_withdraw():
 
 
 def test_one_failed_source_cannot_withdraw_anothers_alarms():
-    """Partitioning by the key prefix is what contains a failure. Without it,
-    `known_kinds` would be a single global flag and a broken flight read would
-    take the package alarms down with it."""
+    """Partitioning by key prefix contains a failure: a broken flight read must not take package alarms down."""
     flight = mk()
     package = mk(key="package:ABC:eta", kind="package", title="Package")
     p = alarms.plan(
@@ -113,9 +101,7 @@ def test_one_failed_source_cannot_withdraw_anothers_alarms():
 
 
 def test_kind_with_no_source_at_all_is_held():
-    """`leave` is declared in KINDS but has no builder until step 3. An absent
-    source must not read as a confident nothing, or shipping the kinds list
-    ahead of the builders would withdraw alarms the next version will want."""
+    """A kind declared in KINDS with no builder is not a confident nothing (it would withdraw alarms)."""
     a = mk(key="leave:evt-9", kind="leave", title="Leave for class")
     p = alarms.plan([alarms.SourceResult.of("flight", [])],
                     {a.key: written_row(a)}, now=NOW)
@@ -131,8 +117,7 @@ def test_key_carries_its_kind():
 
 
 def test_key_rejects_a_colon_in_a_part():
-    """A colon inside a part forges a kind boundary on read-back, which is how
-    one source's alarm gets attributed to another's partition."""
+    """A colon inside a part forges a kind boundary on read-back (misattributing partitions)."""
     with pytest.raises(ValueError):
         alarms._alarm_key("flight", "A:B")
 
@@ -143,8 +128,7 @@ def test_key_rejects_an_unknown_kind():
 
 
 def test_alarm_rejects_a_naive_fire_at():
-    """A wall clock means a different instant either side of a TIMELINE move,
-    and an alarm row outlives one."""
+    """Stored as an instant: a wall clock shifts across a TIMELINE move, and rows outlive one."""
     with pytest.raises(ValueError):
         alarms.Alarm(key="flight:a", kind="flight",
                      fire_at="2026-08-16T18:00:00", title="t")
@@ -173,9 +157,7 @@ def seed_trip(con, **over):
 
 
 def test_checkin_fires_24h_before_departure_in_the_airports_zone(dbfile):
-    """The bug this pins: on departure day the user is in Los_Angeles by TIMELINE,
-    but RDU's 18:00 departure is Eastern. Reading dep_local through zone_on()
-    would place check-in three hours late."""
+    """dep_local is the airport's zone, not zone_on() (user in Los_Angeles, RDU 18:00 Eastern: check-in would be 3h late)."""
     con = db.connect()
     seed_trip(con)
     result = alarms.flight_alarms(con, now=NOW, horizon=NOW + timedelta(days=14))
@@ -189,8 +171,7 @@ def test_checkin_fires_24h_before_departure_in_the_airports_zone(dbfile):
 
 
 def test_departure_time_in_the_body_is_the_airports_clock(dbfile):
-    """Reading it through the user's zone would print 3:00 PM for a flight that
-    leaves at 6."""
+    """The departure prints in the airport's zone (the user's zone would say 3:00 PM for a 6 PM flight)."""
     con = db.connect()
     seed_trip(con)
     (a,) = alarms.flight_alarms(
@@ -209,8 +190,7 @@ def test_flight_beyond_the_horizon_gets_no_alarm(dbfile):
 
 
 def test_checkin_already_open_gets_no_alarm(dbfile):
-    """An alarm in the past cannot fire; ensure_checkin_tasks() already covers
-    this case on the task board."""
+    """A past alarm can't fire; ensure_checkin_tasks() covers it on the task board."""
     con = db.connect()
     seed_trip(con, dep_day="2026-08-07", dep_local="2026-08-07T18:00:00")
     result = alarms.flight_alarms(con, now=NOW, horizon=NOW + timedelta(days=14))
@@ -261,8 +241,7 @@ def seed_package(con, **over):
 
 
 def test_package_fires_on_its_eta_morning_in_the_users_zone(dbfile):
-    """The mirror of the flight test: an ETA day has no clock of its own, and
-    the user is in Los_Angeles by the ETA day — 9am there, not 9am Eastern."""
+    """Mirror of the flight test: an ETA day has no clock, so 9am in the user's zone that day (Los_Angeles)."""
     con = db.connect()
     seed_package(con)
     result = alarms.package_alarms(con, now=NOW, horizon=NOW + timedelta(days=14))
@@ -291,8 +270,7 @@ def test_package_whose_eta_already_passed_gets_no_alarm(dbfile):
 
 
 def test_order_key_keeps_its_colon_out_of_the_alarm_key(dbfile):
-    """`order_key` is literally merchant:order_id, and ':' is the kind
-    delimiter — unescaped, the natural identity for a package is unusable."""
+    """`order_key` is merchant:order_id and ':' is the kind delimiter, so it must be escaped."""
     con = db.connect()
     seed_package(con)
     (a,) = alarms.package_alarms(
@@ -304,8 +282,7 @@ def test_order_key_keeps_its_colon_out_of_the_alarm_key(dbfile):
 
 
 def test_escaping_keeps_two_near_identical_order_keys_apart():
-    """Injectivity, which is the whole reason for escaping over stripping: two
-    packages must never collapse onto one alarm."""
+    """Escaping is injective (stripping would collapse two packages onto one alarm)."""
     assert keys.escape_part("a:b") != keys.escape_part("a%3Ab")
 
 
@@ -350,16 +327,14 @@ def test_leave_alarm_fires_at_leave_by(monkeypatch):
 
 
 def test_calendar_outage_is_unknown_not_an_empty_afternoon(monkeypatch):
-    """compute_leaves() swallows a calendar failure into [] for the card's
-    sake. Read that way here, one auth hiccup withdraws every leave alarm."""
+    """compute_leaves() turns a calendar failure into []; read that way, one auth hiccup would withdraw every leave alarm."""
     fake_leaves(monkeypatch, raises=RuntimeError("no calendar auth"))
     result = alarms.leave_alarms(None, now=NOW, horizon=NOW + timedelta(days=14))
     assert result.known is False and result.alarms == ()
 
 
 def test_an_event_that_will_not_route_is_held_not_withdrawn(monkeypatch):
-    """The case kind-level unknown can't express: the calendar answered, so
-    the other event's alarm is still trustworthy."""
+    """Per-event: the calendar answered, so another event's alarm is still trusted."""
     fake_leaves(monkeypatch, [leave_row(),
                               leave_row(event="Lunch", event_id="ev2",
                                         leave_by=None, drive_min=None)])
@@ -403,8 +378,7 @@ def test_leave_falls_back_to_summary_and_start_without_an_event_id(monkeypatch):
 # ------------------------------------------------------------- the deadband
 
 def test_traffic_jitter_does_not_rewrite_the_alarm():
-    """An amendment withdraws the alarm off the phone and writes it back. A
-    leave_by that moved two minutes is not worth that."""
+    """A small leave_by move is ignored (an amendment withdraws and rewrites the phone alarm)."""
     before = mk(key="leave:ev1", kind="leave", title="Leave for Dentist",
                 fire_at="2026-08-07T14:20:00-04:00")
     after = mk(key="leave:ev1", kind="leave", title="Leave for Dentist",
@@ -425,8 +399,7 @@ def test_traffic_that_really_moved_does_amend_it():
 
 
 def test_the_deadband_is_only_for_the_kind_that_measures_its_time():
-    """A flight's check-in window is stated, not estimated: two minutes of
-    movement is a real amendment, not noise."""
+    """A flight's check-in is stated, not estimated: even a 2-minute move is amended."""
     before = mk(fire_at="2026-08-16T18:00:00-04:00")
     after = mk(fire_at="2026-08-16T18:02:00-04:00")
     p = alarms.plan([alarms.SourceResult.of("flight", [after])],
@@ -437,8 +410,7 @@ def test_the_deadband_is_only_for_the_kind_that_measures_its_time():
 # ------------------------------------------------------------------ reconcile
 
 def test_dry_run_records_the_plan_without_an_external_id(dbfile):
-    """A dry run has to be inspectable, not merely logged — the rehearsal is
-    reading these rows. NULL external_id is also the writer's queue in step 2."""
+    """A dry run leaves inspectable rows; NULL external_id is also the writer's queue."""
     con = db.connect()
     seed_trip(con)
     info = alarms.reconcile(con, dry_run=True, now=NOW)
@@ -452,9 +424,7 @@ def test_dry_run_records_the_plan_without_an_external_id(dbfile):
 
 
 def test_second_cycle_is_a_noop(dbfile):
-    """Churn is the thing a dry run is watching for: if a stable trip produced a
-    create or an update every five minutes, the writer would rewrite the phone's
-    alarm all day."""
+    """A stable trip produces no create/update each pass (no churn)."""
     con = db.connect()
     seed_trip(con)
     alarms.reconcile(con, dry_run=True, now=NOW)
@@ -465,8 +435,7 @@ def test_second_cycle_is_a_noop(dbfile):
 
 
 def test_dry_run_keeps_a_withdrawal_it_cannot_perform(dbfile):
-    """With no writer there is no way to pull an alarm off the phone, so
-    deleting our only record of it would strand it — un-withdrawable forever."""
+    """With no writer, keep the row: deleting the only record strands the alarm un-withdrawable."""
     con = db.connect()
     seed_trip(con)
     alarms.reconcile(con, dry_run=True, now=NOW)
@@ -497,9 +466,7 @@ def test_reaped_row_is_removed_even_in_dry_run(dbfile):
 # ------------------------------------------------------------------- delivery
 
 class FakeBackend:
-    """Stands in for Reminders. Records calls so ordering can be asserted —
-    withdraw-before-write is a correctness property, not an implementation
-    detail (see deliver's docstring)."""
+    """Stands in for Reminders; records calls (withdraw-before-write is a correctness property)."""
 
     def __init__(self, *, fail_write=False, fail_withdraw=False):
         self.calls = []
@@ -535,8 +502,7 @@ def test_delivery_writes_the_queue_and_records_the_id(dbfile):
 
 
 def test_delivered_alarm_is_not_rewritten_next_cycle(dbfile):
-    """The churn guard, now with a real writer behind it: a stable trip must not
-    re-push the phone's alarm every five minutes."""
+    """Churn guard with a writer: a stable trip doesn't re-push the alarm every pass."""
     con = db.connect()
     seed_trip(con)
     be = FakeBackend()
@@ -548,9 +514,7 @@ def test_delivered_alarm_is_not_rewritten_next_cycle(dbfile):
 
 
 def test_amended_alarm_replaces_the_one_on_the_phone(dbfile):
-    """A delayed flight already has an external_id, so keying delivery off that
-    would read it as done and leave the phone holding the old time. Clearing
-    written_at is what re-queues it, and the stale alarm comes off first."""
+    """An amended alarm is re-queued by clearing written_at (external_id would read as done); the stale one comes off first."""
     con = db.connect()
     seed_trip(con)
     be = FakeBackend()
@@ -602,8 +566,7 @@ def test_failed_write_leaves_the_row_queued(dbfile):
 
 
 def test_failed_withdrawal_keeps_the_row_for_a_retry(dbfile):
-    """Deleting the row on a failed withdrawal strands the alarm on the phone —
-    it fires anyway and nothing is left that can retract it."""
+    """A failed withdrawal keeps the row (deleting it strands an alarm nothing can retract)."""
     con = db.connect()
     seed_trip(con)
     be = FakeBackend()
@@ -619,9 +582,7 @@ def test_failed_withdrawal_keeps_the_row_for_a_retry(dbfile):
 
 
 def test_mass_withdrawal_is_refused_wholesale(dbfile):
-    """If the three-state protocol ever fails, this is the last guard. Partial
-    application would be worse than none — half the alarms gone, no way to tell
-    which."""
+    """Last guard if the three-state protocol fails: all-or-nothing, never half the alarms gone."""
     con = db.connect()
     now_iso = NOW.isoformat()
     with con:
@@ -656,9 +617,7 @@ def test_dry_run_delivers_nothing(dbfile):
 # ------------------------------------------------------- the Reminders script
 
 def test_write_converts_the_instant_to_local_components(monkeypatch):
-    """fire_at is an instant; AppleScript date components are wall clock. The
-    conversion is what keeps the alarm at the right moment — passing the ISO
-    string's own digits through would fire it in the wrong zone."""
+    """fire_at is an instant but AppleScript date components are wall clock: convert, don't pass the ISO digits."""
     from app import reminders
 
     seen = {}
@@ -680,8 +639,7 @@ def test_write_converts_the_instant_to_local_components(monkeypatch):
 
 
 def test_withdraw_treats_an_already_gone_alarm_as_success(monkeypatch):
-    """A user who deleted it by hand made the same call. A permanent failure
-    here would block the row from ever being cleaned up."""
+    """A reminder already deleted by hand counts as withdrawn (else the row is never cleaned up)."""
     from app import reminders
     monkeypatch.setattr(reminders, "_run", lambda *a: "NOTFOUND")
     assert reminders.withdraw("x-apple-reminder://GONE") is True
@@ -704,8 +662,7 @@ def _osascript_failing(monkeypatch, errors):
 
 
 def test_a_reminders_instance_shutting_down_is_retried(monkeypatch):
-    """Windowless Reminders quits seconds after a script; the next one can
-    meet it mid-exit. That is a relaunch away, not a failed delivery."""
+    """-609 (windowless Reminders quitting mid-exit) is retried, not a failed delivery."""
     from app import reminders
     calls = _osascript_failing(monkeypatch, [
         "382:418: execution error: Reminders got an error: Connection is invalid. (-609)",
@@ -735,8 +692,7 @@ def test_the_relaunch_retry_gives_up(monkeypatch):
 
 
 def test_a_wedged_reminders_is_force_restarted(monkeypatch):
-    """A wedged instance answers -609 to every retry, cycle after cycle, and a
-    leave alarm never reaches the phone. After the retries, kill + relaunch."""
+    """A wedged instance answering -609 to every retry is killed and relaunched."""
     from app import reminders
     restarts = []
     monkeypatch.setattr(reminders, "_restart_reminders", lambda: restarts.append(1))

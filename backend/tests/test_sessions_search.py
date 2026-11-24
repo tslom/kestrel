@@ -55,8 +55,7 @@ def test_search_finds_a_session_by_what_was_said(store):
 
 
 def test_search_reads_assistant_text_and_tool_calls_too(store):
-    """A session is often findable only by what Claude said or did — the
-    user's own wording may never contain the word being searched."""
+    """Search covers what Claude said and did, not only the user's wording."""
     assert [h["id"] for h in sessions.search_sessions("Eastern")] == ["aaaaaaaa-1111"]
     # tool_use blocks are searched by name and by argument
     assert [h["id"] for h in sessions.search_sessions("task_create")] == ["bbbbbbbb-2222"]
@@ -75,8 +74,7 @@ def test_search_returns_newest_first_and_honours_limit(store):
 
 
 def test_search_rows_can_be_resumed_like_listing_rows(store):
-    """The browser resumes straight from a search result, so a hit must carry
-    everything a listing row does — not just the snippets."""
+    """A hit carries everything a listing row does (the browser resumes from it)."""
     hit = sessions.search_sessions("timezone")[0]
     row = next(r for r in sessions.list_sessions() if r["id"] == hit["id"])
     assert {k: hit[k] for k in row} == row
@@ -87,17 +85,14 @@ def test_search_misses_stay_empty(store):
 
 
 def test_preview_skips_the_attached_context_dump(store):
-    """A console message arrives with a pinned-widget JSON dump in front of it.
-    Previewing the raw first block showed that dump instead of the question,
-    which made every console-started session look identical in the list."""
+    """The preview skips the pinned-widget JSON dump that precedes a console message."""
     row = next(r for r in sessions.list_sessions() if r["id"] == "bbbbbbbb-2222")
     assert row["preview"] == "add milk to the shopping list"
     assert "widget" not in row["preview"]
 
 
 def test_listing_and_transcript_are_uncapped_by_default(tmp_path, monkeypatch):
-    """Both used to truncate — 20 sessions, 500 entries — which silently hid
-    the older half of the store from the resume panel."""
+    """Neither listing nor search truncates (no 20-session / 500-entry cap)."""
     monkeypatch.setattr(sessions, "project_dir", lambda: tmp_path)
     for i in range(25):
         (tmp_path / f"s{i:04d}.jsonl").write_text(_rec("user", f"msg {i}") + "\n",
@@ -138,15 +133,11 @@ def test_chat_search_tool_rejects_an_empty_or_bad_argument(store):
 
 
 def test_chat_search_is_auto_approved_as_a_read(store):
-    """It only reads JSONL the user already owns, so it must not cost a card
-    every time — that is the whole reason the read allowlist exists."""
+    """Session reads are on the read allowlist (no approval card)."""
     assert "mcp__vault__chat_search" in ct.READ_TOOL_NAMES
 
 
-#
-# One formatter serves both places tool calls are shown — the live websocket
-# stream and the transcript replay — so what these assert is what the console
-# log looks like in both.
+# One formatter serves the live stream and the transcript replay.
 
 def test_tool_detail_picks_the_argument_worth_reading():
     assert sessions.tool_detail({"command": "git status --short",
@@ -190,8 +181,7 @@ def test_transcript_skips_records_that_only_look_like_a_message(tmp_path, monkey
 
 
 def test_a_shell_turn_replays_as_what_you_ran(tmp_path, monkeypatch):
-    """The wrapper console.shell_prompt writes is for the model: the log, the
-    listing and search all get the command and its output back."""
+    """The shell_prompt wrapper is for the model: log, listing and search show the command and output."""
     from app.console import shell_prompt
 
     monkeypatch.setattr(sessions, "project_dir", lambda: tmp_path)

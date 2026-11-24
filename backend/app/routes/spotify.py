@@ -1,16 +1,8 @@
-"""Spotify OAuth callback — the browser face of providers/spotify.py.
+"""Spotify OAuth callback: the browser face of providers/spotify.py.
 
-Spotify requires the redirect_uri to be registered *exactly*
-(SPOTIFY_REDIRECT_URI: 127.0.0.1, not 'localhost', banned Nov 2025), so
-unlike the Google Connect flow (routes/oauth.py, which owns its own
-ephemeral-port loopback catcher inside the CLI) the redirect always lands
-on this route, in the already-running backend. The `authorize` CLI in
-providers/spotify.py is a thin client of the three routes below: POST
-/start (client_id, first time only) to get a consent URL, open it in the
-browser, then poll /status until this callback has done the code exchange.
-
-Security: same as the rest of the app — localhost-only, token values never
-leave the backend.
+The redirect_uri must be registered exactly (SPOTIFY_REDIRECT_URI), so it always lands on
+this route in the running backend; the `authorize` CLI is a thin client of /start and /status.
+Design: DESIGN.md → §8 Spotify.
 """
 
 import time
@@ -25,9 +17,7 @@ from ..providers import spotify
 
 router = APIRouter(prefix="/api/oauth/spotify")
 
-# Listening data lives under /api/spotify (DESIGN.md), separate from the OAuth
-# callback router above. The range/metric slice is registry-generated
-# (providers_api.py); this is the MusicWidget's compact one-call summary.
+# Listening data: the range/metric slice is registry-generated; this is the MusicWidget's summary.
 data_router = APIRouter(prefix="/api/spotify")
 
 
@@ -36,8 +26,7 @@ def spotify_summary():
     return spotify.summary()
 
 
-# state -> in-flight attempt. In-memory is fine: single user, one attempt
-# at a time; a dead entry just means running `authorize` again.
+# state -> in-flight attempt; in-memory is fine (a dead entry means run `authorize` again).
 _pending: dict[str, dict] = {}
 PENDING_TTL = 600  # seconds
 
@@ -49,7 +38,7 @@ def spotify_status():
 
 class StartIn(BaseModel):
     client_id: str | None = None
-    # See routes/oauth.StartIn — the desktop shell can't open its own tab.
+    # See routes/oauth.StartIn.
     open_browser: bool = False
 
 
@@ -65,7 +54,7 @@ def spotify_start(body: StartIn):
     for k in [k for k, v in _pending.items() if now - v["at"] > PENDING_TTL]:
         del _pending[k]
     _pending[state] = {"client_id": client_id, "verifier": verifier, "at": now}
-    if body.open_browser:  # after the pending row exists — see oauth_routes
+    if body.open_browser:  # after the pending row exists (see routes/oauth.py)
         open_in_browser(url)
     return {"url": url}
 

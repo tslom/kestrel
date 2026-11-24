@@ -1,11 +1,7 @@
-// A file a reply named, open beside the chat (FileLink.jsx → Console's
-// FileContext). Same slot and chrome as the document pane, which shows the
-// PDFs; this one shows the rest of what's worth seeing without leaving:
-// images, video, audio, markdown (rendered) and text (as written).
-//
-// The bytes come from /api/files/raw, which serves only these kinds, text of
-// every sort as text/plain, under a sandbox CSP (app/files.py) — so an .html
-// or an .svg reads as its source or as a picture, never as a page.
+// A file a reply named, open beside the chat (FileLink.jsx → Console's FileContext), in the document
+// pane's slot: images, video, audio, markdown (rendered), text. Bytes come from /api/files/raw, which
+// serves only these kinds, text as text/plain, under a sandbox CSP (app/files.py): an .html or .svg
+// reads as source or picture, never a page.
 import { useState } from "react";
 import Icon from "../ui/icons.jsx";
 import { renderMarkdownCached } from "../ui/markdown.jsx";

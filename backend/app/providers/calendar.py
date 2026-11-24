@@ -1,12 +1,8 @@
-"""Google Calendar provider — the first real provider on the shared
-provider pattern. Google Calendar is truth; `events` + `calendar_days` in app.db are
-the derived cache (safe to drop and re-pull). refresh() keeps a window around
-today warm; get() reads the cache and pulls cold days on demand.
-
-Auth: the shared oauth helper, token row (google, GOOGLE_CALENDAR_ACCOUNT).
-Day mapping: an event belongs to every LOCAL calendar date it touches — plain
-dates, not day_key rollover (a 1am lecture is on its own date; range anchoring
-still uses day_key via ranges.py, like every provider).
+"""Google Calendar provider. Google is truth; `events` + `calendar_days` in app.db
+are derived cache. An event belongs to every local calendar date it touches
+(plain dates, not day_key rollover); that date comes from `tz.zone_on`, never
+the machine's zone.
+Design: DESIGN.md → §2 Calendar.
 """
 
 import urllib.parse
@@ -25,21 +21,16 @@ ALLOW_FUTURE = True     # next-* and future explicit dates are the point
 
 API_BASE = "https://www.googleapis.com/calendar/v3"
 
-# refresh() keeps [today-7 .. today+35] synced — covers the widget's "today",
-# this/next-week and most of this/next-month; anything colder is fetched on
-# demand by get() and backfills the cache.
+# refresh() keeps [today-7 .. today+35] synced; colder days are fetched on demand by get().
 REFRESH_PAST_DAYS = 7
 REFRESH_FUTURE_DAYS = 35
 
-# sync_days(): days this close together are re-pulled in one API window; a
-# bigger gap gets its own call.
+# sync_days(): days within this gap share one API window; a bigger gap gets its own call.
 SYNC_CLUSTER_DAYS = 14
 
 
 def _local_tz():
-    """The machine's own zone. Only for the API fetch window, which is about
-    where this process is running, not where the user will be — every mapping
-    that a reader sees goes through `tz.zone_on(date)` instead."""
+    """The machine's own zone, for the API fetch window only; readers use `tz.zone_on(date)`."""
     return datetime.now().astimezone().tzinfo
 
 
@@ -88,17 +79,8 @@ def _calendars(token: str) -> list[tuple[str, str]]:
 
 def days_covered(ev: dict) -> list[str]:
     """Dates an event touches, in the zone the user is in then. Google's end is
-    exclusive (all-day ends the next date; timed events ending exactly at
-    midnight don't spill over).
-
-    Which date an event falls on is a zone question, and answering it with the
-    machine clock files a 1am Eastern event on the wrong date for someone
-    living in Pacific — the row would then render under a day whose label
-    disagrees with the day it was filed under. The zone lookup needs a date to
-    start from, which is the date we're computing; the event's own filing date
-    seeds it, since no zone here is more than three hours off and the only way
-    that seed picks the wrong side of a TIMELINE entry is an event on the
-    transition date itself, i.e. while the user is on the plane."""
+    exclusive (all-day ends the next date; timed events ending at midnight don't spill).
+    The zone lookup is seeded with the event's own start date (wrong only on a transition day)."""
     if ev["all_day"]:
         start = date.fromisoformat(ev["start_at"])
         end = date.fromisoformat(ev["end_at"]) - timedelta(days=1)
@@ -116,18 +98,9 @@ def days_covered(ev: dict) -> list[str]:
 
 
 def _fetch(start: date, end: date) -> tuple[list[dict], list[tuple[str, str]]]:
-    """Pull every event overlapping [start, end] (inclusive) from the API.
-
-    Returns the calendar list alongside the events because it was already
-    fetched to walk it: `_sync` needs the (id, name) pairs to rewrite the
-    `calendars` table, and asking calendarList a second time for rows we are
-    holding would be a second round trip for the same answer.
-
-    The window is padded a day each side. `days_covered` maps events into the
-    user's zone for that date, which can be three hours off this machine's, so
-    an unpadded window would miss an event that lands inside the range only
-    after the shift. Overshooting costs nothing: `_sync` keeps only the days
-    inside the range."""
+    """Pull every event overlapping [start, end] (inclusive) -> (events, (id, name) calendars).
+    The window is padded a day each side (the user's zone can be 3h off the machine's);
+    `_sync` keeps only days inside the range."""
     tz = _local_tz()
     time_min = datetime.combine(start - timedelta(days=1), time.min, tz).isoformat()
     time_max = datetime.combine(end + timedelta(days=2), time.min, tz).isoformat()
@@ -159,20 +132,8 @@ def _fetch(start: date, end: date) -> tuple[list[dict], list[tuple[str, str]]]:
 
 
 def _save_calendars(con, calendars: list[tuple[str, str]], now: str) -> None:
-    """Rewrite the `calendars` table from what calendarList just said.
-
-    This is what makes a rename in Google heal itself: the name lives here,
-    and the copy on each cached event row is dragged along to match, including
-    on rows far outside the window this sync pulled. Without that second
-    statement a rename would only reach the days being re-fetched, and
-    `calendar_ids` would list the old and new names against the same id until
-    the cold rows aged out — which, for an event six months out, is never.
-
-    Calendars that have gone are deleted, but only when the whole list was
-    pulled: with GOOGLE_CALENDAR_IDS pinned to a subset, everything not in
-    that subset is absent from `calendars` rather than unsubscribed, and
-    pruning would empty the table down to the pinned few on every sync.
-    """
+    """Rewrite `calendars` from calendarList; renames propagate to every cached event row.
+    Gone calendars are pruned only when the whole list was pulled (not with pinned IDs)."""
     with con:
         for cal_id, name in calendars:
             con.execute(
@@ -232,13 +193,8 @@ def refresh() -> dict:
 
 
 def sync_days(days) -> int:
-    """Re-pull the cache for the dates a write touched.
-
-    A write knows exactly which days it changed, so refresh()'s six-week window
-    is both too much work and — for an event three months out — the wrong
-    window. Days far apart are synced as separate calls rather than one span:
-    moving a lecture from September to December must not re-fetch the autumn.
-    """
+    """Re-pull the cache for the dates a write touched, clustered by SYNC_CLUSTER_DAYS
+    so a September-to-December move doesn't re-fetch the autumn."""
     ds = sorted({d for d in days if d})
     if not ds:
         return 0
@@ -256,12 +212,7 @@ def sync_days(days) -> int:
 
 
 def cite(ev: dict) -> str | None:
-    """This event's citation ref.
-
-    Keyed on `day/event_id`, not `event_id` alone: a recurring event carries
-    one id across every instance, so a ref built from the id would make
-    "your 9am Tuesday" and "your 9am next Tuesday" the same citation.
-    """
+    """This event's citation ref, keyed `day/event_id`: recurring instances share one id."""
     if not ev.get("id"):
         return None
     day = ev.get("day") or (ev.get("start") or "")[:10]
@@ -279,8 +230,7 @@ def brief_line(ev: dict) -> str:
     elif ev["all_day"]:
         when = "all-day"
     else:
-        # get() already put these in the right zone; the label rides along so a
-        # bare HH:MM can't be re-interpreted by whoever reads the line.
+        # the zone label rides along so a bare HH:MM can't be re-read in another zone
         s = datetime.fromisoformat(ev["start"])
         e = datetime.fromisoformat(ev["end"])
         when = f"{s:%H:%M}-{e:%H:%M} {ev.get('tz') or tzbase.label(ev['day'])}"
@@ -297,20 +247,8 @@ def _within_day_order(ev: dict):
 
 
 def _dedupe(data: list[dict]) -> list[dict]:
-    """Drop events that are the same event twice.
-
-    The cache can't prevent these: its PK is (day, event_id), which correctly
-    collapses re-syncs of one event, but Google itself hands out two distinct
-    ids for the same thing when an invite arrives by two routes (a subscribed
-    calendar plus a copy on your own). Nothing downstream can tell those apart
-    from real data, so the widget showed the same class registration twice.
-
-    Identical summary + start + end on a day is never worth rendering twice,
-    so the first wins — `data` is already in display order, which puts the
-    primary calendar's copy ahead of the subscribed one. Two genuinely
-    distinct events that share a title AND both endpoints are indistinguishable
-    to a reader anyway; the surviving row keeps its own `calendar` label, and
-    `duplicates` records what was folded in so the expansion can say so."""
+    """Fold events with identical day + summary + start + end (Google issues two ids when an
+    invite arrives by two routes). First in display order wins; `duplicates` lists the folded calendars."""
     out: list[dict] = []
     seen: dict[tuple, dict] = {}
     for ev in data:
@@ -323,13 +261,8 @@ def _dedupe(data: list[dict]) -> list[dict]:
     return out
 
 
-# A timed event longer than a day (a retreat, a trip, a hold, or a mis-dated
-# end: a 1h appointment filed as ending a week later) frames the days it
-# touches rather than filling them. get() hands it out as all-day (with
-# `span`), so free slots, the brief, the Load chart and the cards treat it as
-# a banner instead of 24h of busy on every day; SQL readers of `events` use
-# SPAN_SQL for the same rule. Without it one such appointment reads as 696h
-# booked for the week.
+# A timed event over a day long is a banner, not busy time: get() hands it out as all-day
+# with `span`; SQL readers of `events` use SPAN_SQL for the same rule.
 SPAN_SQL = "(julianday(end_at) - julianday(start_at) > 1)"
 
 
@@ -356,34 +289,21 @@ def get(rng: Range, metric: str | None = None) -> dict:
         refreshed = metric_cache.oldest_refresh(con, "calendar_days", rng)
 
     def _continued(r) -> bool:
-        """True when this row is a later day of a multi-day event, i.e. the
-        event started before this day locally. An 10pm-1am event is real on
-        both days, but on day two it's a spill-over, not a 10pm start — the
-        flag lets a renderer say "runs until 1am" instead of leading the day
-        with yesterday's clock time.
-
-        Same zone as the day mapping and the rendered clock time — asking this
-        in the machine's zone would flag a row as a spill-over on the very day
-        it starts."""
+        """True when the event started before this day locally (a spill-over, rendered
+        "runs until 1am"). Uses the day's zone, not the machine's."""
         if r["all_day"]:
             return r["start_at"][:10] < r["day"]
         return datetime.fromisoformat(r["start_at"]) \
             .astimezone(tzbase.zone_on(r["day"])).date().isoformat() < r["day"]
 
-    # start/end are re-expressed in the zone the user is in on that date, and
-    # `tz` names it. Google hands back each event in whatever zone it was filed
-    # in, so passing those through means one slice can carry three frames with
-    # nothing to distinguish them — which is how a console came to render a
-    # 9:00 AM Pacific block next to an 8:30 PM Eastern one as if they were the
-    # same clock. The instant never changes; only how it reads.
+    # start/end are re-expressed in the user's zone on that date and `tz` names it;
+    # Google returns each event in whatever zone it was filed in.
     def _row(r) -> dict:
         span = not r["all_day"] and spans_days(r["start_at"], r["end_at"])
         out = {"day": r["day"], "id": r["event_id"], "summary": r["summary"],
                "start": tzbase.to_local(r["start_at"], r["day"]),
                "end": tzbase.to_local(r["end_at"], r["day"]),
-               # Only on timed rows: `tz` names the zone the clock times are
-               # in, and an all-day event has none. Labelling one anyway put a
-               # bare "ET" on a card whose every row said "all-day".
+               # timed rows only: an all-day event has no zone
                "tz": None if r["all_day"] or span else tzbase.label(r["day"]),
                "all_day": bool(r["all_day"]) or span, "location": r["location"],
                "continued": _continued(r),
@@ -395,13 +315,11 @@ def get(rng: Range, metric: str | None = None) -> dict:
     data = [_row(r) for r in rows]
     data.sort(key=_within_day_order)
     data = _dedupe(data)
-    # refreshed_at = the STALEST synced day in the slice — honest for the
-    # "refreshed Nm ago" affordance.
+    # refreshed_at = the stalest synced day in the slice
     return {"data": data, "refreshed_at": refreshed}
 
 
-# The waking hours a "when am I free" answer is allowed to offer. Wide enough
-# to cover a student's real day, narrow enough that nothing proposes 3am.
+# The waking hours a "when am I free" answer may offer.
 FREE_EARLIEST = time(9, 0)
 FREE_LATEST = time(21, 0)
 FREE_MIN_MINUTES = 30
@@ -410,15 +328,8 @@ FREE_MIN_MINUTES = 30
 def free_slots(rng: Range, *, earliest: time = FREE_EARLIEST,
                latest: time = FREE_LATEST,
                min_minutes: int = FREE_MIN_MINUTES) -> dict:
-    """Open stretches per day — what's left of the waking window once the
-    events on it are subtracted.
-
-    Reads through get(), so this inherits the cache backfill, the per-day zone
-    conversion and the duplicate collapsing rather than re-deriving any of
-    them. All-day events are reported beside the slots instead of blocking
-    them: a birthday or a "Move-in week" banner would otherwise mark whole
-    days unavailable, which is the one answer that's never useful.
-    """
+    """Open stretches per day: the waking window minus timed events, read through get().
+    All-day events are listed beside the slots, never blocking them."""
     slice_ = get(rng)
     by_day: dict[str, list[dict]] = {}
     for ev in slice_["data"]:
@@ -435,8 +346,7 @@ def free_slots(rng: Range, *, earliest: time = FREE_EARLIEST,
             if ev["all_day"]:
                 banners.append(ev["summary"])
                 continue
-            # Clamp: an event that starts the night before (`continued`) or
-            # runs past bedtime blocks only the part inside the window.
+            # clamp: spill-over events block only the part inside the window
             s = max(datetime.fromisoformat(ev["start"]), window_start)
             e = min(datetime.fromisoformat(ev["end"]), window_end)
             if e > s:

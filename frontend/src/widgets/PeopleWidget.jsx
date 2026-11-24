@@ -17,9 +17,7 @@ export function usePeopleCard() {
   const waiting = data?.waiting ?? null;
   const signals = data?.signals ?? null;
 
-  // Optimistic: the row leaves on click, before the POST lands. Undo lives in
-  // the expansion's "show N dismissed" list — this is a low-stakes, high-churn
-  // action and a round-trip per tick made clearing the list feel sticky.
+  // Optimistic (low-stakes, high-churn); undo lives in the expansion's "show N dismissed" list.
   const dismiss = (w) => {
     setData((d) => ({ ...d, waiting: d.waiting.filter((x) => x !== w) }));
     postJSON("/api/people/waiting/dismiss",
@@ -38,8 +36,7 @@ export function usePeopleCard() {
        signals?.birthdays.length && `${signals.birthdays.length} birthday${signals.birthdays.length > 1 ? "s" : ""}`]
       .filter(Boolean).join(" · ");
 
-  // One row for the replies owed (the freshest named — it's the one still
-  // worth answering), one per birthday. Dismissing a thread stays on the card.
+  // One row for replies owed (freshest named), one per birthday.
   const freshest = loaded && waiting.length
     ? waiting.reduce((a, b) => (b.days < a.days ? b : a)) : null;
   const asks = !loaded ? [] : [
@@ -64,10 +61,7 @@ export function usePeopleCard() {
 export default function PeopleWidget({ card, onPin }) {
   const { waiting, signals, error, reload, refreshing, dismiss, loaded, attention } = card;
 
-  // /waiting comes back longest-silence-first — the right order for the
-  // full view's "who have I neglected" list, the wrong one here: the card
-  // leads with the freshest, which is what you can still act on today, and
-  // runs the rest of the way down in that order.
+  // /waiting is longest-silence-first (the full view's order); the card leads with the freshest, still actionable today.
   const peek = loaded ? waiting.slice().sort((a, b) => a.days - b.days) : [];
   const birthdays = loaded ? signals.birthdays : [];
 
@@ -114,20 +108,14 @@ export default function PeopleWidget({ card, onPin }) {
                   {...dragPin(`waiting · ${w.to || w.key}`, w)}>
                   <span className="people-name">{w.to}</span>
                   <span className="people-days">{w.days}d</span>
-                  {/* Clearing these is a daily action, so it belongs on the
-                      card — sending you into the expansion to tick one off
-                      is why the list only ever grew. Muting stays in the
-                      expansion: it's permanent and shouldn't be one stray
-                      click away. */}
+                  {/* Dismiss is daily so it lives on the card; mute is permanent and stays in the expansion. */}
                   {w.key && (
                     <button className="people-dismiss" onClick={() => dismiss(w)}
                       title="Nothing to respond to — dismiss. They come back if they write again.">
                       <Icon name="check" size={12} />
                     </button>
                   )}
-                  {/* A name and an age don't say whether this needs two words
-                      or ten minutes. Only messages carry one — email rows are
-                      threads you sent last, with nothing owed back. */}
+                  {/* Only messages carry a preview; email rows are threads you sent last. */}
                   {w.preview && <p className="people-preview">{w.preview}</p>}
                 </li>
               ))}

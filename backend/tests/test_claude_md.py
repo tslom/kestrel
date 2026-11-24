@@ -1,8 +1,6 @@
 """CLAUDE.md's rule → enforcer table names things that exist.
 
-The table is what an agent reads to learn that a rule is checked (the
-`/correct` habit). A row whose
-enforcer was renamed or deleted would claim a check that no longer runs.
+A renamed or deleted enforcer would leave a row claiming a check that no longer runs.
 """
 
 import re

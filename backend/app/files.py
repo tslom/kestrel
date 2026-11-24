@@ -4,27 +4,10 @@
   GET  /api/files/raw?path=                 the bytes, for the in-app viewer
   POST /api/files/open     {path, reveal}   `open` it, or select it in Finder
 
-A reply says `~/Desktop/resume.pdf`, `/Users/…/shot.png`, a vault-relative
-`01-Projects/…/x.pdf` or a project-relative `out/SCHEDULE.md`. The frontend
-offers anything path-shaped; this decides what is real. Only a path that
-resolves to an existing file under the home directory becomes a link.
-
-The rules, all applied to the fully resolved path (so `..` and symlinks are
-judged by where they land, not how they're spelled):
-
-* **Under home, or nothing.** realpath(target) must sit inside realpath(~).
-  A symlink in the project pointing at /etc is refused like /etc itself.
-* **Not the secrets.** ~/.ssh, ~/.gnupg, keychains, cloud credentials and
-  this app's own data dir (app.db holds OAuth tokens) don't resolve at all.
-* **Never executed.** `open` on an app, a script, or anything with the exec
-  bit would run it, so those are revealed in Finder instead — whatever the
-  caller asked for.
-* **Served as what we say it is.** raw serves only the viewer's kinds, under
-  a type picked here from the extension (text of any kind as text/plain, so
-  an .html or .svg-as-text never renders as a page), with nosniff and a
-  sandbox CSP on everything but PDF, which the browser can't show sandboxed.
-
-LocalGuard (Host + Origin on writes) covers all three routes like the rest.
+Rules, judged on the fully resolved path: under home or nothing; secrets
+(~/.ssh, app data dir...) never resolve; executables are revealed, never opened;
+raw serves viewer kinds under a type picked here (nosniff, sandbox CSP).
+Design: DESIGN.md → `app/files.py`.
 """
 
 from __future__ import annotations
@@ -57,8 +40,7 @@ TEXT = {
 TEXT_NAMES = {"Makefile", "Dockerfile", "README", "LICENSE", ".gitignore", ".env.example"}
 TEXT_MAX = 2 * 1024 * 1024   # bigger than this opens with the default app instead
 
-# What `open` would run rather than show. Revealed in Finder instead. The
-# exec bit catches the rest (an extensionless script opens in Terminal).
+# What `open` would run: revealed in Finder instead. The exec bit catches the rest.
 EXECUTABLE = {
     ".app", ".command", ".sh", ".bash", ".zsh", ".csh", ".ksh", ".fish", ".tool", ".terminal",
     ".py", ".pyc", ".rb", ".pl", ".php", ".js", ".mjs", ".jar", ".scpt", ".scptd",
@@ -122,9 +104,8 @@ def _is_executable(p: Path, st: os.stat_result) -> bool:
 def resolve(path: str, bases: list[str] | None = None) -> dict | None:
     """What `path` (as a reply wrote it) names on disk, or None.
 
-    Absolute and ~ paths stand alone; a relative one is tried against each
-    base (the tab's worktree, its project) and then the vault, first hit wins.
-    Every base is itself held to the home rule."""
+    Relative paths try each base (tab worktree, project), then the vault; first
+    hit wins. Every base is held to the home rule."""
     raw = (path or "").strip()
     if not raw or "\0" in raw or len(raw) > 1024:
         return None
@@ -146,7 +127,7 @@ def resolve(path: str, bases: list[str] | None = None) -> dict | None:
         except OSError:
             continue
         k = kind_of(real, st)
-        # Viewing a script's source is fine; `open` on it is what would run it.
+        # Viewing source is fine; `open` would run it.
         runs = k in ("exec", "app") or (k != "dir" and _is_executable(real, st))
         return {"path": str(real), "name": real.name, "kind": k, "size": st.st_size,
                 "viewable": k in VIEWABLE, "executable": runs,

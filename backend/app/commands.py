@@ -1,14 +1,7 @@
-"""Slash-command discovery for the console — zero tokens.
-
-Scans the same places the console's setting_sources = ["user", "project"]
-load from — ~/.claude and VAULT_PATH/.claude — for commands/*.md and
-skills/*/SKILL.md, reading only frontmatter (name + description). Serves
-`GET /api/commands` so the frontend can offer autocomplete and render /help
-without the message ever reaching Claude.
-
-The SDK init message (forwarded over the WS as {"type": "commands"}) remains
-the authority on what a live session actually loaded — including built-ins
-like /compact this scan can't see. The frontend merges both.
+"""Slash-command discovery for the console, zero tokens: scans ~/.claude and
+VAULT_PATH/.claude for commands/*.md and skills/*/SKILL.md (frontmatter only) for
+`GET /api/commands`. The SDK init message stays the authority on what a live
+session loaded (built-ins like /compact); the frontend merges both.
 """
 
 from pathlib import Path

@@ -1,13 +1,7 @@
 import { dragPin } from "../lib/drag.js";
 
-// One section of a sheet: a named question with its headline answer.
-//
-// The name is the point. A band says "Flow" or "Sleep", not `cashflow` or
-// `sleep_deep_min`, and the number that answers it sits in the header rather
-// than inside the body — so the body is free to be a chart, a list, or a wall
-// of receipts without the answer getting lost among them. `pin` makes the
-// header a drag handle for that band alone, which is how a section reaches the
-// console without dragging the whole sheet.
+// One sheet section: a plain-named question ("Flow", not `cashflow`) with its headline answer in the
+// header. `pin` makes the header a drag handle for that band alone.
 export default function Band({ title, note, pin, children }) {
   return (
     <section className="band">

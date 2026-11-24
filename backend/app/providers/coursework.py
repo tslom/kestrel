@@ -1,19 +1,8 @@
-"""Coursework provider — every Brightspace due date across the user's courses,
-from their D2L calendar feed (BRIGHTSPACE_ICS_URL, a token URL in .env).
+"""Coursework provider: Brightspace due dates from the D2L calendar feed (BRIGHTSPACE_ICS_URL, a token URL in .env).
 
-Why it exists: "how many WPs do I have left", "how many AWAs are there",
-"when is each essay due" had no source — the syllabus text gives policy, not
-the dated list — and a calendar entry for an ENGR pitch sat a day early while
-Brightspace had the real deadline. The feed is what Brightspace
-itself shows on its calendar: assignment due dates (" - Due"), content release
-dates (" - Available"), and items some instructors post with neither suffix.
-
-What it does NOT have: whether anything was submitted or graded. D2L doesn't
-put that in the feed, so "how many have I missed" is still a question for the
-user (or Brightspace), and the console is told to say so.
-
-Same cache shape as athletics (providers/ics.py): derived `coursework_items`,
-replaced on a refetch past TTL, read lazily under offline.best_effort.
+Kinds: " - Due", " - Available", and unsuffixed items. The feed has no submitted/graded
+state, so "how many have I missed" is the user's to answer. Same cache shape as athletics
+(providers/ics.py): droppable `coursework_items`. Design: DESIGN.md → `app/providers/athletics.py` and `coursework.py`: iCal feeds.
 
     python -m app.providers coursework --range next-week --format brief
     python -m app.providers coursework --range this-month --query WRIT --format brief
@@ -44,8 +33,7 @@ def _fetch() -> str:
 
 
 def _plain(desc: str) -> str:
-    """The description as plain text: tags out, entities decoded, D2L's
-    trailing 'View event - <url>' dropped, whitespace collapsed."""
+    """Description as plain text (tags out, entities decoded, 'View event - <url>' dropped)."""
     s = re.sub(r"<[^>]+>", " ", desc)
     s = html.unescape(s)
     s = re.sub(r"View event - \S+", "", s)
@@ -64,7 +52,7 @@ def _row(ev: dict, fetched_at: str) -> dict | None:
     section, code, course = (m.group(2), m.group(3), m.group(4).strip()) if m \
         else (None, None, ics.text(ev, "LOCATION") or None)
     desc = ics.text(ev, "DESCRIPTION")
-    # The assignment's own page (its dropbox) beats the calendar event view.
+    # Prefer the assignment's own page over the calendar event view.
     links = re.findall(r"https://\S+", desc)
     url = next((u for u in links if "/dropbox/" in u or "/quizzing/" in u),
                next((u for u in links if "/calendar/" in u), None))

@@ -1,28 +1,9 @@
-"""Campus café menus the tracker knows before you've eaten there.
+"""Campus café menus loaded before you've eaten there, each row labeled with its numbers' origin.
 
-USC publishes no café menus or nutrition, so this loads what
-can be had, each row labeled with where its numbers came from:
-
-  * food_data/coffee_bean.json — Coffee Bean & Tea Leaf's own nutrition PDF
-    (scripts/build_coffee_bean.py). Exact: confidence 1.
-  * food_data/panda_nutrition.txt — Panda Express's own nutrition page
-    (macros, fiber, sugar, sodium: exact). Panda publishes no vitamins or
-    minerals, so fill_micros() estimates only those, from an SR28
-    decomposition of each dish, and says so on the row (detail.micros).
-  * food_data/usc_dietitian.json — label numbers USC Hospitality's dietitian
-    emailed (Taco Taco, C&G smoothies and açaí, Katora curry
-    bowls). Exact: confidence 1.
-  * food_data/campus_menus.json "published" — numbers with a stated origin,
-    for any other venue that gets them.
-  * food_data/campus_menus.json "estimate" — real item names (USC's Balanced
-    Dining guide) with no numbers, estimated by app/food_estimate.py once per
-    distinct name. "packaged" items are grab-and-go with a label: the row says
-    so, and a barcode or a label photo makes them exact.
-
-All rows are foods with source 'custom' keyed "venue|name" — the same key a
-food_create for that venue and name produces, so the user's own entry and the
-seed's are one row. The seed only ever writes a row it wrote itself
-(detail.seed) that the user hasn't corrected; anything else is left alone.
+Rows are foods with source 'custom' keyed "venue|name", the same key food_create
+makes, so the user's entry and the seed's are one row. The seed only rewrites a
+row it wrote (detail.seed) that the user hasn't corrected.
+Design: DESIGN.md → Food (§25).
 
     python -m app.food_seed            # published + estimates (model calls)
     python -m app.food_seed --no-estimate
@@ -132,8 +113,7 @@ def published_items() -> list[dict]:
 
 
 def estimate_items() -> list[dict]:
-    """Items to estimate, with the guide's diet marks as tags — without them
-    the vegan Beet Poke box came back with 32 g of protein."""
+    """Items to estimate, with the guide's diet marks as tags (the model needs them)."""
     data = json.loads((DATA / "campus_menus.json").read_text())
     vegan, veg = set(data.get("vegan", [])), set(data.get("vegetarian", []))
     out = []
@@ -147,8 +127,7 @@ def estimate_items() -> list[dict]:
 
 
 def seed_published() -> int:
-    """Load published rows; drop seeded rows whose item left the data (a
-    rebuilt file renamed or removed it) unless corrected or ever logged."""
+    """Load published rows; drop seeded rows whose item left the data unless corrected or ever logged."""
     n = 0
     items = published_items()
     keep = {_key(it["venue"], it["name"]) for it in items}
@@ -165,8 +144,7 @@ def seed_published() -> int:
                 continue
             nutrients, detail = dict(it["n"]), {"seed": True, "origin": it["origin"]}
             if it.get("fill_micros"):
-                # Keep micros a previous fill_micros() estimated: the label
-                # numbers are rewritten every pass, the estimate isn't redone.
+                # Label numbers are rewritten each pass; keep the earlier micros estimate.
                 prev = con.execute("SELECT nutrients, detail FROM foods WHERE"
                                    " source='custom' AND source_id=?",
                                    (_key(it["venue"], it["name"]),)).fetchone()
@@ -231,12 +209,8 @@ def fill_micros(limit: int = 60) -> int:
 
 
 def seed_estimates(limit: int = 200) -> int:
-    """Estimate seed items with no row yet. One estimate per distinct name,
-    copied to every venue that sells it (the Positive Foods bowls are at
-    three cafés)."""
-    # Failures share food_estimates (and its retry rules) with the menus,
-    # under a "seed|" key, so a name the model can't do isn't re-asked every
-    # poller cycle.
+    """Estimate seed items with no row yet: one estimate per distinct name, copied to every venue."""
+    # Failures share food_estimates' retry rules under a "seed|" key.
     cutoff = (datetime.now() - food_estimate.RETRY_AFTER).isoformat(timespec="seconds")
     with db.session() as con:
         todo = [it for it in estimate_items() if not _ours(con, it["venue"], it["name"])[0]]
@@ -287,8 +261,7 @@ def ensure(estimate: bool = True) -> dict:
     usc_dining poller refresh."""
     out = {"published": seed_published()}
     if estimate:
-        # A usage limit isn't this refresh failing — the menus above landed.
-        # Say so and let a later cycle estimate.
+        # A usage limit isn't a failed refresh; retry next cycle.
         try:
             out["estimated"] = seed_estimates()
             out["micros"] = fill_micros()

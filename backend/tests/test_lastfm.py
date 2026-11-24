@@ -1,9 +1,6 @@
-"""providers/lastfm — genre tags for the artists in `plays`.
+"""providers/lastfm: Last.fm artist.getTopTags joined on `plays.artist_key` (the name); no network, _api is stubbed.
 
-Spotify stopped returning `genres` on its artist object, so tags come from
-Last.fm's artist.getTopTags, joined on `plays.artist_key` (the artist's name)
-rather than any Spotify id. Nothing here touches the network: _api is stubbed,
-and get() is local-only by design.
+Design: DESIGN.md → `tests/test_lastfm.py`.
 """
 
 import json
@@ -38,8 +35,7 @@ def _tags(con, artist_key, tags, *, name=None, missing=0, raw=None):
 
 @pytest.fixture
 def key(monkeypatch):
-    """Pretend a LASTFM_API_KEY is configured. config is read at import time in
-    the provider, so patch there too."""
+    """Pretend a LASTFM_API_KEY is configured (patch config in the provider too)."""
     monkeypatch.setattr(config, "LASTFM_API_KEY", "k", raising=False)
     monkeypatch.setattr(lastfm, "LASTFM_API_KEY", "k")
 
@@ -69,17 +65,14 @@ def test_clean_tags_survives_junk_weights():
 
 
 def test_clean_tags_falls_back_to_rank_when_unweighted():
-    """The documented sample response carries no `count` at all. If weights
-    ever go missing we must not drop every tag and file the artist as unknown —
-    the list is already ordered by popularity."""
+    """The sample response has no `count`; missing weights must not drop every tag (the list is popularity-ordered)."""
     raw = [{"name": "Hip-Hop", "url": "u"}, {"name": "seen live", "url": "u"},
            {"name": "Trap", "url": "u"}]
     assert lastfm._clean_tags(raw) == ["hip hop", "trap"]
 
 
 def test_clean_tags_dedupes_punctuation_variants():
-    """Live data: Drake returns both "hip-hop" and "hip hop". Left alone they
-    chart as two genres, each with half the plays."""
+    """Drake returns "hip-hop" and "hip hop"; normalise so they aren't two genres."""
     raw = [{"name": "Hip-Hop", "count": 100}, {"name": "rap", "count": 90},
            {"name": "hip hop", "count": 80}, {"name": "Hip_Hop", "count": 70}]
     assert lastfm._clean_tags(raw) == ["hip hop", "rap"]
@@ -126,9 +119,7 @@ def test_enrich_tags_most_played_first(dbfile, key, monkeypatch):
 
 
 def test_enrich_prioritises_todays_listening_over_the_backlog(dbfile, key, monkeypatch):
-    """Play count alone starves the current day: an artist you tried once today
-    queues behind the whole backlog, so today's genre coverage reads 0% for
-    days — the one day anyone actually looks at."""
+    """Play count alone starves today: a once-tried artist queues behind the backlog and today's coverage reads 0%."""
     con = db.connect()
     old = "2026-01-01"
     for i in range(50):                     # a heavyweight from the archive
@@ -158,9 +149,7 @@ def test_enrich_marks_unknown_artist_so_it_is_not_retried(dbfile, key, monkeypat
 
 
 def test_unknown_artist_is_settled_not_retried_forever(dbfile, key, monkeypatch):
-    """Last.fm error 6 is a settled answer, not a failure. Counting it as one
-    left three real artists (Cree+, Omar+, Malditho.wav) re-requested every
-    poll cycle, each logging a `degraded` event into the status panel."""
+    """Last.fm error 6 is a settled answer, not a failure (it re-requested real artists every cycle with a `degraded` event each)."""
     con = db.connect()
     _play(con, f"{DAY}T09:00:00Z", "Cree+")
     con.close()
@@ -179,8 +168,7 @@ def test_unknown_artist_is_settled_not_retried_forever(dbfile, key, monkeypatch)
 
 
 def test_api_only_treats_error_6_as_not_found(dbfile, key, monkeypatch):
-    """A rate-limit or outage must stay a retryable failure, not get filed as
-    'Last.fm doesn't know them' and never looked up again."""
+    """A rate-limit or outage stays retryable, never filed as 'unknown artist'."""
     monkeypatch.setattr(lastfm.urllib.request, "urlopen",
                         lambda *a, **k: pytest.fail("should not reach network"))
     for code, exc in ((6, lastfm.NotFound), (29, RuntimeError)):
@@ -215,8 +203,7 @@ def test_enrich_survives_one_bad_artist(dbfile, key, monkeypatch):
 
 
 def test_reclean_reapplies_filters_without_the_network(dbfile, key, monkeypatch):
-    """The point of storing raw: revising the blocklist must not cost another
-    9.8k lookups."""
+    """Raw is stored so revising the blocklist costs no re-lookup (9.8k)."""
     con = db.connect()
     _play(con, f"{DAY}T09:00:00Z", "Logic")
     con.close()
@@ -241,8 +228,7 @@ def test_reclean_reapplies_filters_without_the_network(dbfile, key, monkeypatch)
 
 
 def test_reclean_leaves_pre_v36_rows_alone(dbfile):
-    """Rows fetched before raw was stored can't be re-derived — they must be
-    skipped, not blanked."""
+    """Rows fetched before raw was stored can't be re-derived: skipped, not blanked."""
     con = db.connect()
     _tags(con, "logic", ["hip-hop"])          # no raw
     con.close()
@@ -277,8 +263,7 @@ def test_genres_ranks_by_plays(dbfile):
 
 
 def test_reads_join_across_the_import_seam(dbfile):
-    """The whole point of keying on the name: a tag looked up once covers both
-    the imported history and the live rows, which carry different artist_ids."""
+    """Keyed on name, one lookup covers imported history and live rows (different artist_ids)."""
     con = db.connect()
     with con:
         con.execute(
@@ -315,9 +300,7 @@ def test_coverage_reports_how_much_is_tagged(dbfile):
 
 
 def test_day_mix_carries_its_own_coverage(dbfile):
-    """The mix and the share it's drawn from have to travel together — three
-    genres off 25% of a day is a different claim from three off all of it, and
-    the genre list alone can't tell you which you're looking at."""
+    """The mix and the share it's drawn from travel together; three genres off 25% of a day differ from three off all of it."""
     con = db.connect()
     for i in range(3):
         _play(con, f"{DAY}T09:0{i}:00Z", "Tagged")
@@ -338,8 +321,7 @@ def test_day_mix_is_none_on_a_silent_day(dbfile):
 
 
 def test_day_mix_reports_zero_coverage_rather_than_no_genres(dbfile):
-    """A day of untagged artists must not look like a day with no plays — the
-    widget needs to tell 'nothing listened' from 'nothing tagged yet'."""
+    """An all-untagged day must not look like no plays: 'nothing listened' vs 'nothing tagged yet'."""
     con = db.connect()
     _play(con, f"{DAY}T09:00:00Z", "Untagged")
     mix = lastfm.day_mix(con, DAY)

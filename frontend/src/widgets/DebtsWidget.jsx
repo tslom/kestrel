@@ -40,21 +40,15 @@ export function useDebtsCard() {
     fetchJSON(`/api/beers/${g.ids[g.ids.length - 1]}`, { method: "DELETE" }).then(reload);
   }
 
-  // Buys a week of quiet, and nothing more — settling is the only exit. The
-  // day arithmetic is the server's (`nudge`, `reminded_days_ago`), because
-  // "a week" is a day_key question and the browser's own midnight disagrees
-  // with day_key for four hours every night.
+  // Buys a week of quiet; settling is the only exit. Day arithmetic is the server's (`nudge`,
+  // `reminded_days_ago`): the browser's midnight disagrees with day_key for four hours nightly.
   function remind(id) {
     postJSON(`/api/debts/${id}/reminded`, {}).then(reload);
   }
 
   const debts = data?.debts ?? [];
-  // NEEDS is about *your move*, not about the money. A balance owed is true
-  // every day and actionable on none of them, which is how this card took 44
-  // impressions and 3 opens; a debt you have never mentioned, or mentioned a
-  // week ago and heard nothing about, is a thing to do today. Once every open
-  // debt has been chased recently it drops back to HAS and stays out of the
-  // way until its week is up.
+  // NEEDS is your move, not the money (a standing balance took 44 impressions, 3 opens): a debt
+  // never chased, or chased a week ago, is due; once all are chased it drops to HAS.
   const chase = data?.to_chase ?? 0;
   const beers = data?.beer?.beers ?? [];
   const beerCount = (data?.beer?.owed_to_me ?? 0) + (data?.beer?.i_owe ?? 0);
@@ -77,9 +71,7 @@ export function useDebtsCard() {
       : `${d.person} owes you ${money(d.amount)}`,
     why: [d.reason, d.nudge === "never" ? `never asked · open ${age(d.created_at)}`
       : `asked ${d.reminded_days_ago} d ago`].filter(Boolean).join(" · "),
-    // A nudge goes out under your name, so it's drafted for you to read and
-    // send yourself — nothing is sent or marked from here. "ask" on the card
-    // is still how you record that you asked.
+    // A nudge goes out under your name: drafted to read and send yourself; "ask" records it.
     acts: [{
       label: "Draft nudge", style: "go",
       draft: {
@@ -99,9 +91,7 @@ export default function DebtsWidget({ card, onPin }) {
           beers, settleBeer, dropBeer } = card;
   const held = useHeld();
 
-  // "Rowan 24" and "Rowan 24 pizza" both work: a trailing number is the
-  // amount, whatever follows it is the reason. "Theo beer" / "Theo 2 beers ski
-  // trip" files beers instead, checked first so "2 beers" isn't read as $2.
+  // "Rowan 24 [pizza]": trailing number is the amount. Beers ("Theo 2 beers") are checked first so "2 beers" isn't $2.
   function add(text) {
     const b = text.match(/^(.+?)\s+(?:(\d+)\s+)?beers?\b\s*(.*)$/i);
     if (b) {

@@ -1,30 +1,9 @@
 """What an approval card shows instead of the tool's JSON input.
 
-A card exists to be answered, and the only honest way to answer "may I delete
-this?" is to see the thing. The raw input can't show it: `event_delete` is
-addressed by `event_id` and `calendar_id`, two opaque strings, so the card that
-asked to delete an event showed the calendar's 64-hex id and nothing a person
-could recognise — not the title, not the time, not which calendar. The answer
-was a guess dressed as consent.
-
-So every card is built here instead: the ids are resolved against the same
-caches the tool will write through, and the card shows what those ids name.
-
-Three rules this file is written to:
-
-- **Resolve the way the tool resolves.** The preview and the call must address
-  the same event, or the card is worse than none — it would describe one event
-  while a different one is deleted. `_event_for` mirrors `routes/calendar._
-  address` exactly, including its ambiguity rule, and says "ambiguous" rather
-  than picking a row the way that function refuses to.
-- **Never raise, never block.** This runs inside `can_use_tool`, between the
-  model asking and the card appearing. A lookup that fails costs the detail on
-  one card; an exception would cost the approval path. Every resolver is
-  wrapped, and every one of them reads the local cache only — no API call, so
-  nothing here can hang the prompt on a network round trip.
-- **Absence is a fact.** A field the cache doesn't have is left out rather than
-  rendered empty. "no description" and "we didn't look" are different, and a
-  blank row beside a delete button implies the first when it may be the second.
+Ids are resolved against the same local caches the tool writes through, so the card
+shows what they name. Traps: resolve exactly as the tool does (`_event_for` mirrors
+`routes/calendar._address`); never raise or call an API (runs inside `can_use_tool`);
+leave out a field the cache lacks. Design: DESIGN.md → `app/console_preview.py`.
 """
 
 import json
@@ -39,23 +18,18 @@ from . import tz as tzbase
 from .console_tools import SERVER_NAME
 from .routes.calendar import EVENT_COLS, event_candidates
 
-# A card is read at a glance, so the long fields are cut here rather than in
-# the browser: the note on an event can be a pasted agenda, and a card that
-# scrolls is a card whose buttons moved.
+# Long fields are cut here, not in the browser: a card that scrolls moves its buttons.
 MAX_NOTE = 400
 MAX_VALUE = 200
-# How many candidates an ambiguous `match` lists before it stops.
 MAX_CANDIDATES = 4
 
-# Keys never worth a row of their own: either the card already says it in a
-# better form, or it is an id the rest of the card exists to translate.
+# Keys never given a row: the card shows them better, or they are ids it translates.
 _SKIP_KEYS = frozenset({
     "event_id", "eventId", "calendar_id", "calendarId", "match", "date",
     "message_id", "messageId", "thread_id", "threadId", "msg_id", "id",
 })
 
-# Input keys that hold something to be shown as a body rather than a value:
-# wrapped, not truncated to a line.
+# Keys shown as a wrapped body, not a one-line value.
 _BODY_KEYS = ("body", "description", "note", "text", "content", "plan",
               "message")
 
@@ -91,12 +65,7 @@ def _first(data: dict, *keys: str) -> str:
 
 
 def _when(row: dict) -> str:
-    """'Tue Sep 23 · 6:00–7:00 PM PT' for a cached event row.
-
-    The zone label rides along because the console's whole calendar surface
-    assumes it does: `start_at` strings carry mixed offsets, and a bare 6:00
-    on a card is the one number a reader will act on without checking.
-    """
+    """'Tue Sep 23 · 6:00–7:00 PM PT' for a cached event row. The zone label stays: `start_at` carries mixed offsets."""
     try:
         if row.get("all_day"):
             day = datetime.fromisoformat(str(row["start_at"])[:10])
@@ -130,10 +99,7 @@ def _rows(*pairs: tuple[str, Any]) -> list[list[str]]:
 def _event_for(data: dict) -> tuple[dict | None, str | None]:
     """(the event this call addresses, why we couldn't say) from the cache.
 
-    Mirrors `routes/calendar._address`: an explicit id wins, otherwise the
-    title is matched by the same `event_candidates` query. Where that function raises on an ambiguous match, this one reports
-    the ambiguity — the call is about to be refused for it, and a card that
-    said nothing would make the refusal look like it came from nowhere.
+    Mirrors `routes/calendar._address`; where that raises on an ambiguous match, this reports it.
     """
     event_id = _first(data, "event_id", "eventId")
     match = _first(data, "match")
@@ -163,8 +129,7 @@ def _event_for(data: dict) -> tuple[dict | None, str | None]:
 
 
 def _calendar_name(calendar_id: str) -> str:
-    """A calendar id as the user knows it. Falls back to the id, which is at
-    least true, rather than to a blank row."""
+    """A calendar id as the user knows it; falls back to the id."""
     cid = (calendar_id or "").strip()
     if not cid or cid == "primary":
         return cid
@@ -183,8 +148,7 @@ def _calendar_name(calendar_id: str) -> str:
 
 
 def _series_warn(data: dict, verb: str) -> str | None:
-    """The one fact about a calendar write that a reader cannot recover from
-    getting wrong: whether it lands on one occurrence or on all of them."""
+    """Warn when a write lands on every occurrence of a repeating event."""
     scope = _first(data, "scope").lower()
     if scope == "all":
         return f"{verb} EVERY occurrence of this repeating event, past included"
@@ -224,14 +188,7 @@ def _changes_to(data: dict) -> list[list[str]]:
 
 
 def _new_when(start: str, end: str) -> str:
-    """The time a create/update is asking for, read back as a date.
-
-    Deliberately not put through `_when`: these strings are what the model
-    typed, and the zone they land in is decided by the route, not here.
-    Formatting them as a weekday and a clock time is the point — "2026-09-23T18:00"
-    on a card is a string the reader has to decode before they can tell it's
-    the wrong day.
-    """
+    """The requested time as weekday + clock. Not `_when`: the zone is the route's call, not ours."""
     try:
         at = datetime.fromisoformat(start)
         out = f"{at:%a %b %-d}" if len(start) <= 10 else f"{at:%a %b %-d} · {at:%-I:%M %p}"
@@ -239,10 +196,7 @@ def _new_when(start: str, end: str) -> str:
         return f"{start}–{end}" if end else start
     if not end:
         return out
-    # The three shapes `end` comes in are three different things to print: a
-    # bare HH:MM is a time on the start's day, a bare date is the last day of
-    # an all-day span, and a full datetime is both. Reading a date as a time
-    # is what turned a four-day trip into "Wed Sep 23–12:00 AM".
+    # `end` is a bare HH:MM (time on start's day), a bare date (last day of an all-day span), or a full datetime.
     try:
         if len(end) <= 5:
             return f"{out}–{datetime.fromisoformat(f'{start[:10]}T{end}'):%-I:%M %p}"
@@ -339,9 +293,7 @@ _RM_FLAGS = re.compile(r"^-")
 
 
 def _bash(data: dict) -> dict:
-    """The command, whole. `tool_detail` already squeezes it onto one line for
-    the log; the card is the place it gets read before it runs, so it is shown
-    in full and the paths an `rm` would take are pulled out on their own."""
+    """The command, whole, with the paths an `rm` would take pulled out."""
     command = _s(data.get("command"))
     targets = []
     for word in command.split():
@@ -352,10 +304,7 @@ def _bash(data: dict) -> dict:
     rows = []
     if command.startswith(("rm ", "rm\t")) and targets:
         rows = _rows(("deletes", ", ".join(targets[:6])))
-    # `lead` is Claude's description, which the card reads first: the command
-    # under it is the evidence, highlighted and folded when long. Clipped at
-    # 4000 rather than 600 now that a long one folds instead of filling the
-    # screen — a clipped command is one you approve without having read.
+    # `lead` is Claude's description, read first; the command is the evidence. Clip at 4000: a clipped command is approved unread.
     return {"title": _clip(command, 4000), "mono": True, "rows": rows,
             "lead": _one_line(data.get("description") or "", MAX_NOTE) or None}
 
@@ -363,13 +312,7 @@ def _bash(data: dict) -> dict:
 # ---------- generic ----------
 
 def _generic(data: dict) -> dict:
-    """Anything with no resolver: the same fields, minus the JSON braces.
-
-    Still worth doing. A connector tool we've never seen arrives as a flat
-    object of strings, and the difference between reading that as labelled
-    rows and reading it as pretty-printed JSON is the difference between
-    scanning a card and parsing one.
-    """
+    """Anything with no resolver: labelled rows instead of JSON."""
     rows, note = [], None
     for key, value in list(data.items())[:12]:
         if key in _SKIP_KEYS or value in (None, "", [], {}):
@@ -409,8 +352,7 @@ def _one(tool: str, data: dict) -> dict:
 
 
 def describe(tool: str, inputs: list[dict]) -> list[dict]:
-    """One preview per call on the card. Never raises: a resolver that trips
-    costs that card its detail, and the raw input is on the card anyway."""
+    """One preview per call on the card. Never raises: a failed resolver falls back to `_generic`."""
     out = []
     for data in inputs:
         if not isinstance(data, dict):

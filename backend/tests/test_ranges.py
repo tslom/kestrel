@@ -1,6 +1,4 @@
-"""providers/ranges.py — the one place range tokens become day spans. Pure
-logic (takes an explicit `today`), so no DB fixture needed. Anchor day is
-2026-07-22, a Wednesday, so week/month boundaries are non-trivial."""
+"""providers/ranges.py: range tokens to day spans. Pure (explicit `today`); anchor 2026-07-22 is a Wednesday."""
 
 from datetime import date
 
@@ -107,9 +105,7 @@ def test_range_keys():
 
 
 def test_tomorrow_is_next_day():
-    """A console asked "what's on my calendar tomorrow?" at 02:30 found no
-    `tomorrow` token, computed the date off the wall clock, and queried two
-    day-keys out — the clock and the day-key disagree until 4am."""
+    """A `tomorrow` token exists: before 4am the wall clock and the day-key disagree."""
     assert span("tomorrow") == span("next-day")
 
 

@@ -1,8 +1,4 @@
-"""providers/finance._format_counterparties — the display string surfaced on
-enriched transactions (v28). Plaid's counterparties array carries
-the merchant plus any payment apps / marketplaces / processors; the formatter
-drops the merchant (already the row's title) and joins what's left, so the
-widget shows the "how you paid" without repeating the "who"."""
+"""providers/finance._format_counterparties — drops the merchant (already the title), joins the rest."""
 
 from app.providers import finance
 

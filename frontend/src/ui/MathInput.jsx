@@ -1,12 +1,6 @@
-// Typing math the way a graphing calculator takes it: `/` builds a fraction,
-// `^` goes up, `sqrt` and `pi` turn into what they say, and the formula is
-// drawn as you go. MathLive does that; this is its React edge.
-//
-// Loaded on first use, like KaTeX and for the same reason: it's about as big as
-// the rest of the page. It draws with KaTeX's fonts, so those come from the
-// stylesheet the console already bundles (fontsDirectory off), which keeps it
-// working with the network down. A failed load (a chunk gone from under an old
-// window) forgets itself so the next open retries.
+// Calculator-style math entry (MathLive's React edge). Loaded on first use (about as big as the rest of
+// the page); uses the console's bundled KaTeX fonts (fontsDirectory off) so it works offline. A failed
+// load forgets itself so the next open retries.
 import { useEffect, useRef, useState } from "react";
 
 let ready = null;
@@ -20,14 +14,12 @@ function loadField() {
   return ready;
 }
 
-// MathLive brackets a fraction's terms even when they're single atoms; a person
-// writes (1)/(2) as 1/2, and (x+1)/2 keeps the brackets it needs.
+// MathLive brackets single-atom fraction terms; strip them ((1)/(2) → 1/2), keep needed ones.
 const tidy = (ascii) => ascii
   .replace(/\((\w+)\)(?=\/)/g, "$1")
   .replace(/\/\((\w+)\)/g, "/$1");
 
-// `onChange(latex, ascii)`: ascii is the same formula as a person would type it
-// ("x^2"), which is what a quiz's `accept` list is written in.
+// `onChange(latex, ascii)`: ascii is the typed form ("x^2"), what a quiz's `accept` list uses.
 export default function MathInput({ value = "", onChange, onEnter, onEscape, placeholder = "",
                                     autoFocus = false, label = "Math" }) {
   const [state, setState] = useState("loading");     // loading | ready | failed

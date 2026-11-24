@@ -1,22 +1,10 @@
-"""Spotify provider — authorization-code + PKCE against
-accounts.spotify.com, public client (no client secret). Spotify is truth;
-`plays` in app.db is NOT a purely derived cache (see the v16 migration
-comment in db.py) — the recently-played endpoint only ever returns the last
-50 tracks, so this table is the only durable record between polls, and the
-GDPR-export importer (scripts/import_spotify_history.py) backfills the same
-table rather than a separate one — ~266k plays back to 2020 from the Extended
-Streaming History export, reconciled by covered-span with live rows.
+"""Spotify provider: authorization-code + PKCE against accounts.spotify.com (public client, no secret).
 
-Auth is its own small flow, not oauth.py's Google-flavored one: Spotify
-requires the redirect_uri to be registered *exactly*
-(SPOTIFY_REDIRECT_URI — the 127.0.0.1 IP literal, not 'localhost', banned
-Nov 2025), so unlike the Google Connect button the CLI can't spin up its own
-ephemeral loopback HTTPServer — the redirect always lands on the real
-backend, at app/routes/spotify.py's GET /api/oauth/spotify. This module's
-`authorize` CLI is a thin client of that route (POST .../start, open
-browser, poll .../status); token storage/refresh below is what both the
-route and the poller call into. Token row: `tokens` (provider='spotify',
-account=SPOTIFY_ACCOUNT, client_secret='').
+`plays` is NOT a purely derived cache: recently-played only returns the last 50, so the
+table is the durable record, and the GDPR-export importer backfills the same table.
+Auth: the redirect lands on the real backend (routes/spotify.py); `authorize` here is a thin
+client of that route. Token row: `tokens` (provider='spotify', client_secret='').
+Design: DESIGN.md → §8 Spotify.
 
 CLI:
     python -m app.providers.spotify authorize --client-id ID   # first time
@@ -55,15 +43,9 @@ API_BASE = "https://api.spotify.com/v1"
 EXPIRY_MARGIN = timedelta(seconds=60)
 NOVELTY_WINDOW_DAYS = 7
 
-# A silence this long between consecutive plays ends a listening session.
-# Music runs unattended, so the honest way to tell "put an album on" from
-# "put an album on, left, came back after dinner" is the gap in between: 30
-# minutes is longer than any single track (so a normal album never splits)
-# and shorter than an errand.
+# Silence this long ends a listening session: above any single track, below an errand.
 LISTEN_GAP_MIN = 30
-# Below this many plays a day has no *shape* to measure — repeat_ratio over
-# two plays can only be 0.5 or 1.0, and a lone play is a session of length
-# zero. Gap, not zero: the GENRE_MIN_PLAYS / HR_MIN_HOURS precedent.
+# Below this many plays a day has no shape: a gap, not zero.
 SHAPE_MIN_PLAYS = 5
 
 
@@ -94,7 +76,7 @@ def _save(client_id: str, access_token: str, refresh_token: str | None,
             " VALUES ('spotify',?,?,'',?,?,?,?,?,?)"
             " ON CONFLICT(provider, account) DO UPDATE SET"
             " client_id=excluded.client_id, access_token=excluded.access_token,"
-            # refresh grant may omit refresh_token (not always rotated) — keep the old one
+            # a refresh grant may omit refresh_token: keep the old one
             " refresh_token=COALESCE(excluded.refresh_token, tokens.refresh_token),"
             " token_uri=excluded.token_uri, scopes=excluded.scopes,"
             " expires_at=excluded.expires_at, updated_at=excluded.updated_at",
@@ -176,8 +158,7 @@ def _refresh_access_token() -> str:
         })
     except RuntimeError as e:
         if "invalid_grant" in str(e):
-            # Dead/revoked refresh token — drop it so status() says
-            # needs-auth instead of retrying a corpse every poll.
+            # Dead token: drop it so status() says needs-auth instead of retrying every poll.
             with db.session() as con, con:
                 con.execute(
                     "UPDATE tokens SET access_token=NULL, refresh_token=NULL,"
@@ -221,26 +202,13 @@ def day_key_of(ts_utc: str) -> str:
 
 
 def artist_key(name: str) -> str:
-    """The grouping key for an artist: their name, normalized.
-
-    Not `artist_id` — that only agrees with itself within one writer. The
-    poller stores Spotify's real id; the GDPR importer stores a synthetic
-    "sha:" hash, because neither export carries an artist id. Grouping on it
-    splits every artist at the import seam (v35 migration comment). The name
-    is the one field both sides genuinely share.
-
-    casefold(), not lower(): it folds non-ASCII properly, and it's why this
-    can't be a SQL expression — SQLite's lower() is ASCII-only, so "Vîęzë
-    Ãsbæk" would keep its capitals and split anyway.
-    """
+    """The grouping key for an artist: name, whitespace-collapsed and casefolded.
+    Never group on `artist_id` (poller and importer write different ids); casefold in Python, not SQL lower()."""
     return " ".join(name.split()).casefold()
 
 
 def ensure_artist_keys(con) -> int:
-    """Fill plays.artist_key wherever it's missing — the v35 backfill, and
-    self-healing for any row a future writer inserts without one. Idempotent
-    and quiet: the WHERE hits the plays_artist_key index (SQLite indexes
-    NULLs), so once the table is filled this costs one index probe."""
+    """Fill plays.artist_key wherever missing (v35 backfill and self-heal); one index probe once filled."""
     rows = con.execute(
         "SELECT played_at, artist FROM plays WHERE artist_key IS NULL").fetchall()
     if not rows:
@@ -253,8 +221,7 @@ def ensure_artist_keys(con) -> int:
 
 
 def _sync_recent(con) -> int:
-    """Pull the last 50 plays and upsert new ones into `plays` (dedupe on
-    played_at)."""
+    """Pull the last 50 plays and upsert into `plays` (dedupe on played_at)."""
     blob = _api("/me/player/recently-played", {"limit": 50})
     now = datetime.now().isoformat(timespec="seconds")
     n = 0
@@ -280,9 +247,7 @@ def _sync_recent(con) -> int:
 
 
 def refresh() -> dict:
-    """Poller entrypoint: pull the last 50 plays every cycle — well above
-    anything that can accumulate in PROVIDER_REFRESH_SECONDS, so nothing
-    gets missed between polls. Quiet no-op until authorized."""
+    """Poller entrypoint: pull the last 50 plays each cycle; quiet no-op until authorized."""
     try:
         get_access_token()
     except NotAuthorized as e:
@@ -294,36 +259,9 @@ def refresh() -> dict:
 
 
 def listen_shape_by_day(con, start_key: str, end_key: str) -> dict[str, dict[str, float]]:
-    """How the day's listening was *shaped* — `{day: {repeat_ratio,
-    listen_sessions, longest_listen_min}}`.
-
-    `listen_min` says how much you listened; none of it says how. Three
-    numbers that do:
-
-      * **repeat_ratio** — share of the day's plays taken by its single
-        most-played track. The obsession measure: 0.6 is one song on loop,
-        0.05 is a day on shuffle. Track, not artist — an album played front
-        to back is not the same behaviour as one song eleven times, and
-        grouping by artist can't tell them apart.
-      * **listen_sessions** — how many separate sittings, splitting on
-        LISTEN_GAP_MIN of silence. Eight scattered stretches and one long
-        one can carry identical `listen_min`.
-      * **longest_listen_min** — the longest unbroken sitting.
-
-    Shared with features.py's extractor rather than copied into it: a second
-    copy of the math in features.py is exactly what let `novelty` drift for
-    twelve days (v35), so there is one implementation and a test pinning the
-    two callers together.
-
-    Sessions are measured **between play markers only** — never marker plus
-    `ms`. The two writers disagree about what `played_at` means (the poller
-    stores Spotify's recently-played instant, the GDPR importer stores the
-    export's `ts`, which is when the stream *ended*), so a marker is
-    trustworthy as a point in time and the arithmetic stays clear of the
-    ambiguity. A one-play session therefore has span 0.0, which is honest:
-    no sustained block happened.
-
-    Days under SHAPE_MIN_PLAYS are absent, not zero."""
+    """`{day: {repeat_ratio, listen_sessions, longest_listen_min}}`; shared with features.py (one copy of the math).
+    Sessions span play markers only, never marker plus `ms` (the two writers disagree what
+    `played_at` means), so a one-play session is 0.0. Days under SHAPE_MIN_PLAYS are absent, not zero."""
     rows = con.execute(
         "SELECT day, played_at, track_id FROM plays"
         " WHERE day BETWEEN ? AND ? ORDER BY played_at",
@@ -372,9 +310,7 @@ def brief_line(it: dict) -> str:
 
 
 def get(rng: Range, metric: str | None = None) -> dict:
-    """Slice the `plays` cache for the range — no on-demand backfill: the
-    recently-played endpoint can't answer for a specific past day, only
-    'the last 50' at poll time (see module docstring)."""
+    """Slice the `plays` cache; no on-demand backfill (the endpoint only answers "the last 50")."""
     metric = metric or DEFAULT_METRIC
     with db.session() as con:
         ensure_artist_keys(con)
@@ -457,9 +393,7 @@ def _top_track(rows) -> dict | None:
 
 
 def _today_novelty(con, today: str, rows) -> float | None:
-    """Share of today's plays whose artist first appears in `plays` within the
-    last NOVELTY_WINDOW_DAYS — the provider's `novelty` metric, restricted to
-    today (only today's artists are scanned for their global first play)."""
+    """The `novelty` metric for today: share of plays whose artist's first play is within NOVELTY_WINDOW_DAYS."""
     if not rows:
         return None
     artist_keys = {r["artist_key"] for r in rows if r["artist_key"]}
@@ -483,11 +417,8 @@ def _lastfm():
 
 
 def summary() -> dict:
-    """Compact today + rolling-7-day snapshot for the MusicWidget — one
-    token-cheap payload, entirely from the `plays` cache (no API call).
-    Returns {"connected": False} when Spotify isn't linked yet, so the widget
-    shows a Connect hint instead of an empty card. Zero-listening days are
-    real zeros here (full history, not gap-not-zero) — fine for the sparkline."""
+    """Today + rolling-7-day snapshot for the MusicWidget, from the `plays` cache.
+    {"connected": False} when unlinked. Zero-listening days are real zeros, not gaps."""
     if not status().get("connected"):
         return {"connected": False}
     today = db.day_key()
@@ -508,11 +439,7 @@ def summary() -> dict:
             k = d.isoformat()
             days.append({"day": k, "value": week_min.get(k, 0.0)})
             d += timedelta(days=1)
-        # Four weeks of daily minutes, for the card to read today against.
-        # Zero-fill is right here where it would be wrong on health or screen:
-        # a day with no plays is a day you genuinely didn't listen, not a
-        # sensor that missed it — Spotify's history doesn't go quiet the way a
-        # watch left on a charger does.
+        # Baseline daily minutes; zero-fill is right (no plays = didn't listen, not a missed sensor).
         base_start = (date.fromisoformat(today)
                       - timedelta(days=DESK_BASELINE_DAYS - 1)).isoformat()
         base_min = {r["day"]: round(r["ms"] / 60000, 1) for r in con.execute(
@@ -539,9 +466,7 @@ def summary() -> dict:
                 "plays": len(today_rows),
                 "novelty": _today_novelty(con, today, today_rows),
                 "top_track": _top_track(today_rows),
-                # Imported here, not at module scope: lastfm imports spotify
-                # for artist_key, so a top-level import is a cycle. Genres are
-                # a read off the same cache — still no API call.
+                # Lazy import: lastfm imports spotify, so a top-level import is a cycle.
                 "genres": _lastfm().day_mix(con, today),
                 "last_played": {
                     "track": last["track"], "artist": last["artist"],

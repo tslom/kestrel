@@ -71,9 +71,7 @@ def test_nothing_escapes_the_sandbox(tmp_path):
 
 
 def test_seatbelt_holds_even_with_every_deno_permission_on(tmp_path, monkeypatch):
-    """The second layer on its own: Deno told to allow everything, and the
-    kernel still says no. If Deno's permission model ever has a hole, this
-    is what's left."""
+    """Seatbelt alone: Deno allowed everything, the kernel still says no."""
     monkeypatch.setattr(cc, "DENO_FLAGS", ("-A", "--no-config", "--no-lock"))
     r = run(_escapes(tmp_path).replace(
         'return got;',
@@ -197,8 +195,7 @@ return {pay: pays.map((t) => t.title).sort(), total: counts.find((c) => c.status
 
 
 def test_parallel_reads_and_text_results(dbfile, monkeypatch):
-    """Promise.all over a text tool: N reads, one answer, and the tool's
-    own handler is what ran (the bridge adds nothing in between)."""
+    """Promise.all over a text tool: N reads, one answer, via the tool's own handler."""
     seen = []
 
     async def fake_search(args):
@@ -230,7 +227,5 @@ def test_the_description_lists_every_bridged_read_and_stays_lean():
     for name in ct.run_script.bridge.reads:
         assert f"\n{name}(" in d
     assert "task_create" not in d
-    # 1.9k, then +0.8k for the table summary (SCHEMA) and +0.3k for "decide
-    # first, return the answer": the code_mode eval's probing and raw-body
-    # returns are what they replaced.
+    # 1.9k, +0.8k table summary (SCHEMA), +0.3k "decide first, return the answer".
     assert len(d) < 3000

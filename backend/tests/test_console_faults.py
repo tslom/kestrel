@@ -1,14 +1,7 @@
 """What a failed console turn writes into the failure log.
 
-The log answers two questions — how often does a turn fail, and on what — and
-the first four rows it ever collected answered neither. Three were
-`error_during_execution` with a NULL detail, which is the question restated.
-The fourth was a session limit filed under the label **success**, because the
-CLI reports a quota stop with is_error set and subtype "success", and the
-subtype was being recorded verbatim.
-
-So: a label that describes what happened, and a detail that is never empty
-while the turn knows anything at all.
+Label describes what happened; detail is never empty while the turn knows anything.
+Design: DESIGN.md → `backend/tests/test_console_faults.py`.
 """
 
 import asyncio
@@ -49,8 +42,7 @@ def test_the_other_limits_read_the_same_way():
 
 
 def test_the_windows_the_cli_names_now_are_limits_too():
-    """Word for word from the log: after the CLI renamed its windows, every
-    quota stop went back under `success`."""
+    """The CLI's renamed windows are limits too (they had fallen back under `success`)."""
     for text in ("You've hit your 5-hour limit · resets 6pm (America/Los_Angeles)",
                  "You've hit your weekly limit · resets 8pm (America/Los_Angeles)"):
         label, _ = _turn_fault(_result(subtype="success", text=text), None, None)
@@ -81,8 +73,7 @@ def test_one_limit_stop_is_one_row_whatever_time_it_resets():
 
 
 def test_an_ordinary_failure_mentioning_a_limit_it_isnt():
-    """`_LIMIT_RE` wants the phrase, not the word — a turn that failed while
-    talking about a rate limit is still a failure of its own kind."""
+    """`_LIMIT_RE` wants the phrase, not the word."""
     msg = _result(text="KeyError: 'rate_limit_type' while parsing the response")
     label, _ = _turn_fault(msg, None, None)
     assert label == "error_during_execution"
@@ -95,8 +86,7 @@ def test_result_text_is_kept_verbatim_when_there_is_some():
 
 
 def test_an_empty_result_falls_back_to_the_failing_tool():
-    """The three NULL rows. What the turn was running and what it came back
-    with is the answer to "on what" — it just wasn't being read."""
+    """The NULL-detail rows: the last tool and its output are the detail."""
     _, detail = _turn_fault(_result(), "Bash", "sqlite3: database is locked")
     assert "Bash" in detail
     assert "database is locked" in detail
@@ -108,9 +98,7 @@ def test_a_tool_that_did_not_error_still_names_itself():
 
 
 def test_a_turn_that_never_called_anything_says_so():
-    """Distinct from the above on purpose: "no tool calls" is a different
-    failure from "the last tool blew up", and a shared detail would merge
-    them into one fingerprint."""
+    """"No tool calls" gets its own detail, not the last-tool one (separate fingerprints)."""
     _, detail = _turn_fault(_result(), None, None)
     assert detail == "no result text, no tool calls"
 
@@ -125,9 +113,7 @@ def test_the_detail_is_never_empty():
 
 
 def test_result_text_handles_both_content_shapes():
-    """Tool results arrive as a bare string or as content blocks depending on
-    the tool; a fallback that only understood one would be empty for the other
-    — which is the bug it exists to fix, one level down."""
+    """Tool results are a bare string or content blocks, depending on the tool."""
     assert _result_text(SimpleNamespace(content="plain text")) == "plain text"
     assert _result_text(SimpleNamespace(
         content=[{"type": "text", "text": "line one"},
@@ -136,12 +122,8 @@ def test_result_text_handles_both_content_shapes():
     assert _result_text(SimpleNamespace(content=[{"type": "image"}])) == ""
 
 
-#
-# `_turn_fault` above is a pure function and the tests for it are cheap, which
-# is exactly the condition under which the interesting bug lives one layer
-# out: the fallback is worth nothing if `last_tool` is not actually carrying
-# the turn's last tool by the time the result arrives. So this drives the real
-# stream loop with a real message sequence and reads what landed in the log.
+# Drives the real stream loop: the fallback is worthless unless `last_tool`
+# carries the turn's last tool by the time the result arrives.
 
 
 def _messages():
@@ -189,8 +171,7 @@ def test_the_stream_records_the_tool_the_turn_died_on(monkeypatch):
 
 
 def test_a_clean_turn_records_nothing(monkeypatch):
-    """The guard that keeps the log worth reading — `is_error` false writes no
-    row, however many tools the turn called."""
+    """`is_error` false writes no row, however many tools the turn called."""
     recorded = []
     monkeypatch.setattr(console.failures, "record",
                         lambda *a, **kw: recorded.append(a))
@@ -214,9 +195,7 @@ def test_a_clean_turn_records_nothing(monkeypatch):
 
 
 def test_a_reader_that_dies_closes_the_turn_instead_of_hanging_it(monkeypatch):
-    """Nothing awaits the stream task. An SDK reader dying mid-turn (a tool
-    result over its JSON buffer) used to end as an asyncio "never retrieved"
-    line and a UI spinning forever."""
+    """Nothing awaits the stream task: a dying SDK reader (tool result over its JSON buffer) closes the turn."""
     recorded, sent = [], []
     monkeypatch.setattr(console.failures, "record",
                         lambda *a, **kw: recorded.append((a, kw)))

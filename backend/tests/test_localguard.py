@@ -58,8 +58,7 @@ def test_our_own_origins_and_non_browsers_still_write(client):
 
 
 def test_a_page_on_a_loopback_dev_proxy_writes(client):
-    """The verify rig's Vite on :5199 forwards with its own Host (vite.config.js
-    turns changeOrigin off), so its pages are same-origin through the proxy."""
+    """The verify rig's Vite on :5199 keeps its own Host (changeOrigin off): same-origin through the proxy."""
     rig = {"host": "localhost:5199", "origin": "http://localhost:5199"}
     assert client.post("/w", headers=rig).status_code == 200
     with client.websocket_connect("/ws", headers=rig) as ws:

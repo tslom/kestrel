@@ -7,10 +7,8 @@ import WidgetError from "../ui/WidgetError.jsx";
 import RefreshButton from "../ui/RefreshButton.jsx";
 import { dragPin } from "../lib/drag.js";
 
-// What the backend changed on its own (app/activity.py): texts to yourself
-// filed as events, food, list items; a bill's task; a flight's check-in. It
-// applies first and shows you after, so this card is the review — every row
-// has an Undo, and a text to yourself can be re-filed as something else.
+// What the backend changed on its own (app/activity.py): applied first, reviewed here; every row
+// has an Undo and a text to yourself can be re-filed.
 
 const SOURCE = { selftext: "text to self", finance: "bill", travel: "flight" };
 
@@ -20,13 +18,11 @@ const KIND = {
   list_item: "list", note: "note", keep: "kept",
 };
 
-// The tag already says what kind of thing it became, so the summary's own
-// "Saved a note:" / "Kept as is —" lead-in is dropped rather than said twice.
+// The tag already says what it became; drop the summary's own lead-in.
 const LEAD = /^(Saved a note:|New task:|Kept as is\s*—|Kept as is$|Kept\s*—)\s*/;
 const tidy = (s) => (s || "").replace(LEAD, "") || s;
 
-// A pasted link is mostly tracking query; host + the start of the path is
-// what tells you which link it was. The full text stays in the tooltip.
+// Host + path start identify a link; the full text stays in the tooltip.
 const shortUrls = (t) => t.replace(/https?:\/\/[^\s]+/g, (u) => {
   try {
     const x = new URL(u);
@@ -36,8 +32,7 @@ const shortUrls = (t) => t.replace(/https?:\/\/[^\s]+/g, (u) => {
   } catch { return u; }
 });
 
-// The backend writes "(photo)" when nothing was typed; with the thumbnail
-// beside it, that says nothing.
+// The backend writes "(photo)" when nothing was typed; redundant beside the thumbnail.
 const PLACEHOLDER = /^\((photo|image|video|file|attachment)s?\)$/i;
 
 export function useActivityCard() {
@@ -51,8 +46,7 @@ export function useActivityCard() {
     return postJSON("/api/activity/seen", { through: newest }).then(reload);
   }
 
-  // "Needs you" only while there's something you haven't looked at: these
-  // already happened, so once you've seen them they're history, not asks.
+  // "Needs you" only while unseen: they already happened, so seen ones are history.
   const day = Date.now() - 24 * 3600 * 1000;
   const level = !data ? null : unseen.length ? NEEDS
     : items.some((i) => new Date(i.at).getTime() > day) ? HAS : QUIET;

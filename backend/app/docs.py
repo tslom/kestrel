@@ -1,30 +1,10 @@
 """Documents the console can point into: a dropped PDF, kept, with a ref.
 
-Reading a PDF to text and throwing the file away meant an answer about it
-could only *describe* a page — "slide 12 shows the pipeline" — and the user had
-to go find slide 12 to check. Keeping the bytes lets the answer point instead:
-the model writes `[cite:d3f9a1#p12 "the quoted words"]` and the console opens
-page 12 with those words highlighted, or `[page:d3f9a1#p12]` and the page
-itself appears in the reply.
-
-What lives where:
-
-- **The file** is `DATA_DIR/docs/<sha256>.pdf` — the source of truth, named by
-  content so dropping the same deck twice keeps one copy and one ref.
-- **The row** (`docs`) is what's known about it: name, size, and pypdf's text
-  page by page. Derived from the file.
-- **The ref** is an ordinary citation (`citations.remember("doc", sha)`), so it
-  resolves through `/api/cite` like an email does, and one the model made up
-  renders dead like any other.
-
-Nothing here parses the PDF. The text comes from the sandboxed worker
-attachments.read_upload already runs, and rendering a page is pdf.js in the
-browser — the same posture the Desktop tray takes with images: the browser
-decodes what the user dragged in, the backend only hands the bytes over.
-
-Page numbers are physical (1 = the first page of the file), which is what
-both pypdf and pdf.js count. A deck whose footer says "Lecture 4 — 3" on its
-fifth page is page 5 here.
+The file is `DATA_DIR/docs/<sha256>.pdf` (truth, named by content); the `docs`
+row (name, size, per-page text) is derived; the ref is an ordinary citation
+(`citations.remember("doc", sha)`). Nothing here parses the PDF. Page numbers
+are physical (1 = first page of the file), as in pypdf and pdf.js.
+Design: DESIGN.md → Documents: citing a page, showing a page.
 """
 from __future__ import annotations
 
@@ -40,13 +20,9 @@ from .config import DATA_DIR
 
 DOCS_DIR = DATA_DIR / "docs"
 
-# How much page text rides on the pill. console.PILL_LIMIT (20k) is the floor
-# under every pill; this leaves it room for the page markers and the closing
-# note, so the cut lands on a page boundary here rather than mid-sentence there.
+# Page text on the pill: under console.PILL_LIMIT (20k) so the cut lands on a page boundary.
 PILL_BUDGET = 18_000
-# One doc_pages read. Large enough for a run of dense textbook pages, small
-# enough that "read the whole thing" takes a few calls rather than one that
-# fills the window.
+# One doc_pages read: a few calls cover a whole document without filling the window.
 READ_BUDGET = 40_000
 
 DOC_REF_RE = re.compile(r"d[0-9a-f]{5,10}")
@@ -61,31 +37,23 @@ _SPACES = re.compile(r"[ \t]{2,}")
 
 
 def tidy(page: str) -> str:
-    """pypdf's text with the layout noise taken out.
-
-    A Google Docs export comes back one word per line — "large\\n \\nimpacts"
-    — which doubled a 5-page essay's pill to 10k characters of mostly
-    newlines. A newline-space-newline is a word gap there, never a paragraph
-    break (those are a bare newline), so it becomes a space. Nothing else
-    moves: the quote check runs on pdf.js's own text layer, not this."""
+    """pypdf's text minus layout noise: newline-space-newline (a word gap in
+    Google Docs exports, never a paragraph break) becomes a space. The quote
+    check runs on pdf.js's own text layer, not this."""
     page = _WORD_GAP.sub(" ", page or "")
     page = _SPACES.sub(" ", page)
     return "\n".join(line.strip() for line in page.split("\n"))
 
 
 def keep(filename: str, mime: str, data: bytes, pages: list[str]) -> dict:
-    """Store one document and mint its ref. Returns {ref, sha, page_count}.
-
-    Idempotent by content: the same bytes again keep their first filename and
-    their ref, and only `opened_at` moves. `pages` is stored tidied, and the
-    tidied list comes back for the pill."""
+    """Store one document and mint its ref. Returns {ref, sha, page_count, pages (tidied)}.
+    Idempotent by content: same bytes keep their first filename and ref; only `opened_at` moves."""
     pages = [tidy(p) for p in pages]
     sha = hashlib.sha256(data).hexdigest()
     DOCS_DIR.mkdir(parents=True, exist_ok=True)
     path = DOCS_DIR / f"{sha}.pdf"
     if not path.exists():
-        # Through a temp name, so a crash mid-write never leaves a truncated
-        # file sitting under the name that says it's complete.
+        # Temp name: a crash never leaves a truncated file under the final name.
         tmp = path.with_suffix(f".tmp{os.getpid()}")
         tmp.write_bytes(data)
         tmp.replace(path)
@@ -106,10 +74,8 @@ def keep(filename: str, mime: str, data: bytes, pages: list[str]) -> dict:
 def _pdf_path(raw: str) -> Path:
     """A PDF the console named by path, checked: under the home folder, a
     real file, a .pdf, under the attachment cap. Raises ValueError otherwise.
-
-    The session can already read anything under home with its own tools, so
-    the root isn't a secret being kept; it keeps a stray "/" or a symlink out
-    of the docs store, and makes the refusal say why."""
+    The home root isn't a secret-keeper (the session reads home anyway); it
+    keeps stray "/" paths and symlinks out of the store."""
     from .providers import attachments
     p = Path(str(raw or "").strip()).expanduser()
     if not p.is_absolute():
@@ -129,13 +95,8 @@ def _pdf_path(raw: str) -> Path:
 
 
 async def open_path(raw: str) -> dict:
-    """Keep a PDF on disk as a document, as if it had been dropped: the same
-    sandboxed read, the same store, the same ref (a file opened twice, or
-    opened and dropped, is one document). Returns keep()'s dict plus `name`.
-
-    This is what lets "go through handouts 9–16 in my Downloads" point at
-    pages: read with pdftotext from the shell, the handouts had no ref, so
-    nothing in the reply could open them beside it."""
+    """Keep a PDF on disk as if dropped: same sandboxed read, store and ref
+    (opened twice, or opened and dropped, is one document). keep()'s dict plus `name`."""
     import asyncio
     from . import agent
     from .providers import attachments
@@ -189,8 +150,8 @@ def file_for(ref: str) -> Path | None:
 def _marked(pages: list[str], numbers: list[int], budget: int) -> tuple[str, int]:
     """Pages under `[pN]` markers until the budget runs out.
 
-    Returns (text, how many of `numbers` made it). A page is never cut in
-    half: a quote has to come off one page, and half a page makes that a guess."""
+    Returns (text, how many of `numbers` made it). A page is never cut in half
+    (a quote must come off one page)."""
     out: list[str] = []
     used = 0
     taken = 0

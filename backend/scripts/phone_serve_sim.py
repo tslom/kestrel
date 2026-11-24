@@ -1,5 +1,4 @@
-"""Stands in for `tailscale serve` in the rig: strips any client-sent
-Tailscale-User-Login and stamps the owner's, then proxies to the door."""
+"""Rig stand-in for `tailscale serve`: replaces Tailscale-User-Login with the owner's, proxies to the door."""
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import httpx

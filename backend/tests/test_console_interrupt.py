@@ -1,12 +1,8 @@
 """Pressing Stop is not a turn failing.
 
-The CLI ends an interrupted turn exactly the way it ends a broken one —
-ResultMessage, is_error, subtype error_during_execution, usually no result
-text — so every Stop press was filed in the failure log ("no result text, no
-tool calls", "no result text; last tool was X": 17 rows, all of them Stop)
-and footed "error" in the console. The socket knows which turns it stopped;
-these drive the real socket loop to check it says so, and only for the turn
-it actually stopped.
+The CLI ends a stopped turn like a broken one, so the socket (which knows which turns
+it stopped) must say so, for that turn only. Drives the real socket loop.
+Design: DESIGN.md → `backend/tests/test_console_interrupt.py`.
 """
 
 import asyncio
@@ -49,11 +45,8 @@ class FakeWS:
 
 
 class FakeClient:
-    """Each query is one turn. A turn marked `hang` runs until interrupted,
-    then ends the way the CLI ends a stopped turn; any other turn ends at
-    once with a genuine error. `wake` is the CLI starting a turn on its own
-    (a background command finishing): its messages, where a "hang" waits for
-    Stop and then ends the turn as a stopped one."""
+    """Each query is one turn: `hang` runs until interrupted then ends as a stopped
+    turn; any other ends at once with a genuine error. `wake` is a CLI-started turn."""
 
     instance: "FakeClient | None" = None
 
@@ -160,8 +153,7 @@ async def test_a_genuine_error_is_still_recorded(socket):
 
 @pytest.mark.anyio
 async def test_the_stop_does_not_leak_into_the_next_turn(socket):
-    """Turn one stopped; a late second Stop arrives after it ended; turn two
-    then breaks on its own. Turn two is a real failure and must be filed."""
+    """A late second Stop after turn one ended: turn two's own failure is still filed."""
     ws, client, recorded = socket
     client.turns = ["hang", "error"]
     ws.feed({"type": "user", "text": "one"})
@@ -181,9 +173,7 @@ async def test_the_stop_does_not_leak_into_the_next_turn(socket):
 
 @pytest.mark.anyio
 async def test_a_stop_landing_after_the_result_does_not_mark_the_next_turn(socket):
-    """The voice window: the result is in but the turn task is still
-    flushing speech, so Stop sees a live task and sets the flag after the
-    result was already judged. The next query has to clear it."""
+    """Voice window: Stop lands after the result was judged; the next query clears the flag."""
     ws, client, recorded = socket
     client.turns = ["error"]
     ws.feed({"type": "user", "text": "one"})
@@ -199,10 +189,8 @@ async def test_a_stop_landing_after_the_result_does_not_mark_the_next_turn(socke
 
 # ---------- turns the CLI starts on its own ----------
 #
-# A Bash call that outlives its timeout goes to the background; the model ends
-# its turn, and when the command finishes the CLI runs another turn unasked.
-# Read per query, that reply never renders and every later answer arrives one
-# turn late.
+# A backgrounded Bash finishing makes the CLI run a turn unasked; read per query,
+# every later answer arrives one turn late.
 
 
 def _said(text):
@@ -266,10 +254,8 @@ async def test_an_unprompted_turn_can_be_stopped_and_holds_the_input(socket):
 
 # ---------- Stop always answers ----------
 #
-# A mode switch with an approval card up can reconnect the tab, and the turn
-# dies with the old socket. The page still thinks it is running, so Stop is
-# the only control on screen — and Stop on a socket with nothing running
-# must still get a reply, or the tab sits there until a reload.
+# A reconnect kills the turn but the page still shows it running: Stop on an idle
+# socket must still reply.
 
 
 @pytest.mark.anyio
@@ -314,8 +300,7 @@ async def test_busy_counts_turns_in_flight_for_the_reloader(socket):
 
 @pytest.mark.anyio
 async def test_a_long_turn_holds_the_restart_until_it_goes_quiet(socket):
-    """Time since the CLI last spoke decides it, not how long the turn has run:
-    a clock on the turn killed a long dev turn mid-work."""
+    """Time since the CLI last spoke decides it, not turn length."""
     ws, client, _ = socket
     client.turns = ["hang"]
     ws.feed({"type": "user", "text": "go"})

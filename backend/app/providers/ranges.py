@@ -1,12 +1,8 @@
-"""Shared range vocabulary for all providers — the ONE place range tokens
-become day spans. Anchored on db.day_key() (local time, 4am rollover), so
-"today" at 2am still means yesterday's day-key, in REST, CLI and cache alike.
+"""Range vocabulary: the ONE place range tokens become day spans.
 
-Weeks are ISO (Mon–Sun). All spans are inclusive [start, end] day-keys.
-
-Besides the named tokens, explicit dates parse here too:
-a single day `2026-06-15` or an inclusive span `2026-06-01..2026-06-15`
-(double-dot keeps the token one shell-safe word). Spans cap at 366 days.
+Anchored on db.day_key() (4am rollover). Weeks are ISO (Mon–Sun); spans are inclusive
+[start, end] day-keys. Explicit dates parse too: `2026-06-15` or `2026-06-01..2026-06-15`
+(double-dot keeps it one shell-safe word), capped at 366 days.
 """
 
 import re
@@ -26,13 +22,8 @@ PAST_RANGES = (
 FUTURE_RANGES = ("next-day", "next-week", "next-month", "next-year")
 ALL_RANGES = PAST_RANGES + FUTURE_RANGES
 
-# The past side of the vocabulary uses the words people say — "today",
-# "yesterday" — and the future side did not. Asked for "tomorrow" a console
-# found no token, computed a date itself off the wall clock, and landed two
-# day-keys out: at 2:30am the day-key is still the previous date, which is the
-# entire point of the 4am rollover and exactly what hand-arithmetic misses.
-# Aliases are normalized away here, so Range.token and every cache key built
-# from it stay canonical.
+# "tomorrow" must be a token: hand-computed dates land a day-key off between midnight and 4am.
+# Normalized away on parse, so Range.token and cache keys stay canonical.
 ALIASES = {"tomorrow": "next-day"}
 
 # What to advertise to a caller choosing a range (tool schemas, CLI help).
@@ -63,9 +54,7 @@ class Range:
 
 
 def days_between(start: str | date, end: str | date) -> list[str]:
-    """Inclusive [start, end] as day-keys. The one expander: providers kept
-    growing private copies of this loop (location, screen and reddit each had
-    one), which is how a span rule drifts four ways without anyone noticing."""
+    """Inclusive [start, end] as day-keys; the one expander (private copies drift)."""
     d = date.fromisoformat(start) if isinstance(start, str) else start
     last = date.fromisoformat(end) if isinstance(end, str) else end
     out = []

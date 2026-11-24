@@ -1,44 +1,30 @@
 import { useEffect, useState } from "react";
 
-// What the console is doing, for anything outside it that wants to show that
-// (the plan view's map). Console.jsx emits; nothing here talks to the socket.
-//
-// A module-level bus rather than props, because the console is memoised on
-// stable props (console/Console.jsx, ConsolePane) and a turn changes state a
-// dozen times a second.
+// What the console is doing, for the plan view's map. Console.jsx emits; nothing here talks to the socket.
+// A module-level bus, not props: the console is memoised on stable props and a turn changes state a dozen times a second.
 //
 //   { type: "start" }                          you sent a message
-//   { type: "call", id, name, detail, raw, parent }
-//                                               a tool call went out; `parent`
-//                                               is the Agent call it runs under
-//   { type: "done", id, error, image? }         it came back, `image` being the
-//                                               picture it gave the model
-//   { type: "computer", id, show }              a computer-use job is running;
-//                                               `show` when it needs an answer
-//   { type: "computer_end" }                    …and it's over
+//   { type: "call", id, name, detail, raw, parent }   `parent` = the Agent call it runs under
+//   { type: "done", id, error, image? }         `image` = the picture it gave the model
+//   { type: "computer", id, show }              computer-use job running; `show` when it needs an answer
+//   { type: "computer_end" }
 //   { type: "background", items }               `!` commands running on their own
 //   { type: "agents", items }                   subagents (console_agents.py rows)
 //   { type: "limited", on }                     the usage limit cut its last turn off
 //   { type: "plan", text }                      the plan Claude last proposed
-//   { type: "waiting", name, requestId, detail, question? }
-//                                               a card is up asking you
-//   { type: "answered" }                        …and was answered
+//   { type: "waiting", name, requestId, detail, question? }   a card is asking you
+//   { type: "answered" }
 //   { type: "text" }                            reply text is streaming
 //   { type: "end", error, duration_ms, tokens_in, tokens_out }
 //   { type: "rate", msg }                       a rate_limit event off the socket
-//   { type: "runs", items, url }                a dev tab's project.json script runs, and
-//                                               its tree's previewUrl (console/ProjectBar.jsx)
+//   { type: "runs", items, url }                a dev tab's project.json script runs + its previewUrl
 //   { type: "preview", url }                    open the view pane's Preview on `url`
 //
-// Every event carries `tab`: the console has tabs, each its own socket and
-// session, all mounted, so a background tab's turn keeps running and keeps
-// reporting. "rate" is account-wide and is the one event no tab owns.
+// Every event carries `tab` (each tab has its own socket and session, all mounted); "rate" is account-wide and owned by no tab.
 
 const subs = new Set();
 
-// The tabs whose last "limited" said on. A tab mounts and says so before the
-// plan view has subscribed (a child's effects run before its parent's), so
-// a subscriber is caught up on these when it joins rather than missing them.
+// Tabs whose last "limited" said on: a tab mounts before the plan view subscribes, so late subscribers are caught up.
 const limitedNow = new Set();
 
 export function emitTurn(ev) {
@@ -53,11 +39,8 @@ function subscribe(fn) {
   return () => subs.delete(fn);
 }
 
-// The other direction: what the rest of the window may ask of the console.
-// Each tab registers these (answering a permission card) and clears them on
-// unmount; nothing here holds a socket. An answer names its tab, because a
-// background tab's card is answerable from the "needs you" list; a draft or a
-// pin goes to whichever tab is showing.
+// What the rest of the window may ask of the console; each tab registers these and clears them on unmount.
+// An answer names its tab (a background tab's card is answerable from "needs you"); a draft or pin goes to the active tab.
 const actions = new Map();
 let activeTab = null;
 export function setActiveTab(tab) { activeTab = tab; }
@@ -72,16 +55,12 @@ export function answerConsole(requestId, allow, tab = activeTab) {
   actions.get(tab)?.answer?.(requestId, allow);
 }
 export function draftConsole(text) { actions.get(activeTab)?.draft?.(text); }
-// A context pill, from somewhere with no onPin handed down (the email reader
-// opened off a citation deep in the log).
+// A context pill from somewhere with no onPin handed down.
 export function pinConsole(label, data) { actions.get(activeTab)?.pin?.(label, data); }
-// A handed-off tab's outcome, back to the tab that handed it off. Dropped if
-// that tab has since closed.
+// A handed-off tab's outcome, back to its parent tab; dropped if that tab has closed.
 export function reportConsole(tab, report) { actions.get(tab)?.report?.(report); }
 
-// Which node on the map a tool call touched. Custom tools are
-// mcp__vault__<name>; the provider tool and a provider CLI in Bash name their
-// source; everything else lands on the machine it ran on.
+// Which map node a tool call touched: custom tools are mcp__vault__<name>; provider calls name their source; the rest land on the machine.
 const PROVIDER_CARD = {
   calendar: "calendar", email: "email", messages: "people", health: "health",
   spotify: "music", lastfm: "music", location: "location", finance: "finance",
@@ -101,15 +80,11 @@ function parse(raw) {
   try { return JSON.parse(raw || "{}"); } catch { return {}; }
 }
 
-// The agent's own bookkeeping: tools that touch nothing on the map (loading a
-// tool's schema, a todo list, a subagent, a question to you). They're in the
-// timeline but draw no line.
+// Agent bookkeeping (schemas, todos, subagents, questions): in the timeline, draws no line.
 const NO_NODE = new Set(["ToolSearch", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet", "Task", "Agent", "ExitPlanMode",
                          "EnterPlanMode", "AskUserQuestion", "Skill"]);
 
-// A past session's transcript keeps a call's one-line detail, not its raw
-// input; this rebuilds as much input as nodeFor reads from it (the provider's
-// source, a Bash command, a path), for the agent visualizer's replays.
+// A transcript keeps a call's one-line detail, not its raw input: rebuild what nodeFor reads, for replays.
 export function nodeForDetail(name, detail = "") {
   const d = String(detail);
   return nodeFor(name, JSON.stringify({ source: /source=(\w+)/.exec(d)?.[1], command: d,
@@ -141,9 +116,7 @@ export function nodeFor(name, raw) {
   return "vault";
 }
 
-// Per-node visit counts across turns, for the map's key (the lines weighted by
-// how often the console goes there). Browser-local: it's a picture of your
-// habits, not data anything else reads.
+// Per-node visit counts across turns, for the map key. Browser-local: nothing else reads it.
 const USE_KEY = "plan_node_use";
 
 function readUse() {
@@ -159,15 +132,10 @@ function bumpUse(nodes) {
   } catch { return {}; }
 }
 
-// The console as the rest of the window sees it.
-//   live:     { node: "live" | "wait" | "err" }  during a turn (the map's lines)
-//   touched:  Set of nodes the last finished turn went to
-//   running:  a turn is in flight;  writing: its reply is streaming
-//   waiting:  { requestId, name, detail, question } while a card asks you
-//   calls:    this turn's calls, in order: { id, name, detail, node, state,
-//             t0, t1, waitMs } — ms since the turn started (the timeline)
-//   startedAt, last: { duration_ms, tokens_in, tokens_out, error } of the last turn
-//   rate:     rate_limit_type -> latest event (the usage chip)
+// The console as the rest of the window sees it:
+//   live: { node: "live"|"wait"|"err" } during a turn; touched: nodes the last turn went to
+//   waiting: { requestId, name, detail, question }; calls: { id, name, detail, node, state, t0, t1, waitMs } (ms since turn start)
+//   last: { duration_ms, tokens_in, tokens_out, error }; rate: rate_limit_type -> latest event
 const now = () => performance.now();
 
 const IDLE = Object.freeze({
@@ -180,14 +148,12 @@ const IDLE = Object.freeze({
 const AGENT_DONE = new Set(["completed", "failed", "stopped", "killed"]);
 export const runningAgents = (t) => (t?.agents || []).filter((a) => !AGENT_DONE.has(a.status));
 
-// The file a call wrote, off its raw input.
 function editedFile(name, raw) {
   if (!/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(name)) return null;
   try { return JSON.parse(raw)?.file_path || JSON.parse(raw)?.notebook_path || null; } catch { return null; }
 }
 
-// Plan mode writes the plan to a file under ~/.claude/plans, and may never reach
-// ExitPlanMode, whose card is the other place a plan turns up.
+// Plan mode writes the plan under ~/.claude/plans and may never reach ExitPlanMode.
 function planIn(name, raw) {
   if (name !== "Write") return null;
   try {
@@ -196,8 +162,7 @@ function planIn(name, raw) {
   } catch { return null; }
 }
 
-// One tab's turn, advanced by one event. `nodes` comes back set when a turn
-// ended having touched the map, so the caller can count the visits.
+// One tab's turn advanced by one event.
 function step(t, ev) {
   const at = t.startedAt == null ? 0 : now() - t.startedAt;
   const patch = (id, fn) => t.calls.map((c) => (c.id === id ? fn(c) : c));
@@ -206,7 +171,7 @@ function step(t, ev) {
       return { ...t, calls: [], waiting: null, waitSince: null, running: true,
                writing: false, startedAt: now(), views: [] };
     case "call": {
-      // A resumed or summoned turn can start without a "start" of ours.
+      // A resumed or summoned turn can start without our "start".
       const startedAt = t.running ? t.startedAt : now();
       const t0 = t.running ? at : 0;
       const call = { id: ev.id || `${ev.name}-${t.calls.length}`, name: ev.name,
@@ -220,8 +185,7 @@ function step(t, ev) {
     case "done":
       if (!t.calls.some((c) => c.id === ev.id)) return t;
       return { ...t, calls: patch(ev.id, (c) => ({ ...c, state: ev.error ? "err" : "done", t1: at })),
-               // The pictures Claude looked at this turn, for the view pane.
-               // Held past the turn's end, and a handful: they're data URLs.
+               // Pictures Claude looked at, kept past the turn, last 8 (data URLs).
                views: ev.image
                  ? [...t.views, { src: ev.image, detail: t.calls.find((c) => c.id === ev.id).detail }].slice(-8)
                  : t.views };
@@ -233,13 +197,12 @@ function step(t, ev) {
       return { ...t, background: ev.items };
     case "agents":
       return { ...t, agents: ev.items };
-    // A dev tab's own git worktree (console_worktree), for the view pane's
-    // Files and preview: they read the tab's tree, not the main checkout.
+    // A dev tab's own worktree: Files and preview read it, not the main checkout.
     case "worktree":
       return t.worktree?.path === ev.worktree?.path ? t : { ...t, worktree: ev.worktree };
     case "runs":
       return { ...t, runs: ev.items || [], previewUrl: ev.url || null };
-    // `n` counts the asks, so asking again for the same address still opens it.
+    // `n` counts asks so asking for the same address again still opens it.
     case "preview":
       return { ...t, preview: { url: ev.url, n: (t.preview?.n || 0) + 1 } };
     case "limited":
@@ -252,8 +215,7 @@ function step(t, ev) {
                           question: !!ev.question } };
     case "answered": {
       if (!t.waiting) return t;
-      // The wait is charged to the call that asked: the latest still-live
-      // call of that tool, so the timeline can draw time spent on you.
+      // Charge the wait to the latest live call of that tool (the timeline draws time spent on you).
       const asked = [...t.calls].reverse().find((c) => c.state === "live" && c.name === t.waiting.name);
       const spent = at - (t.waitSince ?? at);
       return { ...t, waiting: null, waitSince: null,
@@ -262,8 +224,7 @@ function step(t, ev) {
     case "text":
       return t.writing || !t.running ? t : { ...t, writing: true };
     case "end": {
-      // The socket closing emits an end too (a backend restart): with no
-      // turn in flight there's nothing to end, and "error" would be a lie.
+      // A socket close emits an end too: with no turn in flight, "error" would be a lie.
       if (!t.running) return t;
       const nodes = new Set(t.calls.map((c) => c.node).filter(Boolean));
       // Calls that never reported back close with the turn.
@@ -279,9 +240,7 @@ function step(t, ev) {
   }
 }
 
-// `active`: the tab whose turn the result describes (the map, the bar, the
-// timeline). `tabs` is every tab's turn, for what has to see past the one on
-// screen — a background tab's card in the "needs you" list, its dot on the tab.
+// `active`: the tab the map/bar/timeline describe; `tabs` is every tab's turn (background cards, tab dots).
 export function useTurnTrace(active) {
   const [state, setState] = useState(() => ({ tabs: {}, use: readUse(), rate: {} }));
 
@@ -306,7 +265,7 @@ export function useTurnTrace(active) {
   const trace = { ...(state.tabs[active] || IDLE), use: state.use, rate: state.rate,
                   tabs: state.tabs };
 
-  // The other tabs' lines, so two consoles at work both show on the map.
+  // Other tabs' lines, so two consoles at work both show.
   const liveBg = {};
   for (const [id, t] of Object.entries(state.tabs)) {
     if (id === active) continue;
@@ -315,8 +274,7 @@ export function useTurnTrace(active) {
   return { ...trace, live: liveOf(trace), liveBg };
 }
 
-// Collapse a tab's calls to one state per node: an error anywhere wins, then a
-// call waiting on your answer, then one still running.
+// One state per node: error beats waiting on you beats running.
 const RANK = { err: 3, wait: 2, live: 1, done: 0 };
 function liveOf(t) {
   const live = {};
@@ -329,18 +287,13 @@ function liveOf(t) {
   return live;
 }
 
-// Every tab with a turn in flight, for the map's Kestrel dots: where it is
-// (the node of its newest unfinished call of its own, else null — thinking, at
-// Kestrel), whether it's waiting on you, and the subagents it has out, each
-// with the node its own newest call is on. A subagent's calls are its own: the
-// tab is sitting on the Agent call meanwhile, not visiting them. A background
-// subagent's Agent call has already come back, so its calls are what say it's
-// there.
+// Every tab with a turn in flight, for the map's Kestrel dots: its node (newest unfinished own call, else null),
+// whether it waits on you, and its subagents with their own nodes (the tab sits on the Agent call meanwhile).
 export function workingTabs(tabs, turns) {
   return tabs.flatMap((tab, i) => {
     const t = turns[tab.id];
     const bg = runningAgents(t);
-    // A background subagent outlives its turn: the tab is still at work.
+    // A background subagent outlives its turn.
     if (!t?.running && !bg.length) return [];
     const open = t.running ? t.calls.filter((c) => c.state === "live") : [];
     const subs = new Map();

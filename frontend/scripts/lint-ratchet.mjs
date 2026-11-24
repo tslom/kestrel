@@ -1,11 +1,5 @@
-// `npm run lint:ratchet` (and backend/tests/test_lint.py, so pytest holds it):
-// fails on any ESLint error, or if src/ has more useEffect calls than
-// lint-baseline.json allows. The effect rules themselves are errors
-// (eslint.config.js); the count is held too, so a new effect that does
-// sync with something outside React still has to be argued for. Any
-// warnings are printed as counts. When the count drops, lower the baseline
-// in the same commit so it can't creep back.
-// (setTimeout isn't counted here: it's an ESLint error, eslint.config.js.)
+// `npm run lint:ratchet` (and backend/tests/test_lint.py): fails on any ESLint error or if src/ has more useEffect
+// calls than lint-baseline.json; when the count drops, lower the baseline in the same commit. Warnings print as counts.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, relative } from "node:path";

@@ -1,6 +1,4 @@
-/* Amber: the round-2 system exactly, with Kestrel's old orange as the
-   accent instead of blue. One variable, so the vote is about the accent
-   alone. Same lightness and contrast as the blue (OKLCH, hue moved). */
+/* Amber: Kestrel's old orange as the accent; same lightness and contrast as the blue. */
 :root[data-look="amber"] {
   --accent: #BD4D00;       /* oklch(0.56 0.16 45) 5.0:1 on white */
   --accent-ink: #ED8641;   /* oklch(0.72 0.15 52) 6.7:1 on the console */

@@ -3,15 +3,9 @@ import { fetchJSON } from "../lib/api.js";
 import { writeThemes } from "../lib/look.js";
 import "./specimen.css";
 
-// The theme specimen: one page with every colour role in use, drawn from the
-// app's own stylesheet. It is what the console's theme_set tool screenshots
-// (backend app/looks.py → app/webshot.py) so the model sees a theme before it
-// says anything about it, and what "Preview" in the Look lab opens.
-//
-// A specimen and not the desk, on purpose: the desk opens a console socket
-// (a CLI per page load) and syncs providers on read, which a screenshot per
-// colour change shouldn't cost, and its picture would carry the day's mail.
-// Nothing here reads personal data.
+// The theme specimen: every colour role in use, from the app's stylesheet; what theme_set screenshots
+// (app/looks.py → app/webshot.py) and the Look lab's "Preview" opens. Not the desk on purpose: the desk
+// opens a console socket and syncs providers, and its picture would carry personal data. Reads none.
 //
 //   /#specimen/<dark|light>/<theme id | baseline>
 
@@ -115,8 +109,7 @@ export async function mountSpecimen(el) {
   writeThemes(state);
   const theme = state.themes.find((t) => t.id === id);
   if (theme) root.dataset.look = theme.id; else delete root.dataset.look;
-  // What the page actually resolved each role to, read back off the root:
-  // the swatch hexes are the rendered values, not the request's.
+  // Swatch hexes are the rendered values read off the root, not the request's.
   const css = getComputedStyle(root);
   const values = Object.fromEntries(Object.entries(state.roles)
     .map(([role, token]) => [role, css.getPropertyValue(token).trim().toUpperCase()]));
@@ -124,8 +117,6 @@ export async function mountSpecimen(el) {
     <Specimen name={theme ? theme.name : "Default colours"} scheme={root.dataset.theme}
       roles={state.roles} values={values} set={new Set(Object.keys(theme?.[root.dataset.theme] || {}))} />);
   await document.fonts.ready;
-  // No requestAnimationFrame here: the screenshot's window is never shown,
-  // and WebKit doesn't run frames for a page nobody can see. webshot waits a
-  // beat after this flag before it snaps.
+  // No requestAnimationFrame: WebKit runs no frames for an unseen window; webshot waits a beat after this flag.
   root.dataset.specimen = "ready";
 }

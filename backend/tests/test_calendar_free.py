@@ -1,9 +1,5 @@
-""""When am I free" — calendar.free_slots and the console's free_time tool.
-
-The console used to answer this by reading a day's events and eyeballing the
-holes, which is where the interesting mistakes live: an event that started the
-night before, a day whose zone isn't this machine's, and an all-day banner that
-would mark a whole day busy if it were treated as an appointment.
+""""When am I free": calendar.free_slots and the free_time tool. Traps: an event that started the night
+before, a day in another zone, and an all-day banner marking the whole day busy.
 """
 
 from datetime import time
@@ -20,16 +16,12 @@ DAY = "2026-08-20"
 
 @pytest.fixture
 def cal(dbfile, monkeypatch):
-    """A cached day, with the API refusing to be called: free_slots reads the
-    cache through get(), and a test that silently syncs is testing Google."""
+    """A cached day with the API refusing calls (a silent sync would test Google)."""
     def no_api(*a, **k):
         raise AssertionError("free_slots must not hit the API")
 
     monkeypatch.setattr(calendar_provider, "_sync", no_api)
-    # Pin where the user is that day: these fixtures are written in Eastern
-    # clock times, and the real zone table has them on the west coast in
-    # August — which is itself the thing test_times_are_in_the_zone_of_the_day
-    # below checks.
+    # Pin the zone: fixtures are Eastern clock times, the real zone table says west coast.
     monkeypatch.setattr(tz, "zone_on", lambda day: ZoneInfo("America/New_York"))
 
     def seed(rows, day=DAY):
@@ -73,9 +65,7 @@ def test_overlapping_events_are_one_busy_block(cal):
 
 
 def test_an_event_swallowed_by_a_longer_one_does_not_reopen_the_gap(cal):
-    """Sorted busy blocks still need max(): a short meeting nested inside a
-    long one would otherwise move the cursor backwards and offer time that is
-    already taken."""
+    """Merging needs max(): a meeting nested in a long one must not move the cursor backwards."""
     cal([("Retreat", "2026-08-20T10:00:00-04:00", "2026-08-20T17:00:00-04:00", 0),
          ("Standup", "2026-08-20T11:00:00-04:00", "2026-08-20T11:15:00-04:00", 0)])
 
@@ -99,9 +89,7 @@ def test_an_all_day_event_does_not_block_the_day(cal):
 
 
 def test_a_timed_event_over_a_day_is_a_banner_not_busy(cal):
-    """A mis-dated 1h appointment (end a week later) took every waking hour
-    of its days, and inflated the Load chart to 696h a week. Over a
-    day long, a timed event frames the day like an all-day one."""
+    """A timed event over a day long frames the day like an all-day one (a mis-dated 1h event inflated Load to 696h a week)."""
     cal([("Wrist appt", "2026-08-18T15:30:00-04:00", "2026-08-25T16:30:00-04:00", 0),
          ("Lecture", "2026-08-20T10:00:00-04:00", "2026-08-20T11:00:00-04:00", 0)])
 
@@ -146,8 +134,7 @@ def test_times_are_in_the_zone_of_the_day_not_the_machine(cal, monkeypatch):
     monkeypatch.setattr(tz, "zone_on", lambda day: ZoneInfo("America/Los_Angeles"))
     cal([("Lecture", "2026-08-20T10:00:00-04:00", "2026-08-20T11:00:00-04:00", 0)])
 
-    # 10am Eastern is 7am Pacific — before the window opens, so it takes
-    # nothing out of the day.
+    # 10am Eastern is 7am Pacific: before the window, so it takes nothing.
     assert slots() == [("09:00", "21:00")]
 
 

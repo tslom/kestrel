@@ -1,34 +1,12 @@
-"""Location provider. OwnTracks (iOS) posts fixes to
-the location relay (relay/, a Cloudflare Worker); refresh() pulls them into
-`location_points` through location_relay.py — this module never talks to the
-phone itself. `location_points` is the raw
-source of truth (a drop loses history, like Spotify's `plays`);
-`location_days` is a derived/droppable cache this module (re)computes.
+"""Location provider: OwnTracks fixes arrive via the relay (location_relay.py);
+refresh() pulls them into `location_points` (raw, never droppable) and
+recomputes `location_days` (derived). Day = `day_key`.
 
-Day is **day_key** (4am rollover) — a behavioral source like screen/spotify/
-messages: a 1am fix belongs to yesterday.
+Traps: places are stays, not grid cells, and a declared place (app/places.py)
+outranks clustering; home-relative metrics are absent, never 0, on a day with
+no known home.
 
-Places = **stays**, not grid cells: contiguous runs of fixes that never leave
-STAY_RADIUS_M of their own running centroid, grouped across the range by
-proximity, and counted only when they clear PLACE_MIN_DWELL_SEC *and*
-PLACE_MIN_FIXES. See the block above STAY_RADIUS_M for why the grid had to go
-and what it cost. A place the vault names (app/places.py) outranks clustering
-entirely, because at campus density the distance between two real places is
-smaller than the GPS error that would have to separate them.
-
-Entropy = Shannon entropy (bits) over time-per-place (all groups, unfiltered):
-a routine day (all time in 1-2 places) is low, a novel day (time spread across
-many) is high. Dwell time per fix = the gap to the next fix, capped at
-MAX_GAP_MIN so an offline stretch (dead zone, phone off) doesn't inflate
-whichever place the phone was last seen in by hours.
-
-**Home is dated, not constant** (app/places.py): `at_home`, `time_at_home_min`,
-`first_leave` and `last_return` are all scored against the home in effect on
-*that day*. A day whose home the vault doesn't know produces none of the four —
-an absence, never a zero, because a zero there is indistinguishable from a real
-day spent out and reaches the correlation matrix looking like a measurement.
-first_leave/last_return are minutes-since-4am, and are absent when every fix
-that day was inside the home radius (never left).
+Design: DESIGN.md → `app/providers/location.py`: stays, places, coverage.
 """
 
 import math
@@ -50,13 +28,7 @@ EARTH_RADIUS_M = 6_371_000
 GRID_DECIMALS = 3          # ~110m grid cells for place clustering
 MAX_GAP_MIN = 20
 MAX_GAP_SECONDS = MAX_GAP_MIN * 60
-# A grid cell only counts as a "place" if its dwell exceeds this. Without it,
-# a driving day inflates `places`: every ~110m cell the car passes through
-# gets its ~1min gap-to-next-fix booked as dwell, so transit reads as dozens
-# of "places". A walk test on a ~100km driving day showed the
-# transit tail sits at <=~2min/cell while genuine stops were >=~4min, so 3min
-# cleanly separates them (42 raw clusters -> 15 real places). entropy stays
-# over all clusters (already dwell-weighted, so transit barely moves it).
+# Transit tail is <=~2min/place, genuine stops >=~4min (100km driving day: 42 clusters -> 15).
 PLACE_MIN_DWELL_SEC = 180
 
 
@@ -76,69 +48,24 @@ def _cluster_key(lat: float, lon: float) -> tuple[float, float]:
 
 
 # ------------------------------------------------------------------ places
-#
-# Places used to be grid cells: lat/lon rounded to GRID_DECIMALS, ~110m square.
-# Cheap, and wrong in a way that only shows up once you draw it. A building
-# does not line up with the grid, so a stationary hour near a cell boundary is
-# filed as two or three places — measured on this vault, September 2026 held
-# **55 places, 12 of them inside the home radius** (one flat, twelve cells),
-# and the three largest non-home places sat 57m, 64m and 93m apart: one campus
-# building, read as three, with its 677 minutes split between them.
-#
-# A stay fixes that at the source. Rather than asking which square a fix landed
-# in, walk the fixes in time order and cut a new stay only when one leaves
-# STAY_RADIUS_M of the run's running centroid — so a continuous sit-down is one
-# stay wherever the grid lines happen to fall. Stays then group into places by
-# proximity, greedily from the longest, which keeps a campus from chaining into
-# one blob the way single-linkage would.
-#
-# Same numbers, this vault, September: **55 places -> 23, home 12 -> 5.**
-#
-# What this deliberately does NOT try to fix: two places closer together than
-# the GPS error between them. The gym at the foot of the dorm is ~15m away and
-# accuracy near home runs p50 17m / p90 47m, so no radius separates them —
-# that is what declared places in app/places.py are for, and why a declaration
-# that overlaps another says so instead of pretending.
+# Stay detection and grouping: DESIGN.md → `app/providers/location.py`.
 STAY_RADIUS_M = 100
 PLACE_MERGE_M = 130
-# A merged place may not sprawl further than this from its own centroid.
-# Greedy grouping alone left two halves of one building 77m apart but in
-# separate groups — whether a stay merged depended on where the group's
-# centroid happened to sit when that stay was processed, which is an ordering
-# artifact and not a fact about the world. So grouping is followed by a
-# convergence pass that merges the closest eligible pair until none qualify.
-# The span cap is what stops that pass from chaining across a campus: at USC
-# scale 175m holds one building and its forecourt without reaching the next.
+# Cap on a merged place's distance from its own centroid; stops _converge chaining across a campus.
 PLACE_SPAN_MAX_M = 175
-# A place needs to have been *observed* twice. Dwell is booked as the gap to
-# the next fix (capped at MAX_GAP_MIN), so a lone fix followed by silence books
-# up to 20 minutes on the strength of one observation — which is a sighting,
-# not a stay. On a sparse travel day that inflated everything: the
-# cross-country move day reported **43 places from 58 fixes**, nearly all of
-# them single fixes 20 minutes apart. Requiring two drops that day to 7, the
-# daily mean from 10.8 to 5.4, and the `places ~ coverage_min` correlation (a
-# known bias) from +0.73 to +0.63. Three would be tighter
-# still and is wrong: it zeroes that travel day outright, discarding stops that
-# genuinely happened.
+# A lone fix followed by silence books up to MAX_GAP_MIN: a sighting, not a stay. 3 would zero real travel days.
 PLACE_MIN_FIXES = 2
 
 
 def _is_place(group: dict) -> bool:
-    """Whether a group of stays counts as somewhere you went, for both the
-    `places` metric and the map — one predicate so the two cannot drift."""
+    """Whether a group counts as somewhere you went; shared by the `places` metric and the map."""
     return (group["seconds"] > PLACE_MIN_DWELL_SEC
             and group["n"] >= PLACE_MIN_FIXES)
 
 
 def _stays(pts: list[dict]) -> list[dict]:
-    """Contiguous runs of fixes that never leave STAY_RADIUS_M of their own
-    running centroid.
-
-    Dwell is booked by the same gap rule the day metrics use — each fix is
-    worth the gap to the *next* fix, capped at MAX_GAP_SECONDS — including the
-    last fix of a stay, whose gap points at the first fix of the next one. That
-    keeps total booked time equal to total covered time, so a stay-based
-    `entropy` stays comparable to the grid-based one it replaces."""
+    """Contiguous runs of fixes within STAY_RADIUS_M of their running centroid.
+    Each fix books the gap to the *next* fix (capped), including a stay's last fix."""
     stays = []
     i, n = 0, len(pts)
     while i < n:
@@ -167,12 +94,7 @@ def _stays(pts: list[dict]) -> list[dict]:
 
 def _group_stays(stays: list[dict], known=None) -> list[dict]:
     """Stays -> places. A declared place claims every stay inside it; the rest
-    group greedily, longest first, within PLACE_MERGE_M.
-
-    Declared first and not merely as a label: naming is the only thing that can
-    hold one flat together when its own fixes scatter further than the distance
-    to the next building. Two visits to one place are two `visits` and one
-    place, which is the distinction that makes the map a map of a routine."""
+    group greedily, longest first, within PLACE_MERGE_M."""
     groups: list[dict] = []
     by_name: dict[str, dict] = {}
 
@@ -181,11 +103,7 @@ def _group_stays(stays: list[dict], known=None) -> list[dict]:
              "visits": 0, "days": set(), "name": name,
              "ambiguous_with": list(named.ambiguous_with) if named else [],
              "first": stay["first"], "last": stay["last"], "members": [],
-             # The stays themselves, kept alongside the (lat, lon) `members`
-             # that _span measures. Nothing in this module reads them —
-             # app/place_suggest.py does, to ask which calendar event recurs
-             # across a place's visits, which needs their *times* and so
-             # cannot be answered from a centroid.
+             # read by place_suggest (needs the stays' times, not centroids)
              "stays": []}
         groups.append(g)
         return g
@@ -233,14 +151,9 @@ def _group_stays(stays: list[dict], known=None) -> list[dict]:
 
 
 def _converge(groups: list[dict], span) -> None:
-    """Merge the closest eligible pair of undeclared groups until none qualify.
-
-    Eligible means centroids within PLACE_MERGE_M *and* a merged span still
-    within PLACE_SPAN_MAX_M. Closest-pair-first rather than first-found so the
-    result doesn't depend on list order either; the span cap is what keeps
-    repeated merging from walking across a campus one building at a time.
-    Declared places never merge — a name is an assertion that this is one
-    place, and two names are an assertion that these are two."""
+    """Merge the closest eligible pair of undeclared groups until none qualify
+    (centroids within PLACE_MERGE_M, merged span within PLACE_SPAN_MAX_M).
+    Declared places never merge."""
     while True:
         open_groups = [g for g in groups if g["name"] is None]
         pairs = []
@@ -249,9 +162,7 @@ def _converge(groups: list[dict], span) -> None:
                 d = _haversine_m(a["lat"], a["lon"], b["lat"], b["lon"])
                 if d <= PLACE_MERGE_M:
                     pairs.append((d, i, a, b))
-        # Closest first, but a pair rejected for sprawl only disqualifies
-        # itself: span is not monotone in centroid distance, so a wider pair
-        # can still merge cleanly and must still be offered the chance.
+        # A pair rejected for sprawl disqualifies only itself (span isn't monotone in distance).
         merged = False
         for _, _, a, b in sorted(pairs, key=lambda p: (p[0], p[1])):
             total = a["n"] + b["n"]
@@ -289,8 +200,7 @@ def _shannon_entropy(weights: list[float]) -> float:
 
 
 def _day_bounds(day: str) -> tuple[datetime, datetime]:
-    """day_key -> [start, end) as local-aware datetimes spanning the 4am
-    rollover window, same convention as screen.py."""
+    """day_key -> [start, end) as local-aware datetimes (4am rollover)."""
     d = date.fromisoformat(day)
     tz = datetime.now().astimezone().tzinfo
     start = datetime.combine(d, time(hour=DAY_ROLLOVER_HOUR), tzinfo=tz)
@@ -302,8 +212,7 @@ def _minutes_since(dt: datetime, start: datetime) -> float:
 
 
 def latest_fix() -> dict | None:
-    """Most recent point ever ingested, for weather's origin / leave.py — not
-    day-scoped. None if no points have arrived yet."""
+    """Newest fix ever ingested (not day-scoped), or None before any arrive."""
     with db.session() as con:
         row = con.execute(
             "SELECT ts, lat, lon FROM location_points ORDER BY ts DESC LIMIT 1").fetchone()
@@ -317,25 +226,13 @@ def latest_fix() -> dict | None:
             "at_home": home.contains(row["lat"], row["lon"])}
 
 
-# How far back to walk looking for the start of a stay at home. A stay is a
-# run of consecutive fixes, and arriving home takes a handful of them, so this
-# only has to outrun a day's worth of driving.
+# Must outrun a day's worth of driving fixes.
 HOME_STRETCH_LOOKBACK = 500
 
 
 def home_stretch() -> dict | None:
-    """If the newest fixes are at home, when that stay began and how long it
-    has run so far. None if the newest fix is away from home.
-
-    This exists because **silence from OwnTracks is a signal, not a failure**.
-    It reports movement; a phone sitting on a desk at home simply stops
-    producing fixes, so a stretch at home looks exactly like the app having
-    died — and the first version of the card said so out loud, telling a user
-    who had been home for 40 hours that their phone had stopped posting. The
-    two are genuinely indistinguishable from the fix stream alone; what breaks
-    the tie is *where the last fix was*. Home, and the honest reading is
-    "still there". Away, and we really have lost the thread.
-    """
+    """When the current stay at home began and how long it has run; None if the
+    newest fix is away. Silence at home is "still home", not a dead phone."""
     with db.session() as con:
         rows = con.execute(
             "SELECT ts, lat, lon FROM location_points ORDER BY ts DESC LIMIT ?",
@@ -354,21 +251,14 @@ def home_stretch() -> dict | None:
 
 
 def parse_ts(raw: str) -> datetime:
-    """A stored fix timestamp as local time. The listener writes UTC with a Z
-    suffix, which fromisoformat took only from 3.11, so the replace stays."""
+    """A stored fix timestamp (UTC, Z suffix) as local time."""
     return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone()
 
 
 def _load_points(con, day: str, home=_UNSET) -> list[dict]:
-    """The day's fixes, each tagged with whether it was at home and which grid
-    cell it fell in. Shared by _compute_days and summary() so the two can never
-    drift on what "at home" means.
-
-    `home` is the place in effect **on that day** (app/places.py), not a
-    constant: scoring an old day against today's address is what made a month
-    of days read `time_at_home_min = 0` after a move. None means the vault
-    knows of no home then, and every fix's `at_home` is None — unknown, which
-    the caller must not collapse to False."""
+    """The day's fixes, each tagged `at_home` and grid cell. `home` is the home
+    in effect *that day*; None (no known home) makes every `at_home` None, which
+    callers must not collapse to False."""
     if home is _UNSET:
         home = places.home_on(day)
     pts = []
@@ -382,17 +272,14 @@ def _load_points(con, day: str, home=_UNSET) -> list[dict]:
 
 
 def _compute_days(con, days: list[str], now: str) -> None:
-    """Recompute location_days for each day from location_points already on
-    disk — pure local computation, no I/O (unlike other providers' refresh(),
-    the data itself only ever arrives via the listener)."""
+    """Recompute location_days for each day from location_points; local only, no I/O."""
     known = places.load()
     with con:
         for day in days:
             home = places.home_on(day, known)
             pts = _load_points(con, day, home)
             con.execute("DELETE FROM location_days WHERE day=?", (day,))
-            # Marked even with no points: an empty day is computed, just to
-            # nothing (a gap, not zeros). See location_sync in db.py.
+            # Marked even with no points: an empty day is computed, to nothing.
             con.execute(
                 "INSERT OR REPLACE INTO location_sync (day, points, refreshed_at)"
                 " VALUES (?,?,?)", (day, len(pts), now))
@@ -417,16 +304,11 @@ def _compute_days(con, days: list[str], now: str) -> None:
             secs = [g["seconds"] for g in grouped]
             metrics = {
                 "places": float(sum(1 for g in grouped if _is_place(g))),
-                # Entropy stays over *every* group, unfiltered: it is already
-                # dwell-weighted, so transit barely moves it, and filtering
-                # first would make a quiet day look more varied than it was.
+                # Over every group, unfiltered: filtering first would make a quiet day look varied.
                 "entropy": _shannon_entropy(secs),
                 "km_traveled": round(km, 2),
             }
-            # The three home-relative metrics exist only for a day whose home
-            # is known. Writing 0.0 for a day spent at an address the vault
-            # doesn't record would be a measurement of the config, not of the
-            # day — and it reaches the correlation matrix as if it were real.
+            # Home-relative metrics exist only when the day's home is known (absent, never 0.0).
             if home is not None:
                 away = [p for p in pts if not p["at_home"]]
                 at_home = [p for p in pts if p["at_home"]]
@@ -442,24 +324,9 @@ def _compute_days(con, days: list[str], now: str) -> None:
 
 
 def _ensure_days(con, days) -> list[str]:
-    """Compute any of `days` that has never been computed, and say which.
-
-    refresh() only ever touches today and yesterday, so a day the backend was
-    down for is never computed by the poller — it stays absent until something
-    asks for a range covering it. Every reader therefore backfills its own
-    window; that is safe here and nowhere else, because computing a location
-    day is pure local arithmetic over points the listener already wrote (no
-    external pull, so no card render can reach the network).
-
-    Future days are skipped: they have no points to compute from, so they'd be
-    recomputed on every single call.
-
-    "Computed" is location_sync, not location_days: a day with no fixes writes
-    no metric rows, and judged by those it read as new on every call. A marked
-    day is redone only when its fix count has moved since — a late-flushed
-    OwnTracks queue landing on a past day, or today still accumulating — so a
-    read recomputes at the rate fixes arrive, not the rate it's called.
-    """
+    """Compute any of `days` never computed (or whose fix count moved since,
+    per location_sync), and return which. Future days are skipped.
+    Every reader backfills its own window; safe only because this is local."""
     today = db.day_key()
     wanted = {d for d in days if d <= today}
     if not wanted:
@@ -477,11 +344,7 @@ def _ensure_days(con, days) -> list[str]:
 
 
 STALE_FIX_MIN = 6 * 60
-# The at-home ceiling. OwnTracks reports movement, so a stay at home produces
-# no fixes at all and silence there means nothing is wrong — six hours of it
-# is an ordinary evening in. Only a week of total stillness is worth a look,
-# and until then the dot must stay quiet: a source that cries broken every
-# time you spend a weekend at home teaches you to ignore the panel.
+# At-home ceiling: a stay at home produces no fixes, so only a week of stillness is worth flagging.
 HOME_QUIET_MAX_MIN = 7 * 24 * 60
 
 
@@ -490,19 +353,9 @@ def _ago(minutes: float) -> str:
 
 
 def health() -> dict:
-    """Location is the one source the phone *pushes* — to the relay, which
-    refresh() pulls from. A pull that succeeds says the relay is fine, not that
-    the phone is still sending, so what matters is the age of the newest fix,
-    and what that age means depends on **where** that fix was.
-
-    OwnTracks evicted from the background and a rotated token look identical
-    from here (silent) — but so does staying home, because a stationary phone
-    has no movement to report. The newest fix's location is the only thing
-    that tells them apart: at home, silence is the expected reading of "still
-    here"; away, we really have lost the thread and the dot should say so.
-    The relay's last-contact time sharpens that: any request from the phone,
-    fix or not, proves the app is alive.
-    """
+    """Source health from the age of the newest fix and where it was: silence at
+    home is ok, silence away is stale. The relay's last contact (any request
+    from the phone) proves the app is alive and overrides."""
     if not location_relay.configured():
         return {"state": "off",
                 "detail": "no ingest path — set LOCATION_RELAY_URL/_TOKEN (see relay/)"}
@@ -530,9 +383,8 @@ def health() -> dict:
 
 
 def refresh() -> dict:
-    """Poller entrypoint: drain the relay, then recompute today, yesterday and
-    any day the pulled backlog landed on. Then say so out loud if location has
-    gone quiet — the dot alone let a four-day outage pass unnoticed."""
+    """Poller entrypoint: drain the relay, recompute today, yesterday and any day
+    the backlog landed on, and notify if location has gone quiet."""
     today = db.day_key()
     yesterday = (date.fromisoformat(today) - timedelta(days=1)).isoformat()
     pulled = {"stored": 0, "days": []}
@@ -541,8 +393,7 @@ def refresh() -> dict:
             pulled = location_relay.pull()
         except Exception as e:
             if not offline.is_network_error(e):
-                # A refusal (bad token, Worker gone) won't fix itself; once a
-                # day is enough to be heard. Offline is just the lid closed.
+                # A refusal won't fix itself (once a day); offline is just the lid closed.
                 notify.send("location", "relay-error", today,
                             title="Location relay is refusing the pull",
                             body=str(e)[:200])
@@ -553,8 +404,7 @@ def refresh() -> dict:
     h = health()
     if h["state"] == "stale":
         fix = latest_fix()
-        # Keyed by the newest fix: one notice per silence, and a new one only
-        # after a fix has arrived and it goes quiet again.
+        # Keyed by the newest fix: one notice per silence.
         notify.send("location", "stale", fix["ts"] if fix else "none",
                     title="Location has gone quiet", body=h["detail"])
     return {"days": days, "pulled": pulled["stored"]}
@@ -564,46 +414,13 @@ def brief_line(it: dict) -> str:
     return f"{it['day']} {it['value']}"
 
 
-# The desk card's window. Wider than screen's 7 because OwnTracks is
-# best-effort where aw-server is always-on: over the last fortnight only 8
-# days cleared the fix floor, so a 7-day sparkline would be mostly gaps.
-# Widened from 14 with the lede rebuild, to the one window every card reads
-# against. Location loses more days than most sources — the phone reports
-# movement, so a week spent at home is a week of holes — which makes the
-# longer window matter more here, not less.
 SUMMARY_DAYS = DESK_BASELINE_DAYS
-# Below this much of the day observed, a day's numbers are noise, not a quiet
-# day: a day with one fix computes 0km / 0 places / 0 min at home, which
-# renders identically to "never left the house" and is the opposite of the
-# truth. Such a day is a gap in the trend, and never the day the card centers
-# on.
-#
-# The gate is on coverage, not fix *count*, which measures the wrong axis.
-# Every metric here (km_traveled, places, time_at_home_min, entropy) is a
-# whole-day quantity, so what makes them trustworthy is how much of the day
-# was watched, not how many rows arrived — and the two come apart in both
-# directions on real data. The day with the highest fix count in the whole
-# series (121) has only 2.4h of coverage, a dense burst on one drive that a
-# count gate waves through; a count gate refuses 4 fixes over 49 min while
-# passing 7 fixes over 25 min, so it orders days wrong, not merely loosely.
-# Coverage subsumes a count floor rather than sitting beside it: with gaps capped at MAX_GAP_MIN, clearing 180 min takes at least
-# 9 fixes, so there is one gate again, on the axis that means something.
-#
-# An absolute floor, not a fraction of the day: 24h is never
-# in reach because a stationary phone on wifi stops reporting, so a fraction
-# of the day would refuse every honest day spent at home. 180 min is where
-# the observed days separate — everything below it in 35 days of history is a
-# burst inside one errand or a day still accruing, and everything above has
-# fixes actually spread across the day.
+# Minutes of day observed below which a day's numbers are noise (absolute, not a fraction of the day).
+# Gate on coverage, not fix count; 35 days of history separated at 180.
 COVERAGE_FLOOR_MIN = 180
-# The sparkline's metric. Not DEFAULT_METRIC (time_at_home_min): time at home
-# is the one number the coverage gaps bias hardest, since a stationary phone
-# on wifi is exactly when OwnTracks goes quiet. Distance only ever accrues from
-# fixes that did arrive.
+# Not time_at_home_min: coverage gaps bias it hardest.
 TREND_METRIC = "km_traveled"
-# Shannon bits over dwell-per-cluster -> a word. The observed spread is
-# 0.97 (one errand) .. 4.49 (a travel day); the cuts sit either side of the
-# ~2.5 that a normal day of a few places lands on.
+# Observed entropy spread 0.97 (one errand) .. 4.49 (travel day); a normal day lands near 2.5.
 ENTROPY_BANDS = ((1.5, "routine"), (3.0, "mixed"))
 
 
@@ -617,10 +434,7 @@ def _entropy_label(bits: float | None) -> str | None:
 
 
 def _clock(day: str, minutes: float | None) -> str | None:
-    """Minutes-since-4am -> a wall clock time. Formatted backend-side because
-    the rollover the offset is measured from is the backend's call; a late
-    enough value lands after midnight and reads as the small hours, which is
-    correct for a day that runs 4am to 4am."""
+    """Minutes-since-4am -> wall clock; formatted here because the rollover is the backend's."""
     if minutes is None:
         return None
     start, _ = _day_bounds(day)
@@ -628,45 +442,21 @@ def _clock(day: str, minutes: float | None) -> str | None:
 
 
 def _covered_minutes(times: list[datetime]) -> float:
-    """Minutes of a day actually accounted for by these fixes, in order.
-
-    Each gap counts for what it spans, capped at MAX_GAP_MIN so an offline
-    stretch doesn't credit the day with hours nothing was watching — the same
-    cap, for the same reason, that keeps a dead zone from inflating whichever
-    cluster the phone was last seen in. One function because _day_shape shows
-    this number on the card and coverage_minutes gates on it, and a card that
-    displays one coverage while the gate reads another is two answers to one
-    question.
-    """
+    """Minutes accounted for by these time-ordered fixes, each gap capped at MAX_GAP_MIN.
+    The one coverage definition: the card shows it and coverage_minutes gates on it."""
     return round(sum(min((b - a).total_seconds(), MAX_GAP_SECONDS)
                      for a, b in zip(times, times[1:])) / 60, 1)
 
 
 def is_thin(coverage_min: float | None) -> bool:
     """Was this day watched too little for its numbers to mean anything?
-
-    Absence reads as thin here, which is the opposite of screen.is_thin, and
-    the difference is real rather than an oversight: this coverage is derived
-    from location_points, the raw source of truth that is never dropped, so a
-    day missing from the map is a day with no fixes at all. Screen's absence
-    means a day synced before its coverage_min existed, which is a hole in
-    the record of an honest day, not a thin day. Nothing rests on the choice
-    today — a day with no points has no location_days rows to gate either —
-    but the two functions now sit in parallel, so the reason they disagree
-    belongs next to them.
-    """
+    Absence (None) reads as thin, the opposite of screen.is_thin on purpose."""
     return coverage_min is None or coverage_min < COVERAGE_FLOOR_MIN
 
 
 def coverage_minutes(con, days: list[str]) -> dict[str, float]:
-    """How much of each day the fixes account for — the denominator behind
-    COVERAGE_FLOOR_MIN. Public because features.py gates on it too: the matrix
-    has to refuse a thin day for the same reason the card does, and one query
-    with one meaning is how the two thresholds stay the same threshold.
-
-    Every caller should go through is_thin rather than comparing to
-    COVERAGE_FLOOR_MIN directly, so the absence rule above stays in one place.
-    """
+    """Covered minutes per day. Public: features.py gates on it too. Callers go
+    through is_thin, not COVERAGE_FLOOR_MIN directly."""
     if not days:
         return {}
     marks = ",".join("?" * len(days))
@@ -679,24 +469,13 @@ def coverage_minutes(con, days: list[str]) -> dict[str, float]:
 
 
 def _day_shape(con, day: str) -> dict:
-    """What the day's numbers rest on: how many fixes, how much of the day
-    they account for, and whether the leaving and the coming home were
-    actually *seen*.
-
-    first_leave is the first fix that was away from home — a real departure
-    only if a fix at home came before it. When the phone's first fix of any
-    kind is 2:50 PM and away, a stored first_leave of 2:57 PM would render as "left home at 2:57 PM" for a day whose morning simply
-    wasn't recorded. Likewise last_return is the last fix seen at home, which
-    is a homecoming only if the day's last fix is that one; otherwise the day
-    ended out and the number is just when they were last spotted in.
-    """
+    """Fix count, coverage, and whether the departure and homecoming were *seen*
+    (a first_leave is a real departure only if a home fix preceded it; likewise last_return)."""
     pts = _load_points(con, day)
     if not pts:
         return {"fixes": 0, "coverage_min": 0.0,
                 "leave_observed": False, "return_observed": False}
-    # bool() because at_home is None on a day with no known home; the two
-    # flags only ever gate first_leave/last_return, which _compute_days does
-    # not write for such a day, so there is nothing for them to mislabel.
+    # bool(): at_home is None with no known home, and those flags only gate metrics not written then.
     return {"fixes": len(pts),
             "coverage_min": _covered_minutes([p["ts"] for p in pts]),
             "leave_observed": bool(pts[0]["at_home"]),
@@ -704,14 +483,8 @@ def _day_shape(con, day: str) -> dict:
 
 
 def summary() -> dict:
-    """One payload for the desk card, in one connection.
-
-    Not get(): that shape is one metric per call, so a card wanting six of
-    them plus the day's coverage would cost seven round trips. Centered on the
-    newest day with real coverage rather than on today, because at 6am today
-    has a fix or two at most — the same reason screen.summary() centers on the
-    newest day with data, one threshold stricter.
-    """
+    """One payload for the desk card, centered on the newest day with real
+    coverage rather than today."""
     today = db.day_key()
     start = (date.fromisoformat(today) - timedelta(days=SUMMARY_DAYS - 1)).isoformat()
     with db.session() as con:

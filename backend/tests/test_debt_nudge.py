@@ -1,12 +1,8 @@
 """Debts that ask again — the nudge cycle.
 
-An open IOU is two facts, not one: the money, and whether you've said anything
-about it lately. Only the first was stored, so the card could only ever sit in
-HAS — "someone owes you $106" is true every day and actionable on none of them,
-which is how it earned 44 impressions and 3 opens across nine days.
-
-The cycle these pin: never asked -> asked (quiet a week) -> overdue -> asked
-again (quiet another week), with settling the only exit.
+An open IOU is the money plus whether you've asked lately. Cycle pinned: never asked
+-> asked (quiet a week) -> overdue -> asked again (quiet another week); settling is the
+only exit. Design: DESIGN.md → `backend/tests/test_debt_nudge.py`.
 """
 
 from datetime import datetime, timedelta
@@ -26,8 +22,7 @@ def _only(summary):
 
 
 def _ask_days_ago(debt_id: int, days: int) -> None:
-    """Backdate the last ask. Written through the same column remind_debt
-    uses, so this exercises the real read path rather than a parallel one."""
+    """Backdate the last ask through the column remind_debt uses."""
     when = (datetime.now() - timedelta(days=days)).isoformat(timespec="seconds")
     with db.session() as con, con:
         con.execute("UPDATE debts SET reminded_at=? WHERE id=?", (when, debt_id))
@@ -48,8 +43,7 @@ def test_asking_buys_a_week_of_quiet(dbfile):
 
 
 def test_it_comes_back_after_the_window(dbfile):
-    """The point of the whole feature: an ask that went unanswered has to
-    return, or it's the July conversation you never thought about again."""
+    """An unanswered ask comes back after the window."""
     d = _debt()
     _ask_days_ago(d["id"], DEBT_NUDGE_DAYS)
     row = _only(db.debt_summary())
@@ -77,8 +71,7 @@ def test_asking_again_resets_the_clock(dbfile):
 
 
 def test_every_ask_is_counted(dbfile):
-    """The count is the part an overwritten timestamp loses, and it's what
-    decides whether to keep asking or write it off."""
+    """Every ask is counted (a timestamp alone is overwritten)."""
     d = _debt()
     for _ in range(3):
         db.remind_debt(d["id"])
@@ -86,8 +79,7 @@ def test_every_ask_is_counted(dbfile):
 
 
 def test_a_debt_you_owe_is_never_nudged(dbfile):
-    """"I asked them" has no meaning pointed the other way — a debt you owe is
-    chased by the other person, and a button for it would do nothing."""
+    """A debt you owe is never nudged."""
     _debt(direction="i_owe")
     row = _only(db.debt_summary())
 
@@ -107,8 +99,7 @@ def test_settling_takes_it_out_of_the_chase(dbfile):
 
 
 def test_to_chase_counts_both_actionable_states(dbfile):
-    """`never` and `overdue` are different actions but both are your move, and
-    the card's band depends on the total."""
+    """to_chase counts both `never` and `overdue` (the card's band uses the total)."""
     a = _debt(person="Sam")
     _debt(person="Ravi")                    # never asked
     _ask_days_ago(a["id"], DEBT_NUDGE_DAYS + 2)
@@ -121,8 +112,7 @@ def test_to_chase_counts_both_actionable_states(dbfile):
 
 
 def test_an_unreadable_timestamp_reads_as_unasked(dbfile):
-    """Fail toward asking. The opposite default would silence a debt forever
-    on one bad write."""
+    """An unreadable timestamp reads as unasked (fail toward asking)."""
     d = _debt()
     with db.session() as con, con:
         con.execute("UPDATE debts SET reminded_at='not a date' WHERE id=?",
@@ -136,8 +126,7 @@ def test_reminding_a_missing_debt_is_none_not_an_error(dbfile):
 
 
 def test_totals_still_come_out_right_alongside_the_nudge(dbfile):
-    """The annotation pass rebuilds every row, so the sums are the thing most
-    likely to break silently."""
+    """Totals survive the annotation pass (it rebuilds every row)."""
     _debt(person="Sam", amount=30.0)
     _debt(person="Ravi", amount=12.5, direction="i_owe")
 

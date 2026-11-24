@@ -1,12 +1,12 @@
 import { useState } from "react";
 import BarMenu from "./BarMenu.jsx";
 import { findModel, modelChoices, prettyModel } from "../lib/consolePrefs.js";
+import { useModelsInfo } from "../lib/models.js";
 
 // What a model id is called in the log: "Opus 5.5".
 export const modelName = (models, id) => findModel(models, id)?.label || prettyModel(id) || id;
 
-// Where the model answering changed mid-conversation (New Features #101): a
-// rule across the log, just above the first reply the new one wrote.
+// A rule above the first reply written by a new model mid-conversation (#101).
 export function ModelMark({ models, from, to }) {
   return (
     <div className="model-mark" role="separator" data-testid="model-mark"
@@ -18,17 +18,13 @@ export function ModelMark({ models, from, to }) {
   );
 }
 
-// "Retry with…" on a reply (New Features #104): the same message, answered
-// again by the model you pick, in a fork. The conversation you're looking at
-// stays whole under Resume, so the two answers can be compared.
-//
-// Claude's models only. Another provider would have to be handed this
-// conversation to answer it, and the conversation is the personal part
+// "Retry with…" (#104): the same message answered by the picked model in a fork; the original stays
+// whole under Resume. Claude's models only: another provider would be handed the personal conversation
 // (backend app/delegates/boundary.py).
 export default function RetryMenu({ models, model, defaultModel, answeredBy, disabled, blocked, onRetry }) {
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState(null);
-  const { main } = modelChoices(models, defaultModel, model);
+  const { main } = modelChoices(models, defaultModel, model, useModelsInfo());
   const was = answeredBy ? modelName(models, answeredBy) : null;
   return (
     <span className="retry-wrap">
@@ -43,14 +39,16 @@ export default function RetryMenu({ models, model, defaultModel, answeredBy, dis
           <div className="mp-head">answer again with</div>
           {blocked
             ? <div className="mp-note">{blocked}</div>
-            : main.map(([v, label]) => {
+            : main.map(([v, label, refused]) => {
               const [alias, named] = label.includes(" · ") ? label.split(" · ") : [label, ""];
               const same = v !== "default" && findModel(models, v)?.resolved === answeredBy;
               return (
-                <button key={v} role="menuitem" className="bm-item mp-row"
+                <button key={v} role="menuitem" className={`bm-item mp-row${refused ? " mp-off" : ""}`}
+                  disabled={!!refused} title={refused ? `Not on the Claude account in use: ${refused}` : undefined}
                   onClick={() => { setOpen(false); onRetry(v); }}>
-                  <span className="mp-alias">{alias}</span>
-                  {named && <span className="mp-named">{named}</span>}
+                  <span className="mp-alias">{alias}{refused && named ? ` · ${named}` : ""}</span>
+                  {refused ? <span className="mp-named mp-why">not on this account</span>
+                    : named && <span className="mp-named">{named}</span>}
                   {same && <span className="mp-named rt-same">wrote this one</span>}
                 </button>
               );

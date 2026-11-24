@@ -1,7 +1,5 @@
-/* Other models in the log (console/DelegateCall.jsx, RetryMenu.jsx) and the
-   providers list in Settings (widgets/Providers.jsx). Tokens only; nothing
-   here names a colour. A provider is told apart by its name, not a hue: the
-   one accent on this surface already means "live". */
+/* Other models in the log (console/DelegateCall.jsx, RetryMenu.jsx) and Settings' providers
+   list (widgets/Providers.jsx). Tokens only; providers differ by name, not hue (the accent means "live"). */
 
 /* ---- "model changed" (#101): a rule across the log ---- */
 .model-mark {
@@ -44,6 +42,7 @@
 .dg-redacted { flex: none; color: var(--ink-faint); }
 .dg-state { flex: none; margin-left: auto; color: var(--accent-ink); }
 .dg-state.bad { color: var(--bad); }
+.dg-state.warn { color: var(--warn, var(--paper-mid)); }
 .dg-body { margin-top: 6px; }
 .dg-label {
   margin: 8px 0 4px; font-family: var(--mono); font-size: var(--text-xs); color: var(--ink-faint);
@@ -65,14 +64,12 @@
   background: var(--ink-raise);
 }
 .sl-pick.chosen { border-color: var(--accent-ink); }
-/* The frame is a page someone will look at in daylight: it keeps its own
-   white ground whatever theme the console is in. */
+/* The frame keeps a white ground in any theme: it shows a page. */
 .sl-frame { aspect-ratio: 16 / 10; background: #fff; border-bottom: 1px solid var(--ink-line-2); }
 .sl-grid.one .sl-frame { aspect-ratio: 16 / 9; }
 .sl-frame { overflow: hidden; }
 .sl-frame img { display: block; width: 100%; height: 100%; object-fit: contain; }
-/* A page is laid out at desktop width and shown small: three times the
-   frame, scaled back to a third (one and a half when it's the only one). */
+/* Laid out at desktop width, shown small: 300% scaled to 1/3 (150% to 2/3 when alone). */
 .sl-frame iframe {
   display: block; border: 0; width: 300%; height: 300%;
   transform: scale(calc(1 / 3)); transform-origin: 0 0;
@@ -114,6 +111,44 @@
   padding: 1px 5px; border-radius: var(--r1); background: var(--paper-raise);
 }
 .prov-steps { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
-.prov-steps li { display: flex; gap: 8px; align-items: baseline; }
+.prov-steps > li { display: flex; gap: 8px; align-items: baseline; }
+.prov-ways { margin: 4px 0 0; padding: 0 0 0 14px; display: flex; flex-direction: column; gap: 4px; }
+.prov-ways li { list-style: disc; }
+.prov-ways li::marker { color: var(--paper-mid); }
 .prov-steps .done { color: var(--paper-mid); text-decoration: line-through; }
 .prov-step-n { flex: none; font-family: var(--mono); font-size: var(--text-xs); color: var(--paper-mid); }
+
+/* What each provider is for, and its accounts (ProviderAccounts.jsx). */
+.prov-good { margin: 4px 0 0; padding: 0; list-style: none; font-size: var(--text-sm); line-height: 1.5; color: var(--paper-ink); }
+.prov-good-k { color: var(--paper-mid); margin-right: 4px; }
+.prov-accts { margin-top: 8px; }
+.prov-accts .acct-actions .prov-state { margin-left: 6px; }
+.prov-accts .acct-rules + .acct-rules { border-top: 0; padding-top: 2px; }
+.prov-acct-line { margin: 4px 0 6px; font-size: var(--text-sm); color: var(--paper-ink); }
+.prov-acct-line small { color: var(--paper-mid); }
+.acct-cap.wide input { width: 8ch; }
+.prov-add { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.prov-add-name {
+  font: var(--text-sm) var(--sans); color: var(--paper-ink); background: var(--paper-raise);
+  border: 1px solid var(--paper-line-2); border-radius: var(--r1); padding: 3px 6px; width: 18ch;
+}
+.prov-add-name:focus { border-color: var(--accent); outline: none; }
+.prov-login p + p { margin-top: 4px; }
+.prov-turn { display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--paper-ink); }
+.prov-turn-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.prov-left { margin-left: auto; color: var(--paper-mid); font-variant-numeric: tabular-nums; }
+.prov-ok { color: var(--good); }
+.prov-login {
+  padding: 8px 10px; border-radius: var(--r1); background: var(--paper-line);
+  font-size: var(--text-sm); line-height: 1.6; color: var(--paper-ink);
+}
+.prov-login p { margin: 0; }
+.prov-login a { color: var(--accent); word-break: break-all; }
+.prov-code {
+  font-family: var(--mono); font-size: var(--text-base); letter-spacing: 0.08em; user-select: all;
+  padding: 1px 6px; border-radius: var(--r1); background: var(--paper-raise);
+}
+.prov-login-foot { display: flex; align-items: center; gap: 8px; margin-top: 6px; }

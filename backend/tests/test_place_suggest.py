@@ -1,21 +1,7 @@
-"""Naming a cluster the map drew — the candidate ranking, and the gate.
+"""Naming a cluster the map drew: candidate ranking, and the gate.
 
-Every threshold asserted here came off seven weeks of this vault's own fixes,
-and the two tests worth reading first are the ones about
-when the suggester must stay *quiet*:
-
-* `test_hub_cluster_gets_no_calendar_name` — the busiest unnamed cluster
-  (1,158 min over 24 days) overlaps KAP 140, DMC 155 and ACC 201 at 17% each.
-  A three-way tie is not an answer, and offering the first one would name the
-  place you study at after a lecture hall across campus.
-
-* `test_event_you_did_not_attend_is_rejected` — the reason the distance gate
-  exists at all. Share alone cannot tell "I was in that class" from "I stayed
-  home while that class happened".
-
-...and the one about when it must *not* go quiet: `test_campus_centroid_...`,
-where the geocoder's inability to place a room code was silently vetoing the
-two best true answers this vault has.
+Read first: the tests on when the suggester must stay quiet (hub tie, unattended event) and the
+campus-centroid one on when it must not. Thresholds and measurements: DESIGN.md → `app/place_suggest.py`.
 """
 
 import json
@@ -36,12 +22,7 @@ RANGE = "2026-08-01..2026-08-31"
 
 
 def _group(lat, lon, day_hours):
-    """A clustered place with one stay per (day, hour) given.
-
-    Stay times go through `location.parse_ts` rather than being built naive,
-    because that is how `suggest` builds them from `location_points` and both
-    sides of the overlap comparison have to be tz-aware — the listener stores
-    UTC with a Z and Google stores an offset, and neither is naive."""
+    """A clustered place with one stay per (day, hour); times via `location.parse_ts` (tz-aware, as `suggest` builds them)."""
     stays = []
     for day, hour in day_hours:
         first = location.parse_ts(f"{day}T{hour:02d}:05:00")
@@ -69,8 +50,7 @@ def _events(con, rows):
 
 @pytest.fixture
 def geocoder(monkeypatch):
-    """A stand-in for the leave geocoder. Defaults to the campus-centroid answer
-    Google really gives for a bare room code."""
+    """Stand-in leave geocoder; defaults to the campus-centroid answer for a bare room code."""
     table = {}
 
     def fake(loc):
@@ -123,9 +103,7 @@ def test_too_few_overlaps_names_nothing(dbfile, geocoder):
 
 
 def test_event_you_did_not_attend_is_rejected(dbfile, geocoder):
-    """Every visit to *home* overlaps a lecture across campus. Share says 100%;
-    the geocode says half a kilometre. The geocode wins — this is the one lie
-    concentration cannot catch."""
+    """Share says 100% but the geocode says 0.5 km: the geocode wins."""
     geocoder["THH 102"] = THH          # a specific geocode, not the centroid
     con = db.connect()
     days = [(f"2026-08-{d:02d}", 10) for d in (3, 5, 7, 10)]
@@ -136,19 +114,13 @@ def test_event_you_did_not_attend_is_rejected(dbfile, geocoder):
 
 
 def test_campus_centroid_geocode_does_not_veto(dbfile, geocoder):
-    """The regression this module was rewritten for.
-
-    "SAL 101", "KAP 140" and "KAP 267" all geocode to the identical campus
-    centroid, 510-570m from their own buildings. Treating that as a distance
-    measurement rejected the two strongest true answers in the vault, so a
-    geocode that is plainly just the campus abstains — and says so, rather
-    than claiming a position it does not have."""
+    """A geocode that is just the campus centroid abstains (no distance claimed) instead of vetoing."""
     con = db.connect()
     days = [(f"2026-08-{d:02d}", 11) for d in (3, 5, 7, 10)]
     _events(con, [(d, h, "MATH 229", "KAP 140") for d, h in days])
     con.close()
 
-    # The cluster is 570m from where "KAP 140" geocodes — past CAL_MAX_DIST_M.
+    # 570m from the geocode: past CAL_MAX_DIST_M.
     out = place_suggest._calendar_candidates(_group(34.02251, -112.29130, days))
     assert len(out) == 1
     assert out[0]["name"] == "KAP 140"
@@ -171,8 +143,7 @@ def test_virtual_locations_never_become_places(dbfile, geocoder):
 # ------------------------------------------------------------------- sources
 
 def test_google_drops_cities_and_bus_stops(dbfile, monkeypatch):
-    """All three of these arrived typed `establishment`+`point_of_interest`
-    from the real API, so the type allowlist alone would have let them in."""
+    """Cities and bus stops typed `establishment` are dropped too."""
     monkeypatch.setattr(place_suggest, "GOOGLE_MAPS_API_KEY", "k")
     monkeypatch.setattr(place_suggest, "_http_json", lambda *a, **k: {
         "status": "OK",
@@ -190,8 +161,7 @@ def test_google_drops_cities_and_bus_stops(dbfile, monkeypatch):
 
 
 def test_overpass_drops_roads_and_far_polygon_centres(dbfile, monkeypatch):
-    """`around` matches a polygon's edge, so a campus-sized way qualifies on a
-    60m query while its centre sits 500m out; and a road is never a place."""
+    """A polygon whose centre is far outside the radius is dropped, and so is a road."""
     monkeypatch.setattr(place_suggest, "_http_json", lambda *a, **k: {
         "elements": [
             {"lat": THH[0], "lon": THH[1],
@@ -221,18 +191,14 @@ def test_lookup_cache_asks_once(dbfile, monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _forget_failures():
-    """The failure backoff is module state; one test's dead mirror must not
-    silence the next test's source."""
+    """Backoff is module state; reset it between tests."""
     place_suggest._failed_at.clear()
     yield
     place_suggest._failed_at.clear()
 
 
 def test_failed_lookup_is_not_cached_as_empty(dbfile, monkeypatch):
-    """A geocoder that was down must be asked again, not remembered as 'nothing
-    is here' forever — there is no TTL to rescue a negative. Only not *at
-    once*: within the backoff a reopen skips it rather than sitting out the
-    same timeout again."""
+    """A failed lookup is retried after the backoff, never cached as empty."""
     clock = [1000.0]
     monkeypatch.setattr(place_suggest.time, "monotonic", lambda: clock[0])
     calls = []
@@ -250,8 +216,7 @@ def test_failed_lookup_is_not_cached_as_empty(dbfile, monkeypatch):
 
 
 def test_overpass_races_mirrors_and_skips_the_town(dbfile, monkeypatch):
-    """The mirror that answers wins even when the preferred one is down, and
-    the town every query sits inside is not a place you were at."""
+    """The mirror that answers wins; the enclosing town is skipped."""
     def fake(url, *, data=None):
         if url == place_suggest.OVERPASS_URLS[0]:
             return None                                   # the 504
@@ -268,9 +233,7 @@ def test_overpass_races_mirrors_and_skips_the_town(dbfile, monkeypatch):
 
 
 def test_nearby_places_carry_their_category(dbfile, monkeypatch):
-    """The point of the source: a parking lot says it is one. Bus stops and
-    the city are dropped like in the reverse geocode, and the radius is a
-    fence, nearest first."""
+    """Nearby places carry their category, nearest first; bus stops and the city are dropped."""
     from app.providers import venues
     monkeypatch.setattr(place_suggest, "GOOGLE_MAPS_API_KEY", "k")
 
@@ -294,9 +257,7 @@ def test_nearby_places_carry_their_category(dbfile, monkeypatch):
 
 
 def test_nearby_failure_is_soft_and_reported(dbfile, monkeypatch):
-    """Places off or down costs its rows, never the shortlist — and suggest
-    says which source was missing, so a short list isn't read as 'nothing
-    here'."""
+    """Places off or down loses its rows, not the shortlist; `unavailable` names the source."""
     from app.providers import venues
     monkeypatch.setattr(place_suggest, "GOOGLE_MAPS_API_KEY", "k")
 
@@ -329,9 +290,7 @@ def _points_at(pt):
 # ------------------------------------------------------------------- ranking
 
 def test_agreement_promotes_but_does_not_multiply(dbfile, monkeypatch):
-    """Two sources naming one building is one building. The merged row keeps
-    the better source's score plus a flat nudge, so a weak candidate named
-    twice can't outrank a strong one named once."""
+    """Two sources naming one building merge: best score plus a flat nudge."""
     monkeypatch.setattr(place_suggest, "_calendar_candidates", lambda g: [])
     monkeypatch.setattr(place_suggest, "_google_candidates", lambda *a: [
         {"name": "Leavey Library", "source": "google", "poi": True,
@@ -349,12 +308,10 @@ def test_agreement_promotes_but_does_not_multiply(dbfile, monkeypatch):
     assert names == ["leavey library", "taco bell"], "one building, one row"
 
     top = out["candidates"][0]
-    # google_poi's 0.8*0.55 = 0.44 beats overpass's 0.9*0.45 = 0.405, so
-    # Google wins the row and Overpass corroborates it.
+    # google_poi 0.8*0.55 = 0.44 beats overpass 0.9*0.45 = 0.405.
     assert top["also"] == ["overpass"]
     assert top["score"] == pytest.approx(0.49, abs=1e-3), "0.44 + one flat nudge"
-    # The nudge must stay small enough that agreement cannot overturn a real
-    # gap — a calendar hit at 0.5 would still outrank this.
+    # Agreement must not overturn a real gap: a calendar hit at 0.5 still outranks.
     assert top["score"] < place_suggest.PRIOR_WEIGHT["calendar"] * 0.5 + 0.05
 
 
@@ -386,8 +343,7 @@ def test_radius_covers_the_spread_seen(span, want):
 # --------------------------------------------------------------------- write
 
 def test_created_place_is_read_back_by_the_clusterer(tmp_path, monkeypatch):
-    """The whole point of the correction: once written, the declared place
-    claims its stays and the guess never runs again."""
+    """Once written, the declared place claims its stays and the guess stops."""
     vault = tmp_path / "vault"
     (vault / "02-Areas" / "places").mkdir(parents=True)
     monkeypatch.setattr(places, "VAULT_PATH", vault)
@@ -410,10 +366,7 @@ def test_created_place_is_read_back_by_the_clusterer(tmp_path, monkeypatch):
     meta = json.loads(con.execute("SELECT frontmatter FROM notes").fetchone()[0])
     assert meta["type"] == "place" and meta["name"] == "Leavey Library"
     assert meta["radius_m"] == 100
-    # Undated by default, and that is the correct default: an undated place is
-    # true on every day, so it resolves fixes from before you got round to
-    # naming it. A `from` taken from the range you happened to be viewing
-    # would silently orphan its own history.
+    # Undated on purpose: a `from` taken from the viewed range would orphan earlier history.
     assert "from" not in meta
 
     text = (vault / out["path"]).read_text()
@@ -455,8 +408,7 @@ def test_create_refuses_to_overwrite(tmp_path, monkeypatch):
 # ------------------------------------------------------------------ learning
 
 def test_weights_start_at_their_priors(dbfile):
-    """No feedback means no knowledge, and the estimator has to say so rather
-    than collapsing to zero or to one."""
+    """No feedback: the weight is the prior, not 0 or 1."""
     w = place_suggest.learned_weights()
     for bucket, prior in place_suggest.PRIOR_WEIGHT.items():
         assert w[bucket]["weight"] == pytest.approx(prior)
@@ -472,15 +424,13 @@ def test_accepting_a_candidate_lifts_its_bucket(dbfile):
     assert w["calendar"]["accepted"] == 1 and w["calendar"]["shown"] == 1
     assert w["google_address"]["accepted"] == 0
     assert w["google_address"]["shown"] == 1
-    # The passed-over bucket is dragged below its prior, the accepted one is
-    # not dragged above 1.0 — smoothing is doing its job in both directions.
+    # Smoothing holds in both directions.
     assert w["google_address"]["weight"] < place_suggest.PRIOR_WEIGHT["google_address"]
     assert w["calendar"]["weight"] <= 1.0
 
 
 def test_one_click_cannot_swing_a_weight(dbfile):
-    """The whole point of smoothing at this scale: a single observation is
-    evidence, not a conclusion."""
+    """A single observation moves a weight by under 0.1."""
     before = place_suggest.learned_weights()["overpass"]["weight"]
     place_suggest.record_feedback(*THH, [{"name": "Taco Bell", "bucket": "overpass"}],
                                   "Somewhere Else")
@@ -490,9 +440,7 @@ def test_one_click_cannot_swing_a_weight(dbfile):
 
 
 def test_typing_your_own_name_is_recorded_as_such(dbfile):
-    """The signal that the shortlist was no help at all — every candidate
-    passed over, and the accept credited to a bucket the ranking cannot
-    offer."""
+    """A typed name passes over every candidate and credits the `typed` bucket."""
     shown = [{"name": "Taco Bell", "bucket": "overpass"},
              {"name": "McCarthy Quad", "bucket": "google_poi"}]
     place_suggest.record_feedback(*THH, shown, "The good study room")
@@ -504,8 +452,7 @@ def test_typing_your_own_name_is_recorded_as_such(dbfile):
 
 
 def test_case_and_space_still_count_as_the_same_name(dbfile):
-    """The field is editable, so the accepted name arrives however it was
-    typed. "leavey library " is not a different building."""
+    """Accepted names match case- and space-insensitively."""
     place_suggest.record_feedback(
         *THH, [{"name": "Leavey Library", "bucket": "overpass"}],
         "  leavey library ")
@@ -515,13 +462,7 @@ def test_case_and_space_still_count_as_the_same_name(dbfile):
 
 
 def test_walking_away_rejects_the_whole_list_not_one_name(dbfile):
-    """Why there is no per-cluster negative, pinned so it isn't rebuilt.
-
-    A dismissal marks every candidate rejected, because that is what it means.
-    A penalty derived from it would therefore scale the entire shortlist by the
-    same factor and re-rank nothing — and the other way a shortlist ends, an
-    accept, declares the place and stops it ever being suggested again. So the
-    only home for this evidence is the bucket weight."""
+    """A dismissal rejects every candidate: no per-cluster negative (DESIGN.md → `app/place_suggest.py`)."""
     shown = [{"name": "Taco Bell", "bucket": "overpass"},
              {"name": "McCarthy Quad", "bucket": "google_poi"}]
     place_suggest.record_feedback(*THH, shown, None)

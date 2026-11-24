@@ -2,9 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTimeout } from "../lib/timers.js";
 import { UNDO_MS, dismissUndo, runUndo, useUndo } from "../lib/undo";
 
-// The undo toast (lib/undo.js): 8s with a draining bar, paused while hovered
-// or focused and while the tab is hidden; ⌘Z works while it shows — but never
-// in a field the browser can undo in itself.
+// The undo toast (lib/undo.js): 8s, paused while hovered/focused/hidden; ⌘Z works unless a field can undo itself.
 export default function UndoToast() {
   const entry = useUndo();
   const [paused, setPaused] = useState(false);

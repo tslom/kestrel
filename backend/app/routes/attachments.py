@@ -2,14 +2,9 @@
 
   GET /api/attachments/{id}/file   the bytes, on demand
 
-Bytes pass through and are dropped: an email's come from Gmail on each open,
-and `attachments` keeps its promise that sync never stores them.
-
-What the browser may render here is the danger, not what's read: a sender
-picks the filename and the mime, and this origin holds every other /api route.
-So a raster image or a PDF goes inline, nosniff keeps the browser to the type
-we declared, and anything else (SVG and HTML above all) downloads instead.
-CORP keeps another site from embedding these while the app is running.
+Bytes pass through and are dropped (sync never stores them). The danger is what
+the browser may render: raster images and PDFs go inline under nosniff; anything
+else (SVG, HTML) downloads. CORP blocks cross-site embedding.
 """
 
 from urllib.parse import quote

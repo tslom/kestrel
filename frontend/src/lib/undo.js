@@ -2,20 +2,11 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { fetchJSON, postJSON } from "./api";
 import { useLoad } from "./refresh";
 
-// Every one-click action in the plan view can be taken back for a few
-// seconds: the action happens, a toast offers the inverse. The window is 8s,
-// but it only counts down while you could be reading it — hovering or
-// focusing the toast pauses it, and so does leaving the tab.
-//
-// Two shapes:
-//   offerUndo({ label, undo })          the write already happened; undo() is
-//                                       its inverse (reopen the task, …)
-//   offerUndo({ label, commit, undo })  the write is held until the toast goes
-//                                       (an unsubscribe can't be recalled);
-//                                       undo() just puts things back on screen
-// `askId` marks the action as finishing that ask: it counts toward "N cleared
-// today" (/api/usage/cleared) and undo takes it back out. Snoozing doesn't.
-//
+// Every one-click action in the plan view can be taken back: the action happens and a toast offers the inverse
+// for 8s (paused while hovered, focused or the tab is hidden). Two shapes:
+//   offerUndo({ label, undo })          the write already happened; undo() is its inverse
+//   offerUndo({ label, commit, undo })  the write is held until the toast goes (an unsubscribe can't be recalled)
+// `askId` marks finishing that ask: counts toward "N cleared today" (/api/usage/cleared); undo takes it back out.
 // One toast at a time: a new offer lets the old one go, committing it.
 
 export const UNDO_MS = 8000;
@@ -69,11 +60,8 @@ export function runUndo() {
   return true;
 }
 
-// Deletes, held: the row leaves the screen at once and the DELETE goes out
-// only when the toast does (or the next offer lets it go); Undo just puts the
-// row back. One shape for every delete in the app (watchlist and list rows,
-// a whole list, debts, the Sources fault log), instead of a browser confirm
-// on one and nothing on the rest. A window closed inside the 8s keeps the row.
+// Deletes, held: the row leaves at once and the DELETE goes out when the toast does (or the next offer lets it go);
+// Undo puts the row back; a window closed inside the 8s keeps it. One shape for every delete in the app.
 //   holdDelete({ label, key, commit })   key: what useHeld() hides ("list:3")
 //   useHeld()                            the keys held right now (a Set)
 let held = new Set();
@@ -90,8 +78,7 @@ export function holdDelete({ label, key, commit }) {
   setHeld(key, true);
   return offerUndo({
     label,
-    // released once the write (and the caller's reload) lands, so the row
-    // doesn't flash back in between; on a failed write it comes back
+    // Released once the write and the caller's reload land (no flash back in); a failed write brings the row back.
     commit: () => Promise.resolve(commit()).finally(() => setHeld(key, false)),
     undo: () => setHeld(key, false),
   });

@@ -1,9 +1,7 @@
 """Derived SQLite index over the vault.
 
-Design rule: markdown is the source of truth; this DB is a disposable cache.
-We never write vault content here-first — the index is rebuilt FROM the files,
-so your existing Claude Code skills can keep editing markdown directly and the
-dashboard stays consistent after a reindex.
+Markdown is the source of truth; index.db is a disposable cache rebuilt FROM
+the files, never written here first.
 """
 
 import json
@@ -59,13 +57,11 @@ _LINK_SUFFIX = re.compile(r"[#|^].*$")
 def link_targets(body: str) -> list[str]:
     """Every note a body links to, as written, in order, de-duplicated.
 
-    A wikilink to anything with an extension other than .md (an embedded
-    image, a PDF) isn't a note link and is left out.
+    A wikilink with a non-.md extension (image, PDF) isn't a note link.
     """
     out: list[str] = []
     for m in WIKILINK_RE.finditer(body):
-        # Inside a markdown table the alias pipe is escaped — `[[Note\|alias]]`
-        # — and the backslash is not part of the name.
+        # In a markdown table the alias pipe is escaped (`[[Note\|alias]]`).
         t = _LINK_SUFFIX.sub("", m.group(1)).strip().removesuffix("\\")
         if t and (not Path(t).suffix or t.endswith(".md")):
             out.append(t)
@@ -78,15 +74,10 @@ def link_targets(body: str) -> list[str]:
 
 def resolve_link(target: str, src: str, paths: set[str],
                  by_stem: dict[str, list[str]]) -> str | None:
-    """The vault path a link lands on — the rules vault_views.resolve_note
-    applies when the same link is clicked: an exact vault path (with or
-    without .md), then a bare name that is unique across the vault.
-    Ambiguous → None, so the list and the click agree.
-
-    A markdown link (`[x](../Note.md)` — the only kind ending in .md) is a
-    real relative path, so it is also tried against the linking note's
-    folder. A wikilink never is: `[[README]]` from a folder holding one of
-    three READMEs still names none of them."""
+    """The vault path a link lands on, by vault_views.resolve_note's rules (so
+    list and click agree): exact path (with or without .md), then a bare name
+    unique across the vault; ambiguous -> None. Markdown links (ending .md) are
+    also tried against the linking note's folder; wikilinks never are."""
     t = target.removeprefix("/")
     cands = [t, f"{t}.md"]
     if t.endswith(".md"):
@@ -108,11 +99,8 @@ def connect() -> sqlite3.Connection:
 
 @contextmanager
 def session():
-    """connect() that always closes — db.session()'s twin for the index DB.
-    A rebuild walks the whole vault inside one connection, so a single
-    unparseable-in-a-new-way file used to leave the handle (and its write
-    lock) open until the traceback was collected, and the next widget read
-    waited out busy_timeout for nothing."""
+    """connect() that always closes (db.session()'s twin). A rebuild walks the
+    whole vault in one connection; a leaked handle held the write lock."""
     con = connect()
     try:
         yield con
@@ -137,8 +125,7 @@ def index_note(con: sqlite3.Connection, path: Path) -> bool:
     con.executemany("INSERT INTO links (src, target) VALUES (?,?)",
                     [(rel, t) for t in link_targets(post.content)])
 
-    # Checkbox tasks found in notes, for a by-hand reconcile sweep — the tasks DB is truth now; the generated tasks.md
-    # view is skipped to avoid re-ingesting our own output.
+    # Checkbox tasks in notes, for a by-hand reconcile sweep; the generated tasks.md is skipped.
     if rel != TASKS_VIEW_FILE:
         for i, line in enumerate(post.content.splitlines(), start=1):
             m = TASK_RE.match(line)
@@ -151,14 +138,8 @@ def index_note(con: sqlite3.Connection, path: Path) -> bool:
 
 
 def _jsonable(v):
-    """JSON-safe, all the way down.
-
-    Shallow, this tested the *whole* value and fell back to str() — so one
-    nested date flattened its entire container to a Python repr. Office hours
-    are where that bites: `except: [{date: 2026-09-01}]` is a real date to
-    YAML, and the list of hours would reach the widget as a string, whose
-    entries are then not dicts and get dropped. Silent, and the course looks
-    like one with no hours posted."""
+    """JSON-safe, all the way down: one nested YAML date must not flatten its
+    container to a str (office-hours `except: [{date: …}]` silently vanished)."""
     if isinstance(v, dict):
         return {str(k): _jsonable(x) for k, x in v.items()}
     if isinstance(v, (list, tuple)):
@@ -188,8 +169,7 @@ def rebuild() -> dict:
             if index_note(con, path):
                 count += 1
             else:
-                # Unparseable frontmatter — the note is invisible to the
-                # dashboard, so name it rather than quietly inflating the count.
+                # Unparseable frontmatter: invisible to the dashboard, so name it.
                 skipped.append(str(path.relative_to(VAULT_PATH)))
 
         paths = {r["path"] for r in con.execute("SELECT path FROM notes")}

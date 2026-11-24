@@ -1,9 +1,8 @@
 """Window frame memory and the macOS menu bar.
 
-The menu is built against AppKit directly (pywebview's MenuAction has no
-accelerator), so these check the two things that silently break: an item
-losing its key equivalent, and an Edit item picking up a Python target — which
-would take ⌘C off the responder chain and stop it copying the selection.
+Checks the two silent breaks: an item losing its key equivalent, and an Edit item
+gaining a Python target (which takes ⌘C off the responder chain).
+Design: DESIGN.md → `backend/desktop_shell.py`: macOS window shell.
 """
 import json
 
@@ -53,8 +52,7 @@ def test_unwritable_path_does_not_raise(tmp_path):
 
 
 def test_track_frame_writes_what_the_events_reported(tmp_path):
-    """`closing` fires as the frame is torn down, so geometry is mirrored
-    from the resize/move events rather than read back off the window."""
+    """Geometry is mirrored from resize/move events, not read at `closing`."""
     p = tmp_path / "w.json"
 
     class _Ev:

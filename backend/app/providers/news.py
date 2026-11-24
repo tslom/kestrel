@@ -1,18 +1,8 @@
-"""News provider — Kagi Kite, no key/auth required.
+"""News provider: Kagi Kite, keyless. `news_items` is a droppable cache.
 
-Kite (kite.kagi.com/kite.json -> per-category JSON, e.g. world.json) is
-truth; `news_items` in app.db is a derived cache (safe to drop and
-re-pull). Kite has no per-day historical API — it republishes one edition
-per category, refreshed roughly once a day (~12:00 UTC). So unlike the
-civil-date providers (weather/health) or the day_key behavioral providers
-(screen), there's nothing to backfill: day here is the **day_key of the
-fetch**, not an article date. A fetch before Kite's daily refresh just
-tags whatever it's currently serving under today's day_key rather than
-erroring — content is a day stale, not missing.
-
-Kite content is CC BY-NC (community-curated, clustered from 25+ outlets so
-single-source bias washes out) — personal dashboard use only; `sources`
-keeps the contributing domains for attribution.
+Kite republishes one edition per category (~12:00 UTC), so nothing backfills: `day` is the
+day_key of the fetch, not an article date. Content is CC BY-NC, personal use only; `sources`
+keeps domains for attribution. Design: DESIGN.md → §20 News.
 """
 
 import json
@@ -35,9 +25,7 @@ _HEADERS = {"User-Agent": "vault-dashboard/1.0 (+localhost, personal use)"}
 
 
 def _api(url: str) -> tuple[dict, str]:
-    """GET url -> (parsed JSON, final URL after redirects) — Kite's index
-    lives behind a redirect (kite.kagi.com -> news.kagi.com); category
-    files are fetched relative to wherever that lands."""
+    """GET url -> (parsed JSON, final URL); Kite's index redirects, and category files resolve against the final URL."""
     req = urllib.request.Request(url, headers=_HEADERS)
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
@@ -83,8 +71,7 @@ def _sync(con, day: str) -> dict:
 
 
 def refresh() -> dict:
-    """Once per day_key — Kite itself only republishes ~daily, so re-fetching
-    within the same day would just re-download identical content."""
+    """Once per day_key (Kite republishes ~daily)."""
     today = db.day_key()
     with db.session() as con:
         have = con.execute(
@@ -95,9 +82,7 @@ def refresh() -> dict:
 
 
 def get(rng: Range, metric: str | None = None) -> dict:
-    """Slice the cache; if today is in range and not yet cached, fetch it
-    on demand (mirrors other providers' backfill-on-read — but only for
-    today, since Kite has nothing to backfill for past days)."""
+    """Slice the cache; backfill only today on demand (Kite has no past days)."""
     metric = metric or DEFAULT_METRIC
     today = db.day_key()
     with db.session() as con:
@@ -138,10 +123,7 @@ def get(rng: Range, metric: str | None = None) -> dict:
 
 
 def top_headlines(day: str | None = None, count: int = 5) -> list[dict]:
-    """Merged top clusters across NEWS_CATEGORIES for the brief's "5 things
-    to know" — round-robins categories so one category can't crowd the rest,
-    truncated to `count`. Never raises: brief._gather already wraps every
-    source in try/except, but an empty list degrades cleanly either way."""
+    """Top clusters round-robined across NEWS_CATEGORIES (no category crowds out the rest), cut to `count`."""
     day = day or db.day_key()
     payload = get(parse_range(day), "headlines")
     by_cat: dict[str, list[dict]] = {}

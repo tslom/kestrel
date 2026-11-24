@@ -1,9 +1,6 @@
-"""The two drill-downs: one night's stage segments, one day's hourly steps.
+"""The two drill-downs: one night's stage segments, one day's hourly steps (what gets stored).
 
-Both fill on demand and then cache, so the tests that matter are about what
-gets stored rather than what gets drawn: that a segment keeps the clock it was
-recorded against, that a night with no data is still a night we asked about,
-and that an hour lands on the civil day the desk was actually living in.
+Design: DESIGN.md → `app/health.py`: night and hourly drill-downs, test-pinned.
 """
 
 from datetime import date
@@ -15,8 +12,7 @@ from app.providers import health
 
 
 def _sleep_point(day_end: str, stages, offset="-25200s"):
-    """The shape health.py reads: interval + summary + the stages array the
-    provider used to drop."""
+    """The shape health.py reads: interval, summary and the stages array."""
     return {
         "interval": {"endTime": f"{day_end}T15:00:00Z", "endUtcOffset": offset},
         "summary": {"minutesAsleep": sum(m for t, _, _, m in stages if t != "AWAKE"),
@@ -37,9 +33,7 @@ NIGHT = [
 
 
 def test_segments_keep_the_clock_they_were_recorded_against(monkeypatch):
-    """The offset travels with the row. A machine that has since moved coasts
-    must not restate a night in the zone it is standing in now — that is the
-    terrain-sheet bug at one night's scale."""
+    """A segment keeps the UTC offset it was recorded with."""
     segs = health._segments_of(_sleep_point("2026-09-14", NIGHT))
 
     assert [s["stage"] for s in segs] == ["awake", "light", "deep", "rem"]
@@ -50,9 +44,7 @@ def test_segments_keep_the_clock_they_were_recorded_against(monkeypatch):
 
 
 def test_a_night_reports_time_asleep_and_time_in_bed_apart(dbfile, monkeypatch):
-    """The question this was asked as: `sleep_hours` is minutesAsleep, so time
-    in bed has never been on screen and a restless night looked like a short
-    one."""
+    """The night reports time in bed as well as minutes asleep."""
     monkeypatch.setattr(health.oauth, "get_token", lambda *a, **k: "tok")
     monkeypatch.setattr(health, "_sleep_sessions",
                         lambda tok, s, e: [("2026-09-14", _sleep_point("2026-09-14", NIGHT))])
@@ -68,8 +60,7 @@ def test_a_night_reports_time_asleep_and_time_in_bed_apart(dbfile, monkeypatch):
 
 
 def test_a_night_with_no_sleep_is_asked_about_once(dbfile, monkeypatch):
-    """Absence has to be recordable, or an empty night re-hits Google on every
-    open forever — the same reason health_sync.refreshed_at exists."""
+    """An empty night is recorded so it isn't re-fetched on every open."""
     calls = []
     monkeypatch.setattr(health.oauth, "get_token", lambda *a, **k: "tok")
     monkeypatch.setattr(health, "_sleep_sessions",
@@ -85,8 +76,7 @@ def test_a_night_with_no_sleep_is_asked_about_once(dbfile, monkeypatch):
 
 
 def test_a_resynced_night_replaces_rather_than_doubles(dbfile, monkeypatch):
-    """_sync writes the window whole, and a night that gained a nap must not
-    end up holding both readings."""
+    """A re-sync replaces a night whole; a night that gained a nap doesn't keep both readings."""
     monkeypatch.setattr(health.oauth, "get_token", lambda *a, **k: "tok")
     monkeypatch.setattr(health, "_sleep_sessions",
                         lambda tok, s, e: [("2026-09-14", _sleep_point("2026-09-14", NIGHT))])
@@ -101,9 +91,7 @@ def test_a_resynced_night_replaces_rather_than_doubles(dbfile, monkeypatch):
 
 
 @pytest.mark.parametrize("instant, day, hour", [
-    # 2026-07-20 04:00Z — the desk was on the east coast, so this is midnight
-    # ET on the 20th. Read in the machine's current Pacific zone it would file
-    # as 21:00 on the 19th.
+    # 2026-07-20 04:00Z: midnight ET on the 20th (desk on the east coast), 21:00 on the 19th in Pacific.
     ("2026-07-20T04:00:00Z", "2026-07-20", 0),
     # and the last hour of that ET day, which Pacific would push onto the 20th
     ("2026-07-21T03:00:00Z", "2026-07-20", 23),
@@ -115,9 +103,7 @@ def test_an_hour_lands_on_the_day_the_desk_was_living_in(instant, day, hour):
 
 
 def test_writing_one_intraday_metric_leaves_the_other_alone(dbfile):
-    """Steps and heart rate share health_hours over different windows, so the
-    delete is scoped by metric — a whole-day delete would have each sync
-    evicting the other's rows."""
+    """Steps and heart rate share health_hours, so a sync deletes only its own metric."""
     con = db.connect()
     health._write_hours(con, health.HR_HOURLY_METRIC, date(2026, 9, 13),
                         date(2026, 9, 13), {("2026-09-13", 9): 72.0})
@@ -160,10 +146,7 @@ def api_client():
 
 def test_the_drill_down_routes_say_when_they_served_cache(dbfile, monkeypatch,
                                                          api_client):
-    """The hand-written routes read health directly, not through
-    providers.get(), so nothing opened offline.collect() around them and
-    best_effort's "network down, serving cache" note had nowhere to land: a
-    night fetched offline came back looking as fresh as any other."""
+    """These routes open offline.collect() themselves, so a cached night reports stale."""
     monkeypatch.setattr(health.oauth, "get_token", lambda *a, **k: "tok")
 
     def offline(*a):
@@ -185,8 +168,7 @@ def test_the_drill_down_routes_say_when_they_served_cache(dbfile, monkeypatch,
 
 def test_the_drill_down_routes_map_bad_input_to_400(dbfile, monkeypatch,
                                                     api_client):
-    """ValueError is the caller's fault — a malformed day, or a range token
-    that doesn't parse — and _serve answers it as one."""
+    """ValueError (malformed day or range token) is answered as the caller's fault."""
     assert api_client.get("/api/health/night/not-a-day").status_code == 400
     assert api_client.get("/api/location/trace",
                           params={"range": "whenever"}).status_code == 400

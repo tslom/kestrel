@@ -1,11 +1,7 @@
-"""Study mode (app/study.py): the syllabus read as "where are we now", and the
-per-course review log.
+"""Study mode (app/study.py): the syllabus as "where are we now", and the per-course review log.
 
-The fixtures are cut-down copies of the real extractions under
-`02-Areas/usc/fall-2026/syllabi/text/`, in the three shapes they actually
-come in: dated rows (CSCI 170), week blocks (MATH 229), and a table that
-extraction scrambled into two unaligned columns (CSCI 103). Every vault write
-goes to tmp_path.
+Fixtures are cut-down real extractions in three shapes: dated rows (CSCI 170), week blocks (MATH 229),
+a scrambled two-column table (CSCI 103). Vault writes go to tmp_path.
 """
 
 import asyncio
@@ -106,8 +102,7 @@ ENGR_NOTE = """\
 
 @pytest.fixture
 def vault(tmp_path, monkeypatch, empty_index, freeze_day):
-    """A vault on disk plus the index rows that point at it. Returns an
-    `add(code, note_body, syllabus_text)` helper."""
+    """A vault on disk plus its index rows; returns `add(code, note_body, syllabus_text)`."""
     monkeypatch.setattr(study, "VAULT_PATH", tmp_path)
     monkeypatch.setattr(courses, "VAULT_PATH", tmp_path)
     freeze_day("2026-10-04")    # a Sunday: week 6, two days before CSCI 170's midterm
@@ -138,8 +133,7 @@ def vault(tmp_path, monkeypatch, empty_index, freeze_day):
 # ---------- the schedule and its exams ----------
 
 def test_dated_rows_and_one_exam_per_day(vault):
-    """The grading table and the schedule row both name Midterm 1; that's one
-    exam with both quotes, not two exams."""
+    """The grading table and schedule row both naming Midterm 1 are one exam."""
     vault("CSCI 170", syllabus=CS170_SYLLABUS)
     sched = study.schedule("CSCI 170")
     assert sched["source"] == "syllabus"
@@ -152,9 +146,7 @@ def test_dated_rows_and_one_exam_per_day(vault):
 
 
 def test_the_lecture_after_an_exam_row_is_not_an_exam(vault):
-    """"10/6, 10/7 Recursion" follows "10/6 7pm Midterm 1". Borrowing the
-    previous line's keyword is for prose wrapped across lines; a schedule row
-    borrowing it put a phantom exam on 10/7."""
+    """A schedule row ("10/6, 10/7 Recursion") must not borrow the previous line's exam keyword (phantom exam on 10/7)."""
     vault("CSCI 170", syllabus=CS170_SYLLABUS)
     days = [str(e["date"]) for e in study.exams(study.schedule("CSCI 170"))]
     assert "2026-10-07" not in days and "2026-11-11" not in days
@@ -175,9 +167,7 @@ def test_context_places_today_and_lists_what_comes_before_the_exam(vault):
 
 
 def test_week_blocks_and_prose_dates(vault):
-    """MATH 229's shape: week blocks, exam dates in a wrapped prose sentence,
-    and a note line naming the midterm's *week* — which must fold into the
-    exact date, not become a second exam on 9/28."""
+    """MATH 229's shape: a note line naming the midterm's week folds into the exact date, not a second exam."""
     vault("MATH 229", note=MATH_NOTE, syllabus=MATH_SYLLABUS)
     sched = study.schedule("MATH 229")
     assert [r["when"] for r in sched["rows"]] == ["Week 1", "Week 6", "Week 11", "Week 15"]
@@ -189,8 +179,7 @@ def test_week_blocks_and_prose_dates(vault):
 
 
 def test_the_last_week_block_stops_before_the_grading_policy(vault):
-    """Week 15 has no next header to stop at; reading on into the policy made
-    "quizzes" (and its 12/9) an exam once."""
+    """The last week has no next header: reading on into the policy must not make "quizzes" an exam."""
     vault("MATH 229", syllabus=MATH_SYLLABUS)
     sched = study.schedule("MATH 229")
     assert "quizzes" not in sched["rows"][-1]["text"]
@@ -198,11 +187,7 @@ def test_the_last_week_block_stops_before_the_grading_policy(vault):
 
 
 def test_an_undatable_syllabus_falls_back_to_the_note_and_shows_its_own_text(vault):
-    """CSCI 103: the syllabus's topic table has no dates, so the schedule is
-    the note's lab table — and the syllabus's section is shown verbatim, up to
-    the page footer, rather than aligned by guesswork. Its exam sentence
-    abbreviates months ("Sept. 24th, Oct. 16th"), which a naive sentence split
-    cuts after "Sept."."""
+    """CSCI 103: undated topic table (schedule = the note's lab table, syllabus shown verbatim) and "Sept." must not split the exam sentence."""
     vault("CSCI 103", note=CS103_NOTE, syllabus=CS103_SYLLABUS)
     out = study.context("CSCI 103")
     assert "Schedule (from the course note" in out
@@ -266,7 +251,6 @@ def test_the_same_concept_again_is_counted_not_duplicated(vault, freeze_day):
     items = study.entries("CSCI 170")
     assert len(items) == 2
     assert items[0]["again"] == ["2026-10-05 — said 2|A| again"]
-    # The append landed inside its own entry, not after the next one.
     assert items[1]["concept"] == "De Morgan for quantifiers" and items[1]["again"] == []
 
 
@@ -298,7 +282,7 @@ def test_the_users_own_edits_survive_and_are_read(vault):
 
 
 def test_a_moved_review_note_is_still_found_by_its_frontmatter(vault):
-    """The user files 06-Generated away. The log must follow, not restart."""
+    """The log follows the note when it is filed away from 06-Generated."""
     vault("CSCI 170", syllabus=CS170_SYLLABUS)
     _log()
     old = vault.root / "06-Generated" / "CSCI-170-review.md"
@@ -325,8 +309,7 @@ def test_desk_names_the_exam_and_the_count(vault):
     vault("CSCI 170", syllabus=CS170_SYLLABUS)
     vault("WRIT 150", note="nothing", syllabus="")
     _log()
-    # Logged today: not due even two days out — cramming skips what was
-    # just seen.
+    # Logged today: not due, even two days out.
     assert study.desk() == [{"code": "CSCI 170", "review_items": 1, "review_due": 0, "exam": {
         "label": "Midterm 1", "date": "2026-10-06", "approx": False, "in_days": 2}}]
 
@@ -335,8 +318,7 @@ def test_desk_names_the_exam_and_the_count(vault):
 
 @pytest.fixture(autouse=True)
 def _inline(monkeypatch):
-    """The in-memory index connection is bound to this thread; the handlers'
-    worker-thread hop is not what's under test."""
+    """The in-memory index connection is thread-bound; skip the handlers' worker-thread hop."""
     async def inline(fn, *a, **k):
         return fn(*a, **k)
     monkeypatch.setattr(ct, "_blocking", inline)
@@ -352,8 +334,7 @@ def _served(name, **args):
 
 
 def test_review_add_records_the_calling_session(vault):
-    """console.py sets SESSION before connect(); a handler sees the socket's
-    state and, through it, the session the CLI announced."""
+    """A handler sees the socket's state (SESSION is set before connect())."""
     vault("CSCI 170", syllabus=CS170_SYLLABUS)
 
     class State:
@@ -525,8 +506,7 @@ def test_confidence_is_kept_and_splits_coverage(vault, con, freeze_day):
 
 
 def test_a_rating_given_after_the_verdict_is_counted_apart(vault, con, freeze_day):
-    """Hindsight is allowed but must not pass for a rating given blind, and
-    re-sending a block must be able to change it either way."""
+    """Hindsight ratings are allowed but distinguishable from blind ones; re-sending can change either."""
     vault("CSCI 103", note="nothing", syllabus="")
     freeze_day("2026-10-03")
     study.record_attempts("blk", "CSCI 103", [

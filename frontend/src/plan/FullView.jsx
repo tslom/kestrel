@@ -3,14 +3,10 @@ import Icon from "../ui/icons.jsx";
 import ErrorBoundary from "../ui/ErrorBoundary.jsx";
 import { SheetBody, sheetTitle } from "../widgets/views.jsx";
 
-// Full views: the dock, carried over as a strip of tabs that takes the stage
-// and the side column. Every sheet you open stays in the strip with its data
-// warm (mounted, only hidden), newest last; Esc closes the newest, and
-// "← Back" closes them all. Re-opening one already in the strip shows it
-// where it sits rather than moving it — the same no-shuffle rule the dock had.
+// Full views: a strip of tabs taking the stage and side column; each stays mounted (data warm), newest
+// last. Esc closes the newest, "← Back" all. Re-opening one shows it where it sits (no shuffle).
 export default function FullView({ stack, showing, onShow, onClose, onBack, onPin, onOpen }) {
-  // Focus goes into the view when it opens (so Tab starts in it, not at the
-  // top of the page behind) and back to whatever had it when it closes.
+  // Focus enters the view on open (Tab starts in it) and returns on close.
   const opener = useRef(null);
   const holdFocus = useCallback((el) => {
     if (el) {

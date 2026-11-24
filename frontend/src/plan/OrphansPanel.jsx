@@ -2,15 +2,9 @@ import { useState } from "react";
 import Icon from "../ui/icons.jsx";
 import { postJSON } from "../lib/api";
 
-// Branches left behind (console_worktree.orphans): a closed tab's, or a
-// finished `claude --worktree` session's (the night jobs), still holding
-// commits their base doesn't have or uncommitted files. The fully merged ones
-// are already gone (swept on startup and on every tab's close); these are the
-// ones that need a decision, in one place instead of a ⚠ in whatever tab
-// opened next on the repo.
-//
-// Merge is the review pane's merge (a clean rebase and fast-forward only,
-// pushed if that repo's review is set to push); Discard asks once, inline.
+// Branches left behind (console_worktree.orphans: a closed tab's or a night job's `claude --worktree`)
+// still holding unmerged commits or uncommitted files; merged ones are swept at startup and tab close.
+// Merge is the review pane's (clean rebase + fast-forward only, pushed if the repo's review says so); Discard asks once.
 
 const s = (n) => (n === 1 ? "" : "s");
 

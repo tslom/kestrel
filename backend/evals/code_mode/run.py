@@ -2,15 +2,11 @@
 
     cd backend && VAULT_PATH=... .venv/bin/python -m evals.code_mode.run [--only 1] [--arm script]
 
-Each question runs twice through console.build_options (general profile, the
-default model, the real prompt, Brain hook and vault server): once as
-shipped, once with run_script taken out of the server and its prompt line
-cut. Reads are auto-approved as in the console; anything that would need a
-card is denied, so nothing is written. Prints tokens, turns, calls and time
-from each session's ResultMessage.
-
-This spends the shared subscription window (Sonnet, ~50-300k tokens a
-session, mostly cache reads), so it is run by hand, not by pytest.
+Each question runs twice through console.build_options (real prompt, Brain hook,
+vault server): as shipped, and with run_script and its prompt line cut. Reads are
+auto-approved, anything needing a card is denied (nothing is written). Prints
+tokens, turns, calls and time. Spends the shared window (Sonnet, ~50-300k tokens a
+session, mostly cache reads): run by hand, not by pytest.
 """
 import argparse
 import asyncio
@@ -30,8 +26,7 @@ QUESTIONS = [
     "and how much have I studied each one in the last two weeks?",
     "Who has texted me in the last week that I haven't replied to? For each of "
     "them, is there anything on my calendar with them this month?",
-    # Big intermediate results: each body is thousands of characters and
-    # the answer needs one number out of each.
+    # Big intermediate results: thousands of characters per body, one number needed.
     "Go through my last 8 receipt or order emails and tell me the total "
     "amount on each one, read from the email itself, and the sum.",
 ]
@@ -89,18 +84,14 @@ async def one(question: str, arm: str) -> dict:
 
 
 def explored(calls: list[str]) -> int:
-    """Calls made before the first run_script: the schema-finding the
-    script arm is supposed to do without (typically 2-3 db_query probes).
-    ToolSearch is loading the tools, not exploring, so it doesn't count; a
-    run that never scripts counts every call."""
+    """Calls before the first run_script (typically 2-3 db_query probes), excluding
+    ToolSearch; a run that never scripts counts every call."""
     before = calls[:calls.index("run_script")] if "run_script" in calls else calls
     return sum(c != "ToolSearch" for c in before)
 
 
 def table(rows: list[dict]) -> str:
-    """Median per question and arm: total input tokens, output, turns, calls
-    before the script, seconds. Medians, since one run that wanders off
-    doubles a mean at n=3."""
+    """Median per question and arm (a mean at n=3 doubles on one wandering run)."""
     from statistics import median
     lines = ["| q | arm | n | total in | out | turns | pre-script calls | scripted | s |",
              "|---|---|---|---|---|---|---|---|---|"]
@@ -132,7 +123,7 @@ async def main() -> None:
     rows = []
     for _ in range(args.repeat):
         for n in picks:
-            # The two arms side by side, so the window state is the same for both.
+            # Arms run together so both see the same window state.
             for r in await asyncio.gather(*(one(QUESTIONS[n - 1], a) for a in arms)):
                 r = {"q": n, **r, "total_in": r["input"] + r["cache_write"] + r["cache_read"],
                      "explored": explored(r["calls"]) if r["arm"] == "script" else 0}

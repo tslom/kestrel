@@ -1,10 +1,4 @@
-"""Due dates that name an hour (tasks.due_time) and the triage that follows.
-
-`due` stays the day key it always was; `due_time` is the optional 'HH:MM' on
-it. The two things worth pinning down are the rollover (a day key runs 04:00 to
-03:59, so 01:00 belongs to the *end* of its key, not the start) and the moment
-a timed task stops being "due today" and becomes overdue.
-"""
+"""Due dates that name an hour (tasks.due_time): the 04:00 day-key rollover and when a timed task becomes overdue."""
 
 from datetime import date, datetime, timedelta
 
@@ -24,8 +18,7 @@ def test_split_due_accepts_a_bare_date():
 def test_split_due_accepts_a_combined_stamp():
     assert db.split_due("2026-09-21T17:30") == ("2026-09-21", "17:30")
     assert db.split_due("2026-09-21 17:30") == ("2026-09-21", "17:30")
-    # Seconds are dropped rather than rejected — callers echoing an ISO stamp
-    # back at us shouldn't have to trim it first.
+    # Seconds are dropped, not rejected, so callers can echo an ISO stamp.
     assert db.split_due("2026-09-21T17:30:00") == ("2026-09-21", "17:30")
 
 
@@ -44,8 +37,7 @@ def test_split_due_rejects_junk(bad):
 def test_day_instant_inverts_day_key():
     # An evening time is that calendar day.
     assert db.day_instant("2026-09-21", "17:00") == datetime(2026, 9, 21, 17, 0)
-    # An after-midnight time is the *next* calendar day, because 01:00 still
-    # belongs to the day key that started the evening before.
+    # After-midnight times are the next calendar day: 01:00 belongs to the day key that began the evening before.
     assert db.day_instant("2026-09-21", "01:00") == datetime(2026, 9, 22, 1, 0)
 
 
@@ -107,8 +99,7 @@ def test_bad_hour_is_rejected(dbfile):
 
 
 def test_today_with_a_past_hour_is_overdue(dbfile, monkeypatch):
-    """The point of the feature: a 9am deadline must not sit in "due today" all
-    afternoon looking as fresh as a 5pm one."""
+    """A 9am deadline must not sit in "due today" all afternoon as fresh as a 5pm one."""
     monkeypatch.setattr(db, "day_key", lambda dt=None: "2026-09-21")
     monkeypatch.setattr(db, "datetime", _clock(datetime(2026, 9, 21, 14, 0)))
     past = db.create_task("9am standup", due="2026-09-21T09:00")
@@ -122,8 +113,7 @@ def test_today_with_a_past_hour_is_overdue(dbfile, monkeypatch):
 
 
 def test_after_midnight_hour_is_not_yet_overdue(dbfile, monkeypatch):
-    """23:30 on day key D, read at 00:30 — which is 00:30 of the *next*
-    calendar day but still day key D, and half an hour before the deadline."""
+    """23:30 on day key D read at 00:30 is the next calendar day but still key D, before the deadline."""
     monkeypatch.setattr(db, "day_key", lambda dt=None: "2026-09-21")
     monkeypatch.setattr(db, "datetime", _clock(datetime(2026, 9, 22, 0, 30)))
     t = db.create_task("1am cron check", due="2026-09-21T01:00")
@@ -140,8 +130,7 @@ def test_due_today_is_in_clock_order_with_untimed_last(dbfile, monkeypatch):
     noon = db.create_task("noon call", due="2026-09-21T12:00")
     allday = db.create_task("tidy up", due="2026-09-21")
     evening = db.create_task("8pm gym", due="2026-09-21T20:00")
-    # 01:00 comes last of the timed three: it's the end of this day key, not
-    # eleven hours before noon.
+    # 01:00 sorts last of the timed three: it is the end of this day key.
     assert [t["id"] for t in db.tasks_today()["due_today"]] == [
         noon["id"], evening["id"], late["id"], allday["id"]]
 
@@ -193,8 +182,7 @@ def test_generated_view_prints_the_hour(dbfile):
 
 
 def _clock(at):
-    """A stand-in for db.datetime whose now() is fixed, leaving the rest of the
-    class (fromisoformat, strptime, the type itself) intact."""
+    """Stand-in for db.datetime with a fixed now(); the rest of the class is intact."""
     class _Frozen(datetime):
         @classmethod
         def now(cls, tz=None):

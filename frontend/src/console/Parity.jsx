@@ -1,15 +1,10 @@
 import { useState } from "react";
 
-// The pieces of Claude Code's own TUI a console tab was missing: the task
-// list above the prompt, the /mcp panel, and rewinding to before a message.
-// All three are the CLI's state shown, not ours — see console_tasks.py and
-// the `mcp` / `rewind` frames in console.py.
+// TUI pieces a console tab lacked: task list, /mcp panel, rewind. The CLI's state, not ours (console_tasks.py; `mcp`/`rewind` frames in console.py).
 
 const MARK = { completed: "✓", in_progress: "▸", pending: "○" };
 
-// Above the composer while the list has anything left to do, the way the
-// terminal shows it; folds to one line on click. A finished list goes away
-// on its own — the turn's reply is where "done" gets said.
+// Above the composer while anything is left; folds to a line; a finished list goes away on its own.
 export function TaskPanel({ tasks }) {
   const [folded, setFolded] = useState(false);
   if (!tasks?.length || tasks.every((t) => t.status === "completed")) return null;
@@ -43,9 +38,7 @@ export function TaskPanel({ tasks }) {
 
 const MCP_TONE = { connected: "ok", pending: "wait", "needs-auth": "warn", failed: "bad", disabled: "off" };
 
-// /mcp, as a panel. Authenticating a server is an interactive browser flow
-// the SDK session can't run, so needs-auth says where to do it instead of
-// offering a button that can't work.
+// /mcp as a panel. Authenticating is an interactive browser flow the SDK can't run, so needs-auth says where, with no dead button.
 export function McpPanel({ state, onAction, onClose }) {
   const servers = state?.servers || [];
   return (
@@ -87,11 +80,9 @@ export function McpPanel({ state, onAction, onClose }) {
   );
 }
 
-// On one of your messages: go back to just before it, the way Esc Esc does
-// in the terminal. "conversation" drops this message and everything after
-// (its text returns to the composer); in a dev tab "code" restores the
-// repo's files instead, or both together. Two clicks, because the second is
-// the one that throws work away — and the viewer has no confirm().
+// Rewind to just before one of your messages (Esc Esc in the terminal): "conversation" drops it and
+// later turns (text returns to the composer); in a dev tab "code" restores the repo's files, or both.
+// Two clicks because the second throws work away and the viewer has no confirm().
 export function RewindButton({ entry, disabled, files, onRewind }) {
   const [arming, setArming] = useState(false);
   if (!entry.checkpoint) return null;

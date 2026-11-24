@@ -1,9 +1,4 @@
-"""Calendar duplicate collapsing.
-
-Google hands out two ids for one event when an invite arrives by two routes,
-so the (day, event_id) PK can't collapse them and the widget rendered the same
-class registration twice.
-"""
+"""Calendar duplicates: one invite by two routes gets two Google ids, which the (day, event_id) PK can't collapse."""
 
 from app.providers.calendar import _dedupe
 

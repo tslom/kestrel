@@ -1,6 +1,4 @@
-"""A handed-off tab's report fires at the real end of its
-work, whole. The logic is frontend (lib/handoff.js), so this runs its node
-tests (frontend/tests/handoff.test.mjs) under pytest, which is the commit bar."""
+"""A handed-off tab's report fires at the real end of its work; runs frontend/tests/handoff.test.mjs under pytest (logic is lib/handoff.js)."""
 
 import shutil
 import subprocess

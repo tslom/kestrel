@@ -4,10 +4,8 @@ import { fetchJSON } from "../lib/api";
 import { useWidgetData } from "../lib/refresh";
 import { dragPin } from "../lib/drag.js";
 
-// The vault's way in from the desk (the Vault node, ⌘K): search over titles,
-// paths and text, then your pinned notes (Obsidian's own bookmarks), then
-// what the console wrote (06-Generated/, still listed in the Generated inbox
-// until filed). All of it reads index.db, which stays derived.
+// The vault's way in (Vault node, ⌘K): search, pinned notes (Obsidian bookmarks), then
+// 06-Generated/. All reads index.db (derived).
 
 const edited = (iso) => new Date(iso).toLocaleDateString([], { month: "short", day: "numeric" });
 

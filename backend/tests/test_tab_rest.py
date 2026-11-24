@@ -1,7 +1,4 @@
-"""Tabs at rest (#91) and pinned/reordered (#102): snoozed until a time,
-settled onto a list, settled by themselves when merged or a week idle. The
-logic is frontend (lib/tabRest.js), so this runs its node tests
-(frontend/tests/tabRest.test.mjs) under pytest, which is the commit bar."""
+"""Tabs at rest and pinned/reordered: runs the frontend node tests (frontend/tests/tabRest.test.mjs) under pytest."""
 
 import shutil
 import subprocess

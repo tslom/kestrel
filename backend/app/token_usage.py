@@ -1,42 +1,10 @@
-"""Token usage — what every model call cost, and who spent the limit.
+"""Token usage: tokens and API-equivalent cost per tab, model, mode, project, day.
 
-Two questions this answers that nothing else here could:
-
-  * **does the tiering save anything?** Fable plans, Opus decides, Haiku
-    grinds — or so the open_tab descriptions say. The only way to know is to
-    price what actually ran, then reprice the same tokens as if one model had
-    done it all.
-  * **which tabs used up the 5h / weekly window?** The usage chips say how
-    much is gone; this says where it went.
-
-**The source is the session transcripts**, `~/.claude/projects/*/*.jsonl` (and
-each session's `subagents/*.jsonl`): every Claude Code session on this
-machine logs there, Kestrel's tabs (`entrypoint: sdk-py`) and the terminal's
-alike. Two traps, both from the memory notes:
-
-  * each assistant message is logged once per streamed chunk with the same
-    cumulative `usage`, so a naive sum is ~2x. Dedupe by `message.id` within
-    a file, taking the max of each field.
-  * there is no API cost in a transcript, and on a subscription there is no
-    bill. "Cost" here is **API-equivalent**: list price for the same tokens
-    (PRICES below). It's a yardstick for comparing, not money spent.
-
-Nothing is stored: a full scan of ~3.6GB reads in about five seconds, and a
-per-file cache keyed on (size, mtime) makes every scan after the first only
-re-read the files that grew. So the numbers are derived by construction —
-there is no table to drift.
-
-Tab and mode: a transcript knows its cwd and entrypoint, so dev tabs (cwd in
-a project or one of its worktrees), terminal sessions and background one-shots
-sort themselves. A vault session could be a general or a study tab, which only
-the console knew: `console_sessions` (console_work.remember_session) records
-it as tabs run; vault sessions older than the table read "general/study".
-
-Other providers: Gemini and Codex errands come from the delegates log
-(`delegate_calls`, app/delegates/store.py), one row per run with the tokens
-their CLI reported, charged to the Claude session that sent them. They have no
-rows in PRICES, so they count in tokens and show unpriced, and the tiering
-comparison reprices Claude's calls only.
+Source: the session transcripts (`~/.claude/projects/*/*.jsonl`, plus
+`subagents/`) and the delegates log for outside providers. Nothing is stored.
+Traps: usage is logged once per streamed chunk, so dedupe by `message.id`
+(max of each field); cost is list price, never a bill.
+Design: DESIGN.md → Model usage.
 """
 
 from __future__ import annotations
@@ -50,51 +18,50 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
-from . import claude_quota, config, db
+from . import claude_quota, config, db, model_prices
 
 router = APIRouter(prefix="/api/token-usage")
 
 CLAUDE_PROJECTS = Path(os.path.expanduser("~/.claude/projects"))
 
-# Provider ids are the delegates registry's (app/delegates/registry.py).
+# Provider ids and names are the delegates registry's (app/delegates/registry.py).
 CLAUDE = "claude"
-PROVIDER_LABEL = {"claude": "Claude", "gemini": "Gemini", "codex": "ChatGPT (Codex)"}
 
-# $ per million tokens: (input, output, cache read). Cache writes are priced
-# off input (WRITE_5M / WRITE_1H). List prices, matched by longest prefix of
-# the model id so dated ids ("claude-haiku-4-5-20251001") resolve. From the
-# claude-api skill's price table; a model not here is counted in
-# tokens and shown unpriced rather than guessed at.
-PRICES: dict[str, tuple[float, float, float]] = {
-    "claude-fable-5-2": (8.0, 40.0, 0.20),
-    "claude-fable-5-1": (10.0, 50.0, 0.25),
-    "claude-fable-5": (10.0, 50.0, 1.00),
-    "claude-mythos-5-2": (8.0, 40.0, 0.20),
-    "claude-mythos-5-1": (10.0, 50.0, 0.25),
-    "claude-opus-5-5": (4.0, 20.0, 0.20),
-    "claude-opus-5": (5.0, 25.0, 0.50),
-    "claude-opus-4-8": (5.0, 25.0, 0.50),
-    "claude-opus-4-7": (5.0, 25.0, 0.50),
-    "claude-opus-4-6": (5.0, 25.0, 0.50),
-    "claude-opus-4-5": (5.0, 25.0, 0.50),
-    "claude-opus-4": (15.0, 75.0, 1.50),
-    "claude-sonnet-5-5": (2.0, 10.0, 0.10),
-    "claude-sonnet-5": (2.0, 10.0, 0.20),
-    "claude-sonnet-4": (3.0, 15.0, 0.30),
-    "claude-haiku-5-5": (0.10, 0.50, 0.01),
-    "claude-haiku-4-5": (1.0, 5.0, 0.10),
-}
-WRITE_5M, WRITE_1H = 1.25, 2.0
-# Haiku 5.5 is tiered: a prompt over 100K tokens bills at 5x.
-LONG_PROMPT = {"claude-haiku-5-5": (100_000, 5.0)}
 
-# What "if one model did it all" reprices against.
+def _provider_labels() -> dict[str, str]:
+    from .delegates import registry
+    return {p.id: p.label for p in registry.PROVIDERS.values()}
+
+
+PROVIDER_LABEL = _provider_labels()
+
+# "If one model did it all" targets: newest of these families in the live list, else COUNTERFACTUALS.
+COUNTER_FAMILIES = ("opus", "fable", "sonnet")
 COUNTERFACTUALS = ("claude-opus-5-5", "claude-fable-5-2", "claude-sonnet-5-5")
 
 
-def price_for(model: str) -> tuple[float, float, float] | None:
-    best = max((k for k in PRICES if model.startswith(k)), key=len, default=None)
-    return PRICES[best] if best else None
+def counterfactuals(providers: set[str]) -> dict[str, str]:
+    """label → model id to reprice on; an unreadable list falls back to COUNTERFACTUALS."""
+    out: dict[str, str] = {}
+    try:
+        from . import model_catalog
+        for fam in COUNTER_FAMILIES:
+            row = model_catalog.newest(fam)
+            if row:
+                out[family(row["id"])] = row["id"]
+        for p in sorted(providers - {CLAUDE}):
+            rows = sorted(model_catalog.catalog(p), key=lambda r: r["rank"])
+            if rows:
+                out[rows[0].get("label") or rows[0]["id"]] = rows[0]["id"]
+    except Exception as e:  # the comparison falls back to the fixed ids
+        print(f"[token-usage] model list unreadable: {e!r}")
+    if not any(m.startswith("claude-") for m in out.values()):
+        out = {**{family(m): m for m in COUNTERFACTUALS}, **out}
+    return out
+
+
+def price_for(model: str, book: model_prices.Book | None = None) -> model_prices.Price | None:
+    return (book or model_prices.book()).lookup(model)
 
 
 def family(model: str) -> str:
@@ -119,6 +86,8 @@ class Call:
     cache_read: int
     cache_5m: int
     cache_1h: int
+    account: str = ""      # an outside provider's account (delegate_accounts.id)
+    summed: bool = False   # a delegate run: many model calls' tokens added up
 
 
 @dataclass(slots=True)
@@ -130,27 +99,30 @@ class FileInfo:
     first_prompt: str
 
 
-def cost(c: Call, model: str | None = None) -> float | None:
-    """API-equivalent $ for a call, at its own model's prices or `model`'s."""
-    m = model or c.model
-    p = price_for(m)
+def _prompt(c: Call) -> int:
+    return c.inp + c.cache_read + c.cache_5m + c.cache_1h
+
+
+def cost(c: Call, model: str | None = None,
+         book: model_prices.Book | None = None) -> float | None:
+    """API-equivalent $ for a call, at its own model's prices or `model`'s.
+    A prompt past the model's long-context threshold bills at its long tier,
+    except in a delegate run, whose tokens are summed over many calls."""
+    p = price_for(model or c.model, book)
     if p is None:
         return None
-    pin, pout, pcr = p
-    prompt = c.inp + c.cache_read + c.cache_5m + c.cache_1h
-    tier = next((mult for k, (limit, mult) in LONG_PROMPT.items()
-                 if m.startswith(k) and prompt > limit), 1.0)
-    pin, pout, pcr = pin * tier, pout * tier, pcr * tier
-    return (c.inp * pin + c.out * pout + c.cache_read * pcr
-            + c.cache_5m * pin * WRITE_5M + c.cache_1h * pin * WRITE_1H) / 1e6
+    r = p.rates(_prompt(c), tiered=not c.summed)
+    return (c.inp * r.input + c.out * r.output + c.cache_read * r.cache_read
+            + c.cache_5m * r.cache_5m + c.cache_1h * r.cache_1h) / 1e6
 
 
-def uncached_cost(c: Call) -> float | None:
+def uncached_cost(c: Call, book: model_prices.Book | None = None) -> float | None:
     """The same call with no prompt caching: every prompt token at input price."""
-    p = price_for(c.model)
+    p = price_for(c.model, book)
     if p is None:
         return None
-    return ((c.inp + c.cache_read + c.cache_5m + c.cache_1h) * p[0] + c.out * p[1]) / 1e6
+    r = p.rates(_prompt(c), tiered=not c.summed)
+    return (_prompt(c) * r.input + c.out * r.output) / 1e6
 
 
 # --- the Claude transcript scanner ---------------------------------------
@@ -222,8 +194,7 @@ def parse_claude(path: Path) -> tuple[FileInfo, list[Call]]:
                 "cache_1h": int(cc.get("ephemeral_1h_input_tokens") or 0),
             }
             if not cc and usage.get("cache_creation_input_tokens"):
-                # Older records carry only the total; the CLI's default TTL
-                # then was 5 minutes.
+                # Older records carry only the total, at the then-default 5m TTL.
                 row["cache_5m"] = int(usage["cache_creation_input_tokens"])
             prev = by_id.get(mid)
             if prev is None:
@@ -250,11 +221,8 @@ SOURCES = [(CLAUDE, claude_files, parse_claude)]
 
 
 def delegate_calls(start: datetime | None) -> list[Call]:
-    """Gemini and Codex runs from the delegates log (`delegate_runs`), one
-    Call each. Their session is the Claude session that sent them, so a tab's
-    row counts its errands too. Claude's own fan-out variants are left out:
-    they are `claude` sessions with transcripts of their own, already scanned.
-    Never raises; telemetry."""
+    """Outside providers' finished runs as Calls, charged to the Claude session that sent
+    them; Claude fan-outs are skipped (already in transcripts). Never raises."""
     try:
         from .delegates import registry, store
         outside = tuple(p.id for p in registry.PROVIDERS.values() if p.outside)
@@ -265,15 +233,33 @@ def delegate_calls(start: datetime | None) -> list[Call]:
         return []
     out = []
     for r in rows:
+        # Refused before any model call (bad --model, signed out): spent nothing.
+        if not (r["tokens_in"] or r["tokens_out"]):
+            continue
         try:
             ts = datetime.fromisoformat(r["started_at"]).timestamp()
         except (TypeError, ValueError):
             continue
-        out.append(Call(ts=ts, model=r["model"] or r["provider"], provider=r["provider"],
+        # No model = the CLI's unnamed default. tokens_in includes the cached part.
+        tin, cached = int(r["tokens_in"] or 0), int(r.get("tokens_cached") or 0)
+        out.append(Call(ts=ts, model=r["model"] or DEFAULT_MODEL, provider=r["provider"],
                         session=r["session_id"] or f"{r['provider']}-errand",
-                        inp=int(r["tokens_in"] or 0), out=int(r["tokens_out"] or 0),
-                        cache_read=0, cache_5m=0, cache_1h=0))
+                        inp=max(0, tin - cached), out=int(r["tokens_out"] or 0),
+                        cache_read=min(cached, tin), cache_5m=0, cache_1h=0,
+                        account=r.get("account") or "", summed=True))
     return out
+
+
+DEFAULT_MODEL = "default model"
+
+
+def _account_labels() -> dict[str, str]:
+    """delegate_accounts id → name; a broken table costs the names, not the page."""
+    try:
+        from .delegates import store
+        return {a["id"]: a["label"] for a in store.accounts()}
+    except Exception:  # the page still groups, by id
+        return {}
 
 
 class _Cache:
@@ -366,7 +352,7 @@ def classify(info: FileInfo | None, known: dict | None) -> dict:
 # --- ranges and grouping --------------------------------------------------
 
 RANGES = ("5h", "week", "today", "7d", "30d", "90d", "all")
-GROUPS = ("model", "day", "tab", "mode", "project", "provider")
+GROUPS = ("model", "day", "tab", "mode", "project", "provider", "account")
 
 
 def _window_start(key: str, span: timedelta, now: datetime) -> tuple[datetime, bool]:
@@ -409,14 +395,13 @@ def _blank() -> dict:
             "cost": 0.0, "uncached": 0.0, "unpriced": 0, "sessions": set()}
 
 
-def _add(acc: dict, c: Call) -> None:
+def _add(acc: dict, c: Call, v: float | None, u: float | None) -> None:
     acc["calls"] += 1
     acc["input"] += c.inp
     acc["output"] += c.out
     acc["cache_read"] += c.cache_read
     acc["cache_write"] += c.cache_5m + c.cache_1h
     acc["sessions"].add(c.session)
-    v, u = cost(c), uncached_cost(c)
     if v is None or u is None:
         acc["unpriced"] += 1
     else:
@@ -444,7 +429,13 @@ def summary(rng: str = "week", group: str = "tab", limit: int = 40,
     calls = [c for c in calls if c.ts >= cut]
     if sources is None:
         calls += delegate_calls(start)
+    try:
+        model_prices.ensure_fresh()
+    except Exception as e:  # stale prices beat no page
+        print(f"[token-usage] price refresh failed: {e!r}")
+    book = model_prices.book()
     known = _known_sessions()
+    accts = _account_labels() if group == "account" else {}
     who: dict[str, dict] = {}
 
     def whom(s: str) -> dict:
@@ -456,17 +447,22 @@ def summary(rng: str = "week", group: str = "tab", limit: int = 40,
     groups: dict[str, dict] = {}
     labels: dict[str, dict] = {}
     providers: dict[str, dict] = {}
-    # The tiering question is about Claude's tiers, so only Claude's calls
-    # are repriced, and compared against Claude's own cost.
-    counter = {m: 0.0 for m in COUNTERFACTUALS}
-    claude = 0.0
+    # Unpriced calls are left out of both the mix and the counterfactuals.
+    targets = counterfactuals({c.provider for c in calls})
+    targets = {k: m for k, m in targets.items() if book.lookup(m)}
+    counter = dict.fromkeys(targets, 0.0)
+    mix = 0.0
+    used: dict[tuple[str, str], int] = {}
     for c in calls:
-        _add(total, c)
-        _add(providers.setdefault(c.provider, _blank()), c)
-        if c.provider == CLAUDE:
-            claude += cost(c) or 0.0
-            for m in COUNTERFACTUALS:
-                counter[m] += cost(c, m) or 0.0
+        v, u = cost(c, book=book), uncached_cost(c, book=book)
+        _add(total, c, v, u)
+        _add(providers.setdefault(c.provider, _blank()), c, v, u)
+        used[(c.provider, c.model)] = used.get((c.provider, c.model), 0) + c.inp + c.out \
+            + c.cache_read + c.cache_5m + c.cache_1h
+        if v is not None:
+            mix += v
+            for k, m in targets.items():
+                counter[k] += cost(c, m, book) or 0.0
         w = whom(c.session)
         if group == "model":
             key = f"{c.provider}:{c.model}"
@@ -474,6 +470,15 @@ def summary(rng: str = "week", group: str = "tab", limit: int = 40,
         elif group == "provider":
             key = c.provider
             labels.setdefault(key, {"label": PROVIDER_LABEL.get(key, key)})
+        elif group == "account":
+            # Transcripts don't say which login wrote them, so Claude is one row.
+            key = f"{c.provider}:{c.account}" if c.account else c.provider
+            if key not in labels:
+                name = PROVIDER_LABEL.get(c.provider, c.provider)
+                labels[key] = {"label": f"{name} · {accts.get(c.account, c.account)}" if c.account
+                               else name + (" (all accounts)" if c.provider == CLAUDE
+                                            else " (API key, or before accounts)"),
+                               "provider": c.provider}
         elif group == "day":
             key = db.day_key(datetime.fromtimestamp(c.ts))
             labels.setdefault(key, {"label": key})
@@ -494,7 +499,9 @@ def summary(rng: str = "week", group: str = "tab", limit: int = 40,
                     "worktree": w["worktree"], "session": key,
                 }
         acc = groups.setdefault(key, _blank())
-        _add(acc, c)
+        _add(acc, c, v, u)
+        if group == "model" and "price" not in labels[key]:
+            labels[key]["price"] = _price_meta(book.lookup(c.model), book)
         if group == "tab":
             meta = labels[key]
             meta["models"] = meta.get("models") or set()
@@ -523,14 +530,51 @@ def summary(rng: str = "week", group: str = "tab", limit: int = 40,
             ({"key": p, "label": PROVIDER_LABEL.get(p, p), **_finish(acc)}
              for p, acc in providers.items()),
             key=lambda r: (r["key"] != CLAUDE, -r["tokens"])),
-        "claude_cost": round(claude, 4),
-        "if_all_on": {family(m): round(v, 4) for m, v in counter.items()},
+        "mix_cost": round(mix, 4),
+        "if_all_on": {k: round(v, 4) for k, v in counter.items()},
         "rows": rows[:limit], "more": more,
+        "prices": _prices_used(used, book),
+        "price_sources": book.sources(),
         "note": ("API-equivalent list prices for the same tokens — on a "
                  "subscription nothing is billed per token. Repricing ignores "
-                 "tokenizer differences between models. Gemini and Codex runs "
-                 "are counted in tokens, unpriced."),
+                 "tokenizer differences between models. An errand's tokens are "
+                 "summed over its whole run, so its long-context tier isn't "
+                 "applied."),
     }
+
+
+def _price_meta(p: model_prices.Price | None, book: model_prices.Book) -> dict | None:
+    """Where a model's price came from, for the page: None is unpriced."""
+    if p is None:
+        return None
+    f = book.fetches.get(p.source) or {}
+    return {"source": p.source, "source_label": model_prices.LABELS[p.source],
+            "listed_as": p.model, "fetched_at": f.get("good_at"),
+            "input": p.base.input, "output": p.base.output, "cache_read": p.base.cache_read,
+            "long_above": p.long_above}
+
+
+# Why an outside provider's run can be missing what pricing needs.
+GAPS = {
+    "antigravity": "agy reports no cached tokens, so all its input is priced as fresh",
+}
+
+
+def _prices_used(used: dict[tuple[str, str], int], book: model_prices.Book) -> list[dict]:
+    """Every model in the range with its price and source, the most tokens
+    first; an unpriced one says why."""
+    out = []
+    for (prov, model), tokens in sorted(used.items(), key=lambda kv: -kv[1]):
+        meta = _price_meta(book.lookup(model), book)
+        why = None
+        if meta is None:
+            why = ("the CLI didn't say which model ran" if model == DEFAULT_MODEL
+                   else "no price list has this model")
+        out.append({"provider": prov, "model": model,
+                    "label": family(model) if prov == CLAUDE else model,
+                    "tokens": tokens, "price": meta, "unpriced_why": why,
+                    "gap": GAPS.get(prov)})
+    return out
 
 
 @router.get("/summary")

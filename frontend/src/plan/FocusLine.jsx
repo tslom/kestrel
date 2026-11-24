@@ -3,14 +3,9 @@ import { CARD_NAME } from "../widgets/cards.js";
 import Icon from "../ui/icons.jsx";
 import { focusFirst, roomById, roomOf, todayOrder } from "./Rooms.jsx";
 
-// The focus line (New Features #46): the top bar's second line carries the one most urgent
-// ask, the round-5 focus stack squeezed to a single line. Answer or approve it
-// right there, snooze it (Later), or step past it (›) to the next; the count
-// says how many are behind it. The line reads in Today's order (Rooms.jsx
-// todayOrder: approvals, cut-off tabs, branches, then room by room), so
-// "most urgent" is the first one not stepped past and "n of m" counts the
-// way Today lists them. A stepped-past ask goes to the back of the line, not
-// away: every ask is still in its room and on Today.
+// The focus line (#46): the top bar's second line carries the most urgent ask (answer, Later, or step
+// past with ›). It follows Today's order (Rooms.jsx todayOrder); a stepped-past ask goes to the back,
+// not away (still in its room and on Today).
 
 export default function FocusLine({ asks: given, act, snooze, onOpen }) {
   const [passed, setPassed] = useState([]);   // ids stepped past, oldest first

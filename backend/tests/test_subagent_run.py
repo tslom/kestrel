@@ -1,6 +1,4 @@
-"""sessions.subagent_run: an Agent call's subagent, read off its own transcript
-(#77). Background subagents never put their calls on the parent's stream; the
-CLI files them under <session>/subagents/ with a meta naming the Agent call."""
+"""sessions.subagent_run (#77): background subagents file under <session>/subagents/ with a meta naming the Agent call, not on the parent's stream."""
 
 import json
 

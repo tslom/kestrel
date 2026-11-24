@@ -1,25 +1,9 @@
-"""Email extractors (packages + travel) — a shared
-pipeline over the already-synced `emails` table: candidates by from/subject
-heuristics -> body fetched transiently by msg_id (email_triage.body_excerpt
-— never stored, same posture as triage) -> batched cheap-model extraction
-via claude_agent_sdk.query() (mirrors email_triage exactly: subscription CLI
-login, EXTRACT_MODEL=haiku, JSON-only prompt) -> cached per msg_id in
-email_extract so nothing is parsed twice -> typed upserts into packages /
-trips.
+"""Email extractors (packages, trips, office-hours proposals) over the synced `emails` table.
 
-Not a provider (no METRICS/get(), not in REGISTRY) — packages/trips are
-served by their own read routes (app/routes/extract.py). refresh(token) runs
-inside email.refresh()'s cadence, called last, same way that module already
-calls email_triage.summarize_pending(token).
-
-Travel also polls FlightAware AeroAPI for live status on trips departing soon
-(poll_flight_status) — a quiet no-op until AEROAPI_KEY is configured; trip
-extraction from email works without it. T-24h before departure it
-auto-creates a "Check in <flight>" task (source='travel', deduped on
-source_ref=pnr:flight_no:dep_day via task_exists_for_source, same pattern as
-finance.py's bill auto-task). A delay or gate change, and a package moving
-forward a status, queue an at-desk banner through app/notify.py in
-addition to surfacing in the daily brief.
+Candidates by heuristics -> body fetched transiently (never stored) -> batched Haiku extraction ->
+cached per msg_id in `email_extract` -> typed upserts. Not a provider (not in REGISTRY); `refresh()`
+runs inside email.refresh(). Also polls AeroAPI for live flight status (no-op without AEROAPI_KEY).
+Design: DESIGN.md → §15 packages / §16 travel (extraction).
 """
 
 import asyncio
@@ -75,22 +59,7 @@ TRIP_SYSTEM = (
     'reply with just {"id": "...", "relevant": false} for it.'
 )
 
-# Office-hours proposals. Unlike the two above, nothing here is applied on the model's word — the
-# output is a *proposal* you approve, so the prompt's real job is to make the
-# proposal checkable. Hence `quote`, which is required and must be verbatim:
-# it's the one field a human can verify at a glance, and every other field is
-# just this extractor's reading of it.
-#
-# `course_codes` is injected per batch instead of being asked for freely.
-# A model guessing course codes invents "CS 103" for "CSCI 103" and the
-# proposal then points at a note that doesn't exist; constraining it to the
-# codes actually in the vault turns that into a `relevant: false`.
-#
-# `add` exists because "Starting next week, I will be holding office hours
-# from 12-2 pm on Thursdays" is a new weekly block, and a prompt that calls a
-# standing schedule never an amendment drops it. `current_hours` is injected beside the codes so a post that only
-# restates what the note already says can still be told apart from news —
-# and _upsert_oh_proposal checks that again against the note itself.
+# Output is a proposal a human approves: `quote` is required and verbatim. DESIGN.md → §15 packages / §16 travel (extraction).
 OFFICE_HOURS_SYSTEM = (
     "You read university course mail (Piazza posts and daily digests, Canvas, "
     "instructor and TA messages) and extract *changes to office hours*. You "
@@ -130,9 +99,7 @@ OFFICE_HOURS_SYSTEM = (
     '{"id": "...", "relevant": false} for it.'
 )
 
-# A Piazza daily digest is several posts in one body, and the 1500-char
-# excerpt every other message gets holds roughly the first one. Digests get
-# this much instead, so a post further down is still read.
+# A digest holds several posts; the default 1500-char excerpt holds roughly the first.
 DIGEST_EXCERPT_CHARS = 8000
 
 
@@ -152,9 +119,7 @@ def _package_candidates(con) -> list[dict]:
 
 
 def _oh_preamble() -> str:
-    """The course codes the vault actually has, and the weekly hours each note
-    already lists, handed to the model up front — the second so an `add` is
-    news rather than a digest repeating the syllabus."""
+    """Vault course codes and each note's weekly hours, so the model can't invent codes or re-add known hours."""
     from .. import courses  # late: reads the vault
     current: dict[str, list[str]] = {}
     for c in courses.load()["courses"]:
@@ -172,14 +137,7 @@ def _oh_preamble() -> str:
 # ---------- office-hours proposals: read and decide ----------
 
 def pending_oh_proposals(con=None) -> list[dict]:
-    """Proposals still waiting on you, soonest date first.
-
-    Past dates are dropped rather than shown: approving "cancel last Tuesday"
-    writes an override for a day that has already happened, which is noise in
-    the vault and can't change a decision you already made by walking over
-    there or not. An `add` is the exception — its day is when the weekly block
-    *starts*, and a block that started last week is still this week's hours.
-    """
+    """Pending proposals, soonest first. Past dates are dropped, except `add` (its day is when the block starts)."""
     with db.borrow(con) as con:
         return [dict(r) for r in con.execute(
             "SELECT * FROM oh_proposals WHERE status='pending'"
@@ -188,15 +146,7 @@ def pending_oh_proposals(con=None) -> list[dict]:
 
 
 def decide_oh_proposal(proposal_id: int, approve: bool) -> dict:
-    """Approve (write the override to the vault) or reject (record and move on).
-
-    The write goes through courses.set_exception, so the vault stays the only
-    place that says what the hours are and this table never becomes a second
-    answer to that question. A CourseError — the note moved, the entry can't
-    be matched, the code no longer exists — leaves the row pending rather than
-    marking it approved, because a proposal that failed to apply is still
-    waiting whatever the model thought.
-    """
+    """Approve (write through `courses`, so the vault stays the source) or reject. A CourseError leaves the row pending."""
     from .. import courses
 
     with db.session() as con:
@@ -211,9 +161,7 @@ def decide_oh_proposal(proposal_id: int, approve: bool) -> dict:
         now = datetime.now().isoformat(timespec="seconds")
         applied = prior = None
         if approve and row["action"] == "add":
-            # A new weekly block goes through set_hours, which amends this
-            # person's block on the same weekdays in place — so what it
-            # replaced is read first and kept for the undo.
+            # set_hours amends in place, so read the replaced block first for undo.
             block = courses.standing_block(row["course"], row["who"] or "",
                                            row["when_str"])
             prior = json.dumps(block, default=str) if block else None
@@ -221,8 +169,7 @@ def decide_oh_proposal(proposal_id: int, approve: bool) -> dict:
                 row["course"], row["who"] or "", row["when_str"],
                 where=row["where_str"], role=row["role"])
         elif approve:
-            # The room too: "office hours on lower level 2 today" is a change
-            # of where, not when, and dropping it applies nothing.
+            # Keep the room: a change may be of where, not when.
             applied = courses.set_exception(
                 row["course"], row["who"] or "", row["day"],
                 when=row["when_str"],
@@ -241,13 +188,7 @@ def decide_oh_proposal(proposal_id: int, approve: bool) -> dict:
 
 
 def undecide_oh_proposal(proposal_id: int) -> dict:
-    """Take a decision back (the plan view's undo): an approval's override
-    comes back out of the vault note, and the proposal is pending again.
-
-    Removing the override drops whatever that date's exception now says. That
-    is only wrong if something else rewrote the same date in the seconds
-    between the approve and the undo — the undo window is the toast's.
-    """
+    """Undo a decision: remove what approval wrote and make the proposal pending. Drops whatever that date's exception now says."""
     from .. import courses
 
     with db.session() as con:
@@ -259,8 +200,7 @@ def undecide_oh_proposal(proposal_id: int) -> dict:
         if row["status"] == "pending":
             return row      # nothing decided; idempotent like decide
         if row["status"] == "approved" and row["action"] == "add":
-            # Addressed by slot=the rule just written, which is what the block
-            # now says. Put back the block it replaced, or drop it if it was new.
+            # slot= the rule just written; restore the replaced block or drop the new one.
             prior = json.loads(row["prior"]) if row.get("prior") else None
             if prior:
                 courses.set_hours(row["course"], row["who"] or "",
@@ -280,17 +220,7 @@ def undecide_oh_proposal(proposal_id: int) -> dict:
 
 
 def _office_hours_candidates(con) -> list[dict]:
-    """Course mail that might be amending office hours.
-
-    Carries `received_at`, which the other two don't need: course mail says
-    "this Thursday" and the model can only resolve that against the send date.
-
-    A message already rejected once must not come back — `email_extract`
-    handles that for the other kinds, but a *rejected proposal* is a different
-    thing from an unextracted message, and one message can carry amendments
-    for several dates. The LEFT JOIN on email_extract is what actually stops
-    the retry; oh_proposals rows are the record of your decisions.
-    """
+    """Unextracted course mail; carries `received_at` (the model resolves "this Thursday" against it)."""
     conds, params = [], []
     for hint in OFFICE_HOURS_SENDER_HINTS:
         conds.append("(e.from_addr LIKE ? OR e.subject LIKE ?)")
@@ -308,14 +238,7 @@ _WEEKDAY_NAMES = ["monday", "tuesday", "wednesday", "thursday", "friday",
 
 
 def _snap_to_quoted_weekday(day: date, quote: str) -> date:
-    """Move `day` onto the weekday the quote names, if the model missed it.
-
-    The model resolves "Thursday next week" against the send date and gets the
-    arithmetic off by one — "Thursday next week" can come back as the
-    Friday. The weekday in the sentence is the part a human wrote, so
-    when the quote names exactly one and the date disagrees, the nearest date
-    on that weekday (within three days) wins. Several weekdays, or none, and
-    the model's date stands."""
+    """Snap `day` to the nearest date (within 3 days) on the one weekday the quote names; else keep it."""
     named = {i for i, n in enumerate(_WEEKDAY_NAMES)
              if re.search(rf"\b{n}s?\b", quote, re.I)}
     if len(named) != 1:
@@ -326,22 +249,7 @@ def _snap_to_quoted_weekday(day: date, quote: str) -> date:
 
 
 def _upsert_oh_proposal(con, item: dict, msg_id: str, now: str) -> None:
-    """Record one proposed amendment, pending your approval.
-
-    Validates rather than trusts, because everything here came out of a model
-    reading someone else's prose: an unparseable date, an unknown course or a
-    missing quote drops the proposal instead of surfacing a card you can't act
-    on. The quote check is the important one — a proposal you can't verify
-    against the sentence it came from is exactly what the approval step exists
-    to prevent, so an empty quote is a dropped proposal, not a blank field.
-
-    An `add` is held to more: a weekly rule the card can place, a name to file
-    it under, and not already on the note — a digest re-announcing hours you
-    have is not a proposal.
-
-    Nothing here touches the vault. `courses.set_exception` (or `set_hours`,
-    for an add) runs on approval.
-    """
+    """Record one pending proposal; a bad date, unknown course or empty quote (or an unplaceable/known `add`) drops it. Never touches the vault."""
     from .. import courses  # late: reads the vault, and this module is imported early
 
     action = str(item.get("action") or "").strip().lower()
@@ -369,25 +277,21 @@ def _upsert_oh_proposal(con, item: dict, msg_id: str, now: str) -> None:
         str(item.get("role") or "").strip().lower())
 
     if action == "add":
-        # set_hours files a block under a name, and the card can only place a
-        # weekly rule — "Thursdays sometime" is neither.
+        # Needs a name and a weekly rule the card can place.
         if not who or not when or not courses.is_weekly(when):
             return
         try:
             block = courses.standing_block(code, who, when)
         except courses.CourseError:
             block = None    # ambiguous on the note: let the card ask
-        # Rooms compared on letters and digits only: the same post read twice
-        # came back "GCS, Lower Level 2" and "GCS Lower Level 2".
+        # Rooms compare on letters/digits only ("GCS, Lower Level 2" vs "GCS Lower Level 2").
         def room(s):
             return re.sub(r"[^a-z0-9]", "", str(s or "").lower())
         if block and courses.same_rule(str(block.get("when") or ""), when) and (
                 not where or room(where) in room(block.get("where"))):
             return          # already on the note as written
 
-    # The shared runner hands the upsert only the model's object, so the
-    # message's own headers come back from `emails` rather than by widening
-    # every extractor's signature for one caller.
+    # The runner passes only the model's object, so headers come from `emails`.
     hdr = con.execute("SELECT subject, from_addr FROM emails WHERE msg_id=?",
                       (msg_id,)).fetchone()
 
@@ -420,9 +324,7 @@ def _batch_prompt(batch: list[dict], preamble: str = "") -> str:
     for m in batch:
         item = {"id": m["msg_id"], "from": m["from_addr"],
                 "subject": m["subject"], "body_excerpt": m["excerpt"]}
-        # Only the extractors that need it ask for `received_at`, and only
-        # those get `sent` — a relative date ("this Thursday") is unresolvable
-        # without it, and the other two have no relative dates to resolve.
+        # `sent` only for extractors that carry received_at (relative dates).
         if m.get("received_at"):
             item["sent"] = m["received_at"]
         payload.append(item)
@@ -439,10 +341,7 @@ def _parse_reply(text: str) -> list[dict]:
 # ---------- typed upserts ----------
 
 def _merchant_key(merchant: str | None) -> str | None:
-    """Normalize a merchant for matching. The extractor names the same seller
-    from whatever the email gives it — the order confirmation said "Campus
-    Ready", the pickup-date reply said "campusready.com" — so the match has to
-    survive case, spacing and a sending domain."""
+    """Normalize a merchant for matching across case, spacing and a sending domain."""
     if not merchant:
         return None
     m = merchant.strip().lower()
@@ -452,16 +351,7 @@ def _merchant_key(merchant: str | None) -> str | None:
 
 
 def _match_open_package(con, merchant: str | None) -> str | None:
-    """The order this email is about, when it states neither an order id nor a
-    tracking number.
-
-    A follow-up in an order's thread often carries only the merchant and the
-    fact that changed — Campus Ready's reply gave a pickup date and nothing
-    else, so it was dropped and the card kept showing no ETA while the date
-    sat correctly parsed in `email_extract`. Attach it to the merchant's one
-    open order; abstain when there are none or several, because guessing which
-    of two orders a date belongs to is worse than leaving it blank.
-    """
+    """The merchant's one open order, for mail with no order id or tracking number; None if zero or several."""
     key = _merchant_key(merchant)
     if not key:
         return None
@@ -473,19 +363,11 @@ def _match_open_package(con, merchant: str | None) -> str | None:
 
 
 def _upsert_package(con, item: dict, msg_id: str, now: str) -> str | None:
-    """Returns the order_key written, or None when the item couldn't be keyed
-    to an order. create_package() needs the key back to read the row it just
-    opened; re-deriving the rule at the call site is how the two would drift."""
+    """Returns the order_key written, or None when the item can't be keyed (create_package reads the row back with it)."""
     tracking_no = (item.get("tracking_no") or "").strip() or None
     order_id = (item.get("order_id") or "").strip() or None
     merchant = (item.get("merchant") or "").strip() or None
-    # merchant:order_id is the canonical key — it's present on nearly every
-    # email in an order's lifecycle (confirmation through delivery), unlike
-    # tracking_no which often only shows up once shipped. Falling back to
-    # tracking_no when order_id is still unknown, then folding that stray
-    # row in below once order_id does appear, keeps one order from forking
-    # into two packages (observed live: a "shipped" email with only
-    # tracking_no + a later "delivered" email with only order_id).
+    # merchant:order_id is the canonical key; a tracking-only row is folded in below once order_id appears.
     if merchant and order_id:
         order_key = f"{merchant}:{order_id}"
     elif tracking_no:
@@ -494,20 +376,13 @@ def _upsert_package(con, item: dict, msg_id: str, now: str) -> str | None:
         order_key = _match_open_package(con, merchant)
         if order_key is None:
             return  # not enough to identify the order
-        # An email matched this way is trusted for what changed — eta, status,
-        # carrier, tracking — but not for what the order IS. The row was
-        # opened by a confirmation that named both properly, and a follow-up
-        # describes them in passing: keeping its versions turned "Campus
-        # Ready" into "campusready.com" and an itemized pack into "Linen
-        # order". Dropping them here leaves the COALESCE holding the good one.
+        # Trusted for what changed, not for what the order is: drop merchant/item_desc so COALESCE keeps the good ones.
         merchant = None
         item = {**item, "item_desc": None}
     status = item.get("status")
     if status not in _PACKAGE_RANK:
         status = "ordered"
-    # merchant/item_desc/tracking_no come back too, for the at-desk banner
-    # below: the row already standing is the one the confirmation email named
-    # properly, which the follow-up "shipped" email usually doesn't.
+    # merchant/item_desc/tracking_no feed the banner below (the standing row names them best).
     existing = con.execute(
         "SELECT status, merchant, item_desc, tracking_no FROM packages"
         " WHERE order_key=?",
@@ -535,43 +410,24 @@ def _upsert_package(con, item: dict, msg_id: str, now: str) -> str | None:
         " carrier=COALESCE(excluded.carrier, packages.carrier),"
         " eta_day=COALESCE(excluded.eta_day, packages.eta_day),"
         " status=excluded.status,"
-        # COALESCE, not overwrite: create_package() passes msg_id=None, and a
-        # hand-amended row must not lose the pointer to the email that opened
-        # it. The email path always supplies one, so this is a no-op there.
+        # COALESCE: create_package passes msg_id=None.
         " last_msg_id=COALESCE(excluded.last_msg_id, packages.last_msg_id),"
         " updated_at=excluded.updated_at",
         (order_key, merchant, item.get("item_desc"), order_id, tracking_no,
          item.get("carrier"), item.get("eta_day"), status, msg_id, now))
-    # Unconditional, because the clamp above means `status` is already the
-    # status the row now holds: a backwards move reads as no move at all.
+    # Unconditional: the forward-only clamp makes a backwards move read as no move.
     _notify_package_move(con, order_key, existing, status, merchant)
     return order_key
 
 
 def _notify_package_move(con, order_key: str, existing, status: str,
                          merchant: str | None) -> None:
-    """At-desk banner when a package's status moves forward.
-
-    **On a transition, never on discovery.** A row that didn't exist a moment ago
-    gets nothing, even if it arrives already reading 'delivered' — we can't tell
-    "it just happened" from "we just learned about it", and the honest reading of
-    a first sighting is the second one. That is also what keeps this quiet the
-    first time it runs and through `--backfill-packages`, which deletes rows and
-    re-extracts them: every package in the inbox is a discovery, not a move.
-
-    'ordered' is skipped because the confirmation email is the transition — you
-    pressed the button thirty seconds ago. The alarm channel already owns arrival
-    day (PACKAGE_ALARM_HOUR); this is the part that has no future time to sit at.
-    """
+    """At-desk banner on a forward transition only: never for a new row (discovery), nor for 'ordered'."""
     if existing is None or status == existing["status"] or status == "ordered":
         return
-    # Derived, not a lookup table: PACKAGE_STATUSES is the registry and a fourth
-    # status added there shouldn't have to remember a second place to be named.
     label = status.replace("_", " ")
     what = merchant or existing["merchant"] or "Package"
-    # Not order_key as the last resort: "Vuori:27901251" is a database row, not
-    # something to read off a banner. The tracking number at least tells you
-    # which parcel; failing that the title already said everything known.
+    # Body is never order_key (a DB row, not banner text).
     notify.send("package", order_key, status, title=f"{what} {label}",
                 body=existing["item_desc"] or existing["tracking_no"] or "",
                 con=con)
@@ -594,29 +450,23 @@ def _upsert_trip(con, item: dict, msg_id: str, now: str) -> None:
         " arr_airport=COALESCE(excluded.arr_airport, trips.arr_airport),"
         " dep_local=COALESCE(excluded.dep_local, trips.dep_local),"
         " arr_local=COALESCE(excluded.arr_local, trips.arr_local),"
-        # last_msg_id COALESCEs for the reason the packages one does: create_trip
-        # passes msg_id=None, and a hand-write must not erase the link to the
-        # email that opened the row.
+        # COALESCE: create_trip passes msg_id=None.
         " last_msg_id=COALESCE(excluded.last_msg_id, trips.last_msg_id),"
         " updated_at=excluded.updated_at",
         (pnr, flight_no, dep_day, item.get("carrier"), item.get("dep_airport"),
          item.get("arr_airport"), dep_local, item.get("arr_local"), msg_id, now))
-        # status/gate deliberately absent from the UPDATE SET — once the
-        # AeroAPI poller starts owning them, a later confirmation email must
-        # not downgrade a live status back to 'confirmed'.
+        # status/gate stay out of the UPDATE SET: the AeroAPI poller owns them.
 
 
 # ---------- extraction runner ----------
 
 def _excerpt_limit(m: dict) -> int | None:
-    """More body for a digest (several posts in one message), the default for
-    everything else."""
+    """More body for a digest, the default (None) otherwise."""
     return DIGEST_EXCERPT_CHARS if "digest" in (m.get("subject") or "").lower() else None
 
 
 def _cached_items(payload: str) -> list[dict]:
-    """A cached email_extract payload as its list of objects — a bare object
-    for one, a list once a message carried several."""
+    """A cached payload as a list: older rows are one bare object."""
     data = json.loads(payload)
     return data if isinstance(data, list) else [data]
 
@@ -630,11 +480,7 @@ def _run_extraction(con, token: str, kind: str, candidates: list[dict],
     for i in range(0, len(candidates), EXTRACT_BATCH):
         agent.raise_if_blocked()  # before the body fetches, not after them
         batch = candidates[i:i + EXTRACT_BATCH]
-        # This runs inside a sync refresh already parked on its own worker
-        # thread (poller.py's asyncio.to_thread) — a thread pool, not more
-        # asyncio, is what actually overlaps these blocking Gmail calls.
-        # body_excerpt already swallows fetch errors and returns "", so a
-        # failed fetch just leaves that candidate's excerpt empty.
+        # Threads, not asyncio: we're already on a worker thread. body_excerpt returns "" on fetch errors.
         with ThreadPoolExecutor(max_workers=6) as pool:
             excerpts = pool.map(lambda m: email_triage.body_excerpt(
                 token, m["msg_id"], limit=_excerpt_limit(m)), batch)
@@ -642,10 +488,7 @@ def _run_extraction(con, token: str, kind: str, candidates: list[dict],
             m["excerpt"] = excerpt
         reply = asyncio.run(agent.ask(_batch_prompt(batch, preamble),
                                       model=EXTRACT_MODEL, system=system))
-        # Grouped by message, every object kept. All three prompts ask for one
-        # object per segment/amendment under the same id, and this used to keep
-        # only the first — a round trip's return leg, or the second office-
-        # hours post in a digest, was parsed and then thrown away.
+        # Prompts return one object per segment/amendment under one id: keep them all.
         by_msg: dict[str, list[dict]] = {}
         wanted = {m["msg_id"] for m in batch}
         for it in _parse_reply(reply):
@@ -660,15 +503,13 @@ def _run_extraction(con, token: str, kind: str, candidates: list[dict],
                     " ON CONFLICT(msg_id) DO UPDATE SET"
                     " kind=excluded.kind, payload=excluded.payload,"
                     " extracted_at=excluded.extracted_at",
-                    # One object stays a bare object, the shape every cached
-                    # row already has; several are a list (see _cached_items).
+                    # One object stays bare (the older shape); several are a list.
                     (mid, kind, json.dumps(its[0] if len(its) == 1 else its), now))
                 for it in its:
                     if it.get("relevant", True):
                         upsert(con, it, mid, now)
                         done += 1
-            # messages the model dropped or marked irrelevant still count as
-            # processed, so a false-positive candidate isn't retried forever
+            # Dropped messages still get a row so they aren't retried forever.
             for mid in wanted - seen:
                 con.execute(
                     "INSERT OR IGNORE INTO email_extract (msg_id, kind, payload,"
@@ -680,24 +521,7 @@ def _run_extraction(con, token: str, kind: str, candidates: list[dict],
 # ---------- live flight status ----------
 
 def _match_flight(flights: list[dict], dep_day: str) -> dict | None:
-    """Pick the operation that departs on dep_day out of an ident's several.
-
-    AeroAPI keys /flights/{ident} on a UTC window, but a trip row stores
-    dep_local — so a window of one UTC day built from a local date silently
-    misses any departure whose UTC instant lands outside it. Westbound evening
-    departures are the ordinary case: 21:00 at LAX is 04:00Z the *next* day, so
-    the flight comes back empty and the poller records "checked, nothing" for a
-    flight it never actually looked at. Hence a window wide enough to hold the
-    local day from any zone, and hence this — with a wider window the ident's
-    other daily operations come back too, newest first, so flights[0] is
-    whichever one ran most recently rather than the one we asked about.
-
-    Matched on the origin's timezone as the response itself reports it, which
-    is deliberately *not* tz.zone_on(): that answers "which zone is the user in
-    that day", and on a moving day the two disagree — an RDU->LAX move flight
-    departs in Eastern on a date TIMELINE files under Pacific. The airport's own
-    zone is the only right frame for a scheduled departure.
-    """
+    """The ident's operation departing on dep_day in the origin's own timezone (from the response, not tz.zone_on())."""
     for f in flights:
         out = f.get("scheduled_out") or f.get("estimated_out")
         if not out:
@@ -721,10 +545,7 @@ def _fetch_flight_status(carrier: str | None, flight_no: str | None,
     ident = f"{carrier}{flight_no}"
     day = dep_local[:10]
     d = date.fromisoformat(day)
-    # A day either side, so the local day is covered from any zone. Only the
-    # *start* bound is capped at 2 days out (measured — the end bound accepts
-    # +3d fine), and start runs a day earlier than a departure the poller's
-    # 48h horizon already keeps inside that cap.
+    # A day either side covers the local day from any zone; `start` is capped at 2 days out (measured).
     start = (d - timedelta(days=1)).isoformat() + "T00:00:00Z"
     end = (d + timedelta(days=2)).isoformat() + "T00:00:00Z"
     req = urllib.request.Request(
@@ -734,11 +555,7 @@ def _fetch_flight_status(carrier: str | None, flight_no: str | None,
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read())
     except urllib.error.HTTPError as e:
-        # 400 is this request being wrong (a window bound, near enough always),
-        # not FlightAware being down, so it must not mark the source degraded —
-        # a status panel that cries outage at a structural limit gets ignored.
-        # 401/403 still has to show: a dead credential behind a quiet no-op is
-        # exactly how one stays dead for a week.
+        # 400 is our request being wrong, not an outage: don't mark degraded. 401/403 must show.
         print(f"[email_extract] AeroAPI {ident}: HTTP {e.code}")
         if e.code != 400:
             heartbeat.log_event("email", "degraded",
@@ -772,18 +589,7 @@ def _checkin_task(con, row: dict) -> bool:
 
 
 def ensure_checkin_tasks(con) -> int:
-    """T-24h check-in tasks for every flight departing soon; returns how many
-    were opened.
-
-    Deliberately outside poll_flight_status(). This used to be one call inside
-    that function's loop, which meant the single piece of travel needing no
-    external service at all sat behind the credential for the one that does:
-    with AEROAPI_KEY unset the poller returns 0 before the loop, so no check-in
-    task had ever been created. A task needs a row and a clock, nothing else.
-
-    The window lives in the SQL rather than in a per-row hours check, so there
-    is one definition of "departing soon" here instead of two that can drift.
-    """
+    """T-24h check-in tasks for flights departing soon; returns how many opened. Needs no AEROAPI_KEY, so it stays outside the poller."""
     now_dt = datetime.now()
     horizon = (now_dt + timedelta(hours=FLIGHT_CHECKIN_LEAD_HOURS)
                ).isoformat(timespec="seconds")
@@ -795,27 +601,11 @@ def ensure_checkin_tasks(con) -> int:
 
 
 def _apply_flight_status(con, row: dict, status: dict, now: str) -> None:
-    """Land the new status, and announce it if it's the kind worth interrupting
-    for. The announcement goes through app/notify.py rather than the local
-    `_notify` this used to own — the channel had been sitting in this file for
-    months without a second caller, which is exactly how it went unnoticed that it
-    never fired (the only path to it is below AEROAPI_KEY's early return).
-
-    The queue write shares the UPDATE's transaction, in both directions: if the
-    row doesn't move there is nothing to announce, and if the announcement can't
-    be recorded the row doesn't move either and the next poll cycle tries both
-    again. Deliberately not swallowed — a notification path that fails quietly is
-    the whole reason this step exists.
-    """
+    """Land the new status and notify on delay/cancel/gate change, in one transaction; a notify failure propagates (next poll retries)."""
     new_status = status.get("status") or row["status"]
     new_gate = status.get("gate") or row["gate"]
     changed_status = new_status != row["status"]
-    # A gate learned for the first time is not a gate *change* — row["gate"] is
-    # NULL until a poll fills it, so without the second clause every flight
-    # buzzes once at T-48h announcing a gate nobody had been told before. The
-    # status arm has always guarded the same first-poll case (rows open as
-    # 'confirmed', so the first poll always changes status) via is_delay; this
-    # is that guard on the other arm.
+    # A first-learned gate (row["gate"] NULL) is not a change; is_delay guards the status arm likewise.
     changed_gate = (bool(status.get("gate")) and bool(row["gate"])
                     and status.get("gate") != row["gate"])
     is_delay = bool(new_status) and ("delay" in new_status.lower()
@@ -831,20 +621,14 @@ def _apply_flight_status(con, row: dict, status: dict, now: str) -> None:
             detail = new_status or ""
             if changed_gate:
                 detail = f"{detail} — gate {new_gate}".strip(" —")
-            # Status and gate are both in the key: a flight that goes Delayed →
-            # On Time → Delayed has genuinely told you three things, while the
-            # same delay re-read on every poll cycle has told you one.
+            # Status and gate are in the key: Delayed -> On Time -> Delayed is three messages, a repeated read one.
             notify.send("flight", row["pnr"], str(row["flight_no"]),
                         row["dep_day"], new_status or "-", new_gate or "-",
                         title=f"Flight {ident}", body=detail, con=con)
 
 
 def poll_flight_status(con) -> int:
-    """FlightAware AeroAPI live status for trips departing soon (poll-cost
-    control): only flights within
-    FLIGHT_POLL_HORIZON_HOURS, re-checked at most every
-    FLIGHT_POLL_INTERVAL_HOURS until FLIGHT_POLL_CLOSE_HOURS out, then every
-    poller cycle. Quiet no-op until AEROAPI_KEY is set."""
+    """AeroAPI live status within FLIGHT_POLL_HORIZON_HOURS: every FLIGHT_POLL_INTERVAL_HOURS, every cycle inside FLIGHT_POLL_CLOSE_HOURS. No-op without AEROAPI_KEY."""
     if not AEROAPI_KEY:
         return 0
     now_dt = datetime.now()
@@ -880,17 +664,11 @@ def poll_flight_status(con) -> int:
 # ---------- entrypoint ----------
 
 def refresh(token: str) -> dict:
-    """Called from email.refresh(), same place email_triage.summarize_pending
-    runs — packages/trips only ever extract from mail already synced by
-    that call."""
+    """Called from email.refresh() after email_triage.summarize_pending; extracts from already-synced mail."""
     packages = trips = office_hours = 0
     deferred = None   # the model said no (usage limit, overload): try next cycle
     with db.session() as con:
-        # A refused model call defers the three extractors, never the flight
-        # poll and check-in tasks below — those use no model, and a spent
-        # usage window must not freeze a gate change. Nothing is lost by
-        # deferring: candidates are whatever has no email_extract row yet,
-        # with no age cutoff, so next cycle picks up exactly where this left.
+        # A refused model call defers only the extractors; the poll and check-ins use no model.
         try:
             packages = _run_extraction(con, token, "package",
                                        _package_candidates(con),
@@ -900,9 +678,7 @@ def refresh(token: str) -> dict:
                                     TRIP_SYSTEM, _upsert_trip)
         except agent.AgentError as e:
             deferred = str(e)
-        # Last of the three, and guarded on its own: it reads the vault for
-        # the course list, so an unindexed or missing vault must cost this
-        # extractor only — packages and trips have already run by here.
+        # Last and guarded on its own: it reads the vault, which may be unindexed.
         if deferred is None:
             try:
                 office_hours = _run_extraction(
@@ -914,9 +690,7 @@ def refresh(token: str) -> dict:
             except Exception as e:  # a proposal is never worth a cycle
                 heartbeat.log_event("email", "oh_extract_failed", repr(e))
         flights_checked = poll_flight_status(con)
-        # After the poll, so a flight whose row this same cycle opened or
-        # amended gets its check-in task on the current values, and outside it,
-        # so an unset AEROAPI_KEY doesn't take the tasks down with it.
+        # After the poll (current values), outside it (works without AEROAPI_KEY).
         checkins = ensure_checkin_tasks(con)
     out = {"packages": packages, "trips": trips,
            "office_hours": office_hours,
@@ -933,9 +707,7 @@ _PACKAGE_FIELDS = ("merchant", "item_desc", "order_id", "tracking_no",
 
 
 def _clean_package_fields(fields: dict) -> dict:
-    """Drop the unset keys, validate the two that have a shape. Shared by both
-    hand-write paths so a date typed into `package_add` is checked exactly as
-    one typed into `package_update`."""
+    """Drop unset keys and validate status and eta_day; shared by package_add and package_update."""
     sets = {k: v for k, v in fields.items()
             if k in _PACKAGE_FIELDS and v is not None}
     if "status" in sets and sets["status"] not in PACKAGE_STATUSES:
@@ -949,14 +721,7 @@ def _clean_package_fields(fields: dict) -> dict:
 
 
 def _manual_suffix(con, merchant: str) -> str:
-    """A stand-in order_id for a package nobody emailed about, giving the row
-    the key `Merchant:manual-<n>`.
-
-    Shaped so it can never collide with the email path's `Merchant:order_id` —
-    a real order id is the merchant's own numbering, never the literal string
-    `manual-<n>` — while still reading as that merchant's in `db_query` output
-    and staying stable for a later `package_update`.
-    """
+    """A stand-in order_id `manual-<n>` that can't collide with a real merchant order id."""
     n = 1
     while con.execute("SELECT 1 FROM packages WHERE order_key=?",
                       (f"{merchant}:manual-{n}",)).fetchone():
@@ -965,20 +730,7 @@ def _manual_suffix(con, merchant: str) -> str:
 
 
 def create_package(merchant: str, **fields) -> dict:
-    """Open a package row from what the user says, no email involved.
-
-    Every path in `refresh()` starts at a message in *this* account's mailbox,
-    so an order placed on someone else's login, picked up in a store, or
-    tracked by a number read aloud over the phone could never reach the
-    deliveries card at all. Observed live: a backpack and shoe spray ordered
-    on a parent's Amazon account went onto the shopping list marked bought,
-    because that was the only store the console could write to, and their
-    arrival dates survived only as prose in an item note.
-
-    Keys on `tracking_no` when there is one — the same rule `_upsert_package`
-    uses — so a later carrier email about that number lands on this row rather
-    than forking a second card. Otherwise the key is synthetic.
-    """
+    """Open a package row with no email behind it. Keys on tracking_no when given (as `_upsert_package` does), else a synthetic order id."""
     merchant = (merchant or "").strip()
     if not merchant:
         raise ValueError("merchant is required")
@@ -988,11 +740,7 @@ def create_package(merchant: str, **fields) -> dict:
     now = datetime.now().isoformat(timespec="seconds")
     with db.session() as con:
         with con:
-            # order_id is what _upsert_package builds `Merchant:order_id`
-            # from, so handing it the synthetic suffix reuses that function's
-            # whole body — key choice, stray-tracking fold, forward-only
-            # status, COALESCE — instead of a second INSERT that would drift
-            # from it. A tracking number, when given, still wins the key.
+            # A synthetic order_id reuses _upsert_package whole (key choice, fold, forward-only status, COALESCE).
             if not sets.get("tracking_no") and not sets.get("order_id"):
                 sets["order_id"] = _manual_suffix(con, merchant)
             order_key = _upsert_package(con, sets, None, now)
@@ -1001,18 +749,7 @@ def create_package(merchant: str, **fields) -> dict:
 
 
 def update_package(order_key: str, **fields) -> dict | None:
-    """Hand-amend one package row; None when there's no such order_key.
-
-    The extractor records only what an email states, so a date the user was
-    given some other way — by phone, at a desk, in a reply the parser couldn't
-    key to an order — has no way into the deliveries card at all. This is that
-    way in, for both the console's `package_update` tool and the card's own
-    mark-delivered button.
-
-    Unlike the email path this may move status backward: forward-only exists
-    so emails arriving out of order can't undo a delivery, not to overrule the
-    person looking at the package.
-    """
+    """Hand-amend one package row; None when there is no such order_key. Unlike the email path, may move status backward."""
     sets = _clean_package_fields(fields)
     if not sets:
         raise ValueError("nothing to change")
@@ -1031,24 +768,7 @@ def update_package(order_key: str, **fields) -> dict | None:
 
 
 def delete_package(order_key: str) -> bool:
-    """Drop one package row; False when there's no such order_key.
-
-    For the rows that shouldn't be on the card at all, which `update_package`
-    can't fix: a promotional mail the extractor read as an order, one physical
-    parcel forked into two rows because the confirmation and the shipping
-    notice shared no id, or a hand-added row typed wrong. Marking such a row
-    delivered is the wrong verb — it isn't, and delivered rows still sit on
-    the card for three days and still reach the brief's return window.
-
-    Deletes only the `packages` row, not the `email_extract` cache behind it,
-    because that cache is keyed by msg_id while a package is keyed by order —
-    the row's `last_msg_id` names one message of the several an order's
-    lifecycle sends, so there is no honest set of cache rows to drop with it.
-    Two consequences, both intended: `--backfill-packages`, which replays the
-    whole cache, re-opens a deleted row, and so does a genuinely new email
-    about that order arriving on the next refresh. Deleting is for cleaning
-    up the card as it stands, not for permanently blacklisting an order.
-    """
+    """Drop one package row (not its `email_extract` cache, so a backfill or new email re-opens it); False if absent."""
     order_key = (order_key or "").strip()
     if not order_key:
         raise ValueError("order_key is required")
@@ -1060,22 +780,7 @@ def delete_package(order_key: str) -> bool:
 
 
 def delete_trip(pnr: str, flight_no: str, dep_day: str) -> dict | None:
-    """Drop one trips row by its primary key; the deleted row, or None when
-    there's no such leg.
-
-    For legs that shouldn't be on the travel card at all: one replaced by a
-    rebooking or an exchanged ticket (the airline's change email opens the new
-    leg but never says the old one is gone), or a duplicate. `AA2308` is
-    accepted for `flight_no` and split, as `create_trip` does.
-
-    Of what a row derives, only the check-in task is stored, so that is the one
-    thing cleared here: its still-open T-24h task goes to `dropped` (kept, not
-    deleted, so `task_exists_for_source` still refuses to re-open it). The 48h
-    warning and the travel card read `trips` live, and the phone alarm is
-    withdrawn by the next `alarms.reconcile()` cycle, which diffs against this
-    table. Like `delete_package`, the email_extract cache stays, so only a
-    backfill replay or a new email about the leg brings it back.
-    """
+    """Drop one trips row by (pnr, flight_no, dep_day); the deleted row or None. Drops its open check-in task; `AA2308` is split as in create_trip."""
     pnr = (pnr or "").strip().upper()
     flight_no = (flight_no or "").strip().upper()
     dep_day = (dep_day or "").strip()
@@ -1111,12 +816,7 @@ _FLIGHT_NO_RE = re.compile(r"^([A-Z]{2})\s*0*(\d{1,4})$")
 
 
 def _manual_pnr(con) -> str:
-    """A stand-in confirmation code for a flight nobody emailed about.
-
-    Shaped so it can never collide with a real one — an airline PNR is six
-    alphanumerics, never hyphenated — while still reading as a placeholder in
-    `db_query` output rather than as a booking the user could look up.
-    """
+    """A stand-in `MANUAL-<n>` PNR (never six alphanumerics, so it can't collide with a real one)."""
     n = 1
     while con.execute("SELECT 1 FROM trips WHERE pnr=?",
                       (f"MANUAL-{n}",)).fetchone():
@@ -1128,28 +828,11 @@ def create_trip(flight_no: str, dep_local: str, pnr: str | None = None,
                 carrier: str | None = None, dep_airport: str | None = None,
                 arr_airport: str | None = None,
                 arr_local: str | None = None) -> dict:
-    """Open a trips row from what the user says, no email involved.
-
-    Same hole `create_package` closed, one store over, and found the same way:
-    an RDU->LAX move flight was on the calendar and in no other
-    store, so the travel card read "2 trips booked" and meant Thanksgiving.
-    Every path into `trips` starts at a message in *this* mailbox, and that
-    booking predates the mail sync's own history — there is no message to
-    extract and never will be. A flight booked on someone else's account, held
-    at an agent's desk, or changed over the phone has the same shape.
-
-    Goes through `_upsert_trip` rather than its own INSERT so the COALESCE
-    rules, the derived dep_day and the deliberate status/gate protection stay
-    written once. Passing a real `pnr` matters more than it looks: it is what
-    lets a later schedule-change email for this leg land on this row instead of
-    forking a second card — exactly the job `tracking_no` does for packages.
-    """
+    """Open a trips row with no email behind it, via `_upsert_trip`. A real `pnr` lets a later schedule-change email land on this row."""
     flight_no = (flight_no or "").strip().upper()
     if not flight_no:
         raise ValueError("flight_no is required")
-    # The model reaches for "AA2299" as readily as carrier="AA", flight_no="2299",
-    # and the card renders `{carrier}{flight_no}` — so an unsplit code prints
-    # "AA2299" with an empty carrier and reads right while keying wrong.
+    # The model passes "AA2299" joined; the card renders {carrier}{flight_no}, so split it.
     m = _FLIGHT_NO_RE.match(flight_no)
     if m:
         flight_no = m.group(2)
@@ -1161,8 +844,7 @@ def create_trip(flight_no: str, dep_local: str, pnr: str | None = None,
     except ValueError:
         raise ValueError(f"dep_local must be an ISO local datetime, e.g. "
                          f"2026-08-17T15:00:00, got {dep_local!r}")
-    # A bare date parses fine and lands at midnight, which would put the T-24h
-    # check-in task on the wrong day and print "12:00 AM" on the card. Ask.
+    # A bare date lands at midnight: wrong T-24h day and a "12:00 AM" card.
     if len(dep_local) <= 10:
         raise ValueError("dep_local needs a departure time, not just a date — "
                          "ask the user what time the flight leaves")
@@ -1196,18 +878,9 @@ def create_trip(flight_no: str, dep_local: str, pnr: str | None = None,
 
 
 def backfill_packages() -> int:
-    """Replay cached package extractions through the upsert; returns the count.
+    """Replay cached package extractions through the upsert (idempotent); returns the count.
 
-    `email_extract` is keyed by msg_id and the upsert runs only at extraction
-    time, so a fix to the matching rules never reaches mail already parsed —
-    the Campus Ready pickup date sat correctly parsed in the cache while the
-    card showed no ETA. Replaying is safe (the upsert is idempotent and status
-    still only moves forward), and each row is written with its own email's
-    received_at rather than now, so a long-delivered package isn't shoved back
-    into the card's three-day return window.
-
-    Run after changing the identity rules:
-        python -m app.providers.email_extract --backfill-packages
+    Run after changing the identity rules: python -m app.providers.email_extract --backfill-packages
     """
     with db.session() as con:
         rows = con.execute(
@@ -1222,9 +895,7 @@ def backfill_packages() -> int:
                     items = _cached_items(r["payload"])
                 except ValueError:
                     continue
-                # [:19] drops received_at's UTC offset: every other writer of
-                # this column stores a naive local isoformat, and the card's
-                # "delivered in the last 3 days" test is a string comparison.
+                # [:19]: other writers store naive local isoformat; the card compares strings.
                 stamp = (r["received_at"] or r["extracted_at"])[:19]
                 for item in items:
                     if not item.get("relevant", True):
@@ -1235,15 +906,7 @@ def backfill_packages() -> int:
 
 
 def reextract_office_hours(since: str) -> int:
-    """Forget the office-hours extractions that found nothing, for mail
-    received on or after `since` (YYYY-MM-DD); returns how many. The next
-    email refresh reads them again under the current prompt.
-
-    Unlike backfill_packages this can't replay the cache: a `relevant: false`
-    carries nothing to replay, and that is exactly what the old prompt said
-    about every new weekly block. Only the empty rows go — a message that did
-    produce proposals keeps its row, so nothing you approved or dismissed
-    comes back, and each re-read costs one cheap-model pass per message.
+    """Forget empty office-hours extractions for mail on/after `since` (YYYY-MM-DD); returns how many.
 
     Run after changing OFFICE_HOURS_SYSTEM:
         python -m app.providers.email_extract --reextract-office-hours 2026-09-01
@@ -1301,8 +964,7 @@ def upcoming_trips(hours: int = 48) -> list[dict]:
         return [dict(r) for r in rows]
 
 
-# Repair entry point, not a provider CLI — this module isn't in REGISTRY, so
-# it gets its own -m rather than a `python -m app.providers <source>` verb.
+# Repair entry point, not a provider CLI (not in REGISTRY).
 if __name__ == "__main__":                                  # pragma: no cover
     import sys
     if "--backfill-packages" in sys.argv:

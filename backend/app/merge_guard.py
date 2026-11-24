@@ -1,38 +1,12 @@
-"""The merge guard: back up app.db before a merge that adds a migration,
-check the reloaded backend, and roll both back if it doesn't come up.
+"""The merge guard: back up app.db before a merge that adds a migration, check the
+reloaded backend, and roll code and app.db back if it doesn't come up.
 
-app.db holds things nothing can rebuild: alarms (the only handle on an item
-sitting on the phone), location history, tasks. A migration is the one kind
-of merge that rewrites it, and the monthly snapshot (backup.py) can be weeks
-old. So when a dev tab's worktree_merge lands new entries in
-`db.MIGRATIONS` on Kestrel's own repo, three things happen:
-
-  1. **before the fast-forward** (`before_ff`, called by console_worktree.merge):
-     a snapshot, `backups/premerge-<head>-<time>.db`. If it can't be taken the
-     merge is refused: an unbacked migration is what this exists to stop.
-  2. **a marker** (`backups/merge-check.json`, `arm`): the heads before and
-     after, the snapshot, whether to push. When the launcher supervises the
-     server (GUARD_ENV set) the push waits for the check: a merge that rolls
-     back must not already be on origin.
-  3. **at the restart** (launch_app.Backend.restart, `verify_restart`): the old
-     server stopped, so nothing is writing, the launcher takes a fresh
-     snapshot (so a rollback loses nothing written since the merge) and
-     starts the new code. It must answer `/api/healthz?db=1`, which opens
-     app.db and so runs the migration. If it doesn't within HEALTH_S, the
-     server is stopped, the main checkout reset to the old head (`git reset
-     --keep`, which refuses to overwrite uncommitted edits), app.db restored
-     from the snapshot, and the old code started again. The tab's branch keeps
-     its commits, so nothing is lost: fix, re-merge.
-
-The result goes to `backups/merge-check-last.json` and a banner. Read that
-file in a later turn to learn how a merge went: within the merging turn the
-server is still the old one (the reloader holds the restart until turns end).
-
-A server run without the launcher (terminal uvicorn) gets steps 1 and 2 only,
-and pushes at once: there is nobody to run step 3.
-
-Stdlib at import: the launcher imports this, and it's the one process that
-must not fail to.
+Steps: `before_ff` (snapshot; refuse the merge if it fails), `arm` (marker; the push
+waits when the launcher supervises, GUARD_ENV), `verify_restart` (launcher: fresh
+snapshot, health check on /api/healthz?db=1 within HEALTH_S, else rollback). Result in
+`backups/merge-check-last.json`; read it in a later turn (the merging turn still runs
+the old server). Stdlib at import: the launcher imports this and must not fail to.
+Design: DESIGN.md → The merge guard.
 """
 
 from __future__ import annotations
@@ -64,8 +38,7 @@ def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
 
 
 def migration_prints(repo: Path, rev: str) -> set[str] | None:
-    """Fingerprints of `db.MIGRATIONS` as of `rev`, or None when the file or
-    the list can't be read (then the guard assumes a migration changed)."""
+    """Fingerprints of `db.MIGRATIONS` at `rev`; None if unreadable (guard assumes a change)."""
     from . import db
     r = _git(repo, "show", f"{rev}:{DB_FILE}")
     if r.returncode:
@@ -91,8 +64,7 @@ def migration_prints(repo: Path, rev: str) -> set[str] | None:
 
 
 def new_migrations(repo: Path, base: str, branch: str) -> int:
-    """How many migrations `branch` adds over `base` (-1: couldn't tell, but
-    db.py changed)."""
+    """Migrations `branch` adds over `base` (-1: couldn't tell, but db.py changed)."""
     changed = _git(repo, "diff", "--name-only", f"{base}..{branch}", "--", DB_FILE).stdout.strip()
     if not changed:
         return 0
@@ -136,8 +108,7 @@ def supervised() -> bool:
 
 
 def arm(guard: dict, repo: Path, base: str, new_head: str, push: bool) -> bool:
-    """Write the marker for the launcher. True when the push should wait for
-    the check."""
+    """Write the launcher's marker. True when the push should wait for the check."""
     hold = push and supervised()
     marker = {**guard, "repo": str(repo), "base": base, "new_head": new_head,
               "push": hold, "at": datetime.now().isoformat(timespec="seconds")}
@@ -170,9 +141,8 @@ def pending() -> dict | None:
 
 
 def refresh_snapshot(check: dict) -> dict:
-    """With the old server stopped: a newer snapshot, so a rollback keeps
-    what was written between the merge and the restart. The merge-time one
-    stays if this fails."""
+    """With the old server stopped: a newer snapshot so a rollback keeps writes since the
+    merge. The merge-time one stays if this fails."""
     try:
         fresh = snapshot(check["old_head"][:8])
     except Exception as e:  # the merge-time snapshot still stands
@@ -185,10 +155,8 @@ def refresh_snapshot(check: dict) -> dict:
 
 
 def restore(snapshot_path: Path, db_path: Path) -> None:
-    """Put the snapshot back as app.db. The server must be stopped. The WAL
-    and shared-memory files go first: they belong to the database being
-    replaced, and SQLite would otherwise replay the failed migration's
-    pages over the restored file."""
+    """Put the snapshot back as app.db (server stopped). -wal/-shm go first, or SQLite
+    would replay the failed migration's pages over the restored file."""
     from . import backup
     part = db_path.with_name(db_path.name + ".restore")
     part.unlink(missing_ok=True)
@@ -210,8 +178,7 @@ def rollback_code(check: dict) -> str | None:
 
 
 def settle(check: dict, ok: bool, detail: str = "") -> dict:
-    """Record the outcome, push if the merge held and asked to, clear the
-    marker."""
+    """Record the outcome, push if the merge held and asked to, clear the marker."""
     result = {**check, "ok": ok, "detail": detail,
               "checked_at": datetime.now().isoformat(timespec="seconds")}
     if ok and check.get("push"):
@@ -229,9 +196,8 @@ def settle(check: dict, ok: bool, detail: str = "") -> dict:
 
 
 def verify_restart(check: dict, start, stop, healthy, db_path: Path, log=print) -> tuple[object, dict]:
-    """The launcher's check, with its own process handling passed in:
-    start() → proc, stop(proc), healthy(proc) → bool. Returns (the proc now
-    serving, the settled result)."""
+    """The launcher's check; process handling is passed in: start() → proc, stop(proc),
+    healthy(proc) → bool. Returns (the proc now serving, the settled result)."""
     proc = start()
     if healthy(proc):
         res = settle(check, True, "the reloaded backend answered with app.db open")
@@ -242,8 +208,7 @@ def verify_restart(check: dict, start, stop, healthy, db_path: Path, log=print) 
     stop(proc)
     why = rollback_code(check)
     if why:
-        # Code can't go back, so app.db stays: restoring it under the new
-        # code would only re-run the migration that just failed.
+        # Code can't go back, so app.db stays (restoring it would re-run the failed migration).
         res = settle(check, False, f"health check failed; code not rolled back: {why}; "
                                    f"app.db left as is, snapshot at {check['snapshot']}")
         return start(), res

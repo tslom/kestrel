@@ -1,42 +1,9 @@
-"""Messages provider + self-chat task capture.
+"""Messages provider: chat.db (read-only, needs Full Disk Access) -> `messages` cache.
 
-chat.db is truth; `messages` in app.db is a genuine cache here (unlike
-Spotify's `plays` — chat.db keeps full local history, so a cache drop only
-costs a re-sync, up to MESSAGES_BACKFILL_DAYS back, not lost data). Day is
-**day_key** (4am rollover), a behavioral source like screen/spotify/location
-— 1am texting belongs to yesterday.
-
-To force a clean re-sync (e.g. after a schema change), drop `messages` AND
-clear `sync_state` (`DELETE FROM sync_state WHERE key='messages_last_rowid'`)
-— they're separate tables with independent lifecycles. Dropping only
-`messages` leaves the old high-water ROWID in `sync_state`, so the next sync
-resumes past it and the table stays empty instead of re-backfilling.
-
-No OAuth: this just needs Full Disk Access granted to whichever process runs
-uvicorn (System Settings -> Privacy & Security -> Full Disk Access; test with
-a manual sqlite3 read first — CLAUDE.md's Run section). Both source
-databases are opened read-only (`file:...?mode=ro`) — this provider never
-writes to Messages or Contacts.
-
-Known landmine: on modern macOS `message.text` is frequently NULL, with the
-real content buried in `attributedBody` (an NSKeyedArchiver typedstream
-blob). `_extract_text` is not a general typedstream parser — it decodes just
-the one shape needed: a length-prefixed UTF-8 payload right after the
-`NSString` class marker (see its docstring). The parsing logic scored
-300/300 against real attributedBody blobs on this machine, using each row's
-`text` column as ground truth — but that sample was necessarily rows where
-`text` was ALSO populated (simple single-run messages), which is exactly the
-case where `_extract_text` short-circuits and never runs its parser. The
-fallback path is actually exercised on `text IS NULL` rows (quoted replies,
-messages with rich attribute runs) that weren't part of the validated
-sample; it fails soft (empty or, in principle, a wrong string from an
-earlier `NSString` in the blob) rather than raising, which is an acceptable
-risk for a personal single-user cache but not a guarantee. `message.date` is
-Apple epoch **nanoseconds** (÷1e9 + APPLE_EPOCH), not the seconds some older
-docs describe.
-
-Texts you send yourself (MESSAGES_SELF_HANDLES) are synced like any
-other; app/selftexts.py picks them out of `messages` and routes them.
+Day is day_key. Traps: dropping `messages` also needs `sync_state` cleared
+(`messages_last_rowid`), or the old watermark leaves it empty. `message.text`
+is often NULL (content in `attributedBody`). `message.date` is Apple-epoch ns.
+Design: DESIGN.md → §9 Messages.
 """
 
 import glob
@@ -63,27 +30,15 @@ UNANSWERED_HOURS = 24
 TEXT_CAP = 2000
 PREVIEW_CAP = 160  # one or two lines in the widget; the thread has the rest
 SYNC_KEY = "messages_last_rowid"
-# Separate from SYNC_KEY: the attachments table arrives on a DB whose messages
-# are already synced, so it has to backfill on its own schedule rather than
-# inherit a watermark that is already at the end of history.
+# Own watermark: attachments backfill independently of the message watermark.
 ATTACHMENT_SYNC_KEY = "attachments_last_rowid"
-# Read receipts land on chat.db rows in place, after the row was synced, so the
-# ROWID watermark never revisits them. Each cycle re-reads this window by
-# `date` (indexed in chat.db) — a receipt for a message older than a week is
-# rare, and the one-time backfill below covered everything before it.
+# Receipts mutate chat.db rows in place, past the ROWID watermark; re-read this window by `date`.
 RECEIPT_WINDOW_DAYS = 7
 RECEIPT_BACKFILL_KEY = "messages_receipts_backfilled"
 
-# Past this gap an outbound message isn't a reply to the inbound one before it
-# — it's you opening a new conversation days later, and counting it would put
-# a 90-hour "latency" in the same median as a 4-minute one. 48h is generous
-# enough to keep a genuinely slow reply (which is the signal) and tight enough
-# to drop "texted them again the following week".
+# Past this gap an outbound message is a new conversation, not a reply.
 REPLY_MAX_GAP_MIN = 48 * 60
-# Below this many replies a day's median is one or two conversations, not a
-# habit: measured on real history, the days under it were single-sample days
-# reporting things like "2556 minutes" off one slow answer. Gap, not zero —
-# the HR_MIN_HOURS / GENRE_MIN_PLAYS precedent. Costs 12 of 97 days.
+# Fewer replies is a gap, not a median (single-sample days read "2556 minutes"); costs 12 of 97 days.
 REPLY_MIN_SAMPLES = 3
 
 
@@ -96,11 +51,8 @@ def _ro(path) -> sqlite3.Connection:
 # ---------- contacts ----------
 
 def normalize_handle(raw: str | None) -> str:
-    """phone -> last 10 digits; email -> lowercase. Empty/unrecognized ->
-    ''. Same normalization on both sides (chat.db handles, AddressBook
-    numbers/emails, MESSAGES_SELF_HANDLES) so they compare equal. Public
-    (no leading underscore): people.py's person_key and
-    scripts/import_birthdays.py's contact keying both depend on it."""
+    """phone -> last 10 digits; email -> lowercase; else ''. The one
+    normalization for every handle comparison (people.py, import_birthdays)."""
     if not raw:
         return ""
     raw = raw.strip()
@@ -111,19 +63,11 @@ def normalize_handle(raw: str | None) -> str:
 
 
 def addressbook_records():
-    """Yield (card_id, display_name, {normalized identifiers}) per AddressBook
-    contact RECORD across every source file — one group per Contacts card,
-    grouped by the card's own ZOWNER (its ZABCDRECORD.Z_PK). This record
-    grouping is the authoritative "these identifiers are the same person"
-    signal, used by both the handle→name map and the identity clustering.
-    Best-effort: an unreadable/schema-drifted source file is skipped, never
-    fatal.
+    """Yield (card_id, display_name, {normalized identifiers}) per Contacts card
+    (grouped by ZOWNER) across every AddressBook source; unreadable sources are skipped.
 
-    `card_id` is ZUNIQUEID (`UUID:ABPerson`), the same string Contacts.app's
-    AppleScript dictionary hands back as `id of person` — which is what lets
-    app/contacts.py address a card for editing. Identity clustering ignores
-    it: a card id is per-source, so two sources holding the same human still
-    have to merge on shared identifiers, never on this.
+    `card_id` is ZUNIQUEID, what Contacts.app calls `id of person`. Never merge
+    clusters on it: it is per-source.
     """
     for path in glob.glob(ADDRESSBOOK_GLOB):
         try:
@@ -163,10 +107,7 @@ def addressbook_records():
 
 
 def _load_contacts() -> dict[str, str]:
-    """normalized handle -> display name, from every AddressBook source
-    file. Best-effort: Contacts may never have run, or FDA may cover
-    chat.db but not AddressBook yet — an empty dict just means no
-    contact_name, never a hard failure."""
+    """normalized handle -> display name; empty when AddressBook is unreadable."""
     names: dict[str, str] = {}
     for _uid, name, ids in addressbook_records():
         if name:
@@ -182,16 +123,8 @@ _MARKER_WINDOW = 12  # bytes between the class name and the '+' length marker
 
 
 def _extract_text(text: str | None, attributed_body: bytes | None) -> str:
-    """typedstream is a real binary archive format (NSKeyedArchiver's
-    predecessor); this isn't a general parser for it, just the one shape
-    that matters here — after the `NSString` class-name marker, a `+` byte
-    introduces an inline payload: one length byte, or 0x81 + a little-endian
-    uint16 length for longer strings, then that many UTF-8 bytes. Validated
-    against 300 real (text, attributedBody) pairs on this machine (message
-    rows where both happen to be populated) — 300/300 exact matches, vs.
-    ~3% for the naive 'decode everything, keep the longest printable run'
-    version this replaced (it kept picking up typedstream framing bytes or
-    unrelated NSString instances, e.g. rich-text attribute-run metadata)."""
+    """`text`, else the payload after `NSString` + `+` in the typedstream blob
+    (one length byte, or 0x81 + LE uint16). Not a general parser; fails soft to ''."""
     if text:
         return text
     if not attributed_body:
@@ -215,9 +148,7 @@ def _extract_text(text: str | None, attributed_body: bytes | None) -> str:
         return ""
 
 
-# A photo or video sits in the text as U+FFFC OBJECT REPLACEMENT CHARACTER,
-# the placeholder Apple leaves where the attachment renders. U+FFFD turns up
-# next to it when the attributedBody decode hit a byte it couldn't map.
+# U+FFFC marks an attachment in the text; U+FFFD appears when the blob decode hit a bad byte.
 _PLACEHOLDERS = "￼�"
 
 _ATTACHMENT_KINDS = [
@@ -229,14 +160,8 @@ _ATTACHMENT_KINDS = [
 
 
 def _attachment_label(types: str | None, n: int) -> str:
-    """What to show for a message whose only content is an attachment.
-
-    Uncaptioned photos are most of these, and "(photo)" beats the raw
-    placeholder — it's a real thing someone sent, so it has to stay in the
-    thread rather than being dropped as empty. Mixed sets fall back to the
-    generic word instead of claiming a type that's only true of one."""
-    # _ATTACHMENT_KINDS is ordered most- to least-specific ("image/gif" ahead
-    # of "image/"), so each type takes its first match, not every match.
+    """Label for an attachment-only message; mixed types fall back to "attachment"."""
+    # Kinds are ordered most-specific first ("image/gif" before "image/").
     kinds = {next((label for prefix, label in _ATTACHMENT_KINDS
                    if t.startswith(prefix)), "attachment")
              for t in (types or "").split(",")}
@@ -249,12 +174,8 @@ def _attachment_label(types: str | None, n: int) -> str:
 
 def _message_text(text: str | None, attributed_body: bytes | None,
                   attachment_types: str | None) -> str:
-    """The line to store: what they typed, or what they sent if they typed
-    nothing. A caption wins — it says more than "(photo)" ever could.
-
-    A placeholder with no attachment row behind it still gets named: media
-    that expired or was deleted leaves the U+FFFC but drops the `attachment`
-    entry, and "(attachment)" beats rendering the raw mojibake."""
+    """The caption if any, else the attachment label. A bare placeholder with no
+    attachment row (expired media) still reads "(attachment)"."""
     raw = _extract_text(text, attributed_body)
     body = raw.strip(_PLACEHOLDERS + " ").strip()
     if body:
@@ -283,8 +204,7 @@ def _set_watermark(con, rowid: int) -> None:
 
 
 def _chat_rows(chat_con, where: str, params: tuple) -> list:
-    """chat.db messages matching `where`, in ROWID order, filtered to what
-    `messages` keeps (see the comment in _sync)."""
+    """chat.db messages matching `where`, in ROWID order, filtered to what `messages` keeps."""
     return chat_con.execute(
         "SELECT m.ROWID, m.guid, m.date, m.text, m.attributedBody, m.is_from_me,"
         " m.associated_message_type,"
@@ -321,8 +241,7 @@ def _insert(app_con, r, contacts: dict[str, str], now: str) -> tuple[bool, str, 
 
 
 def _receipt_ts(apple_ns: int | None) -> str | None:
-    """chat.db writes 0, not NULL, for "never" — no receipt yet, or none coming
-    (SMS, or receipts turned off on their end)."""
+    """chat.db writes 0, not NULL, for "never"."""
     return _ts_of(apple_ns).isoformat(timespec="seconds") if apple_ns else None
 
 
@@ -333,10 +252,8 @@ def _receipt(r) -> tuple[int, str | None, int, str | None]:
 
 
 def _sync_receipts(app_con, chat_con, since_ns: int) -> int:
-    """Copy read/delivered state for chat.db messages dated since `since_ns`
-    onto the cached rows. Only rows whose state actually changed are written,
-    so a quiet cycle is a read of a week of chat.db and no writes. Returns
-    the number of rows updated."""
+    """Copy read/delivered state for messages dated since `since_ns` onto cached
+    rows, writing only changes. Returns rows updated."""
     rows = chat_con.execute(
         "SELECT guid, is_read, date_read, is_delivered, date_delivered"
         " FROM message WHERE date >= ? AND item_type=0"
@@ -356,8 +273,7 @@ def _sync_receipts(app_con, chat_con, since_ns: int) -> int:
 
 
 def _refresh_receipts(app_con, chat_con) -> int:
-    """The recent window every cycle; the whole cache once, for the rows that
-    were synced before receipts were stored at all."""
+    """The recent window every cycle; the whole cache once (RECEIPT_BACKFILL_KEY)."""
     done = app_con.execute("SELECT 1 FROM sync_state WHERE key=?",
                            (RECEIPT_BACKFILL_KEY,)).fetchone()
     since = (datetime.now() - timedelta(days=RECEIPT_WINDOW_DAYS)).timestamp()
@@ -374,13 +290,8 @@ def _refresh_receipts(app_con, chat_con) -> int:
 
 
 def backfill_older(days: int) -> dict:
-    """Extend `messages` back to `days` ago, below the oldest row already
-    cached — the first sync only reached MESSAGES_BACKFILL_DAYS. The Brain's
-    first ingest reads a year (config.BRAIN_BACKFILL_DAYS).
-
-    The ROWID watermark is left alone, and app/selftexts.py only routes texts
-    newer than its own start mark — a year-old note-to-self is not a task today, and the live sync's place in
-    chat.db hasn't moved. Idempotent — INSERT OR IGNORE on guid."""
+    """Extend `messages` back to `days` ago, below the oldest cached row. Leaves
+    the ROWID watermark alone; idempotent (INSERT OR IGNORE on guid)."""
     cutoff = int(((datetime.now() - timedelta(days=days)).timestamp()
                   - APPLE_EPOCH) * 1e9)
     now = datetime.now().isoformat(timespec="seconds")
@@ -413,16 +324,8 @@ def _sync(app_con, chat_con, contacts: dict[str, str], now: str) -> int:
         where, params = "m.date >= ?", (cutoff,)
     else:
         where, params = "m.ROWID > ?", (watermark,)
-    # `message` holds three things, only two of which belong here.
-    #   item_type<>0 — group housekeeping (renames, joins, leaves). No text
-    #     at all, so it lands as a blank message from whoever triggered it.
-    #     Never wanted.
-    #   associated_message_type 2000-2999 — tapbacks ("Loved/Liked … to
-    #     <quote>"). Kept, flagged is_reaction: they're not messages, but a
-    #     reaction you left is still you answering, so the waiting feed has
-    #     to see them. Consumers counting volume filter them back out.
-    #   3000-3999 (un-reacting) and 1000 (stickers) — dropped. Removing a
-    #     ❤️ isn't a reply, and a sticker carries no text to show.
+    # Dropped: item_type<>0 (group housekeeping), 3000-3999 (un-reacts), 1000 (stickers).
+    # Kept, flagged is_reaction: 2000-2999 tapbacks (a reaction you left counts as answering).
     rows = _chat_rows(chat_con, where, params)
 
     n = 0
@@ -431,48 +334,27 @@ def _sync(app_con, chat_con, contacts: dict[str, str], now: str) -> int:
         for r in rows:
             max_rowid = max(max_rowid, r["ROWID"])
             n += _insert(app_con, r, contacts, now)[0]
-        # Only persist the watermark if this run actually saw rows, or was
-        # already past the first backfill (watermark not None). Otherwise an
-        # empty first 90-day backfill would write watermark=0, and the NEXT
-        # sync would take the `ROWID > 0` branch — syncing chat.db's entire
-        # history instead of retrying the bounded backfill.
+        # An empty first backfill must not write watermark=0, or the next sync pulls all history.
         if rows or watermark is not None:
             _set_watermark(app_con, max_rowid)
     return n
 
 
 def _attachment_path(raw: str | None) -> str | None:
-    """chat.db stores the path '~'-prefixed; absolute is what a reader needs.
-
-    NULL/empty means the file isn't on this Mac — iCloud-offloaded, or never
-    downloaded. The row is still worth keeping (transfer_name says what it
-    was), it just has nothing to extract from."""
+    """Expand chat.db's '~' path; None means the file isn't on this Mac (row is still kept)."""
     if not raw:
         return None
     return str(Path(raw).expanduser())
 
 
 def _sync_attachments(app_con, chat_con, now: str) -> None:
-    """Record what each message carried — one row per file, not per message.
-
-    Windows itself rather than reusing the message sync's watermark: this
-    table arrives on a DB whose messages are already synced, so keying off
-    the watermark would mean only ever seeing attachments sent from now on,
-    with the whole existing history invisible. First run walks the same
-    MESSAGES_BACKFILL_DAYS span the message sync used; later runs go
-    incremental off the highest message ROWID already recorded. Opens its own
-    transaction.
-
-    Metadata only: nothing here opens a file. Extraction is a separate,
-    on-demand step (providers/attachments.py) precisely because parsing
-    untrusted bytes is the part that carries a cost and a risk."""
+    """Record attachment metadata, one row per file, on its own watermark
+    (first run: MESSAGES_BACKFILL_DAYS). Opens its own transaction. Never opens
+    a file; extraction is on demand in providers/attachments.py."""
     row = app_con.execute("SELECT value FROM sync_state WHERE key=?",
                           (ATTACHMENT_SYNC_KEY,)).fetchone()
     if row is not None:
-        # The watermark has to come from app.db, not from chat.db: a subquery
-        # for "newest message that has an attachment" evaluates over the same
-        # rows being selected, so it always includes the newest one and the
-        # window comes back empty forever.
+        # Watermark from app.db: a chat.db "newest with attachment" subquery always includes itself.
         where, params = "m.ROWID > ?", (int(row["value"]),)
     else:
         cutoff = datetime.now() - timedelta(days=MESSAGES_BACKFILL_DAYS)
@@ -489,10 +371,7 @@ def _sync_attachments(app_con, chat_con, now: str) -> None:
         f" WHERE {where} AND m.item_type=0"
         " ORDER BY m.ROWID, maj.attachment_id", params).fetchall()
 
-    # Advance past every message scanned, not just those carrying a file —
-    # otherwise the window re-walks the same tail forever. MAX over the whole
-    # message table is bounded by the same predicate, so a quiet week still
-    # moves the mark.
+    # Advance past every message scanned, or the window re-walks the same tail forever.
     scanned_max = chat_con.execute(
         f"SELECT COALESCE(MAX(m.ROWID), 0) AS m FROM message m"
         f" WHERE {where} AND m.item_type=0", params).fetchone()["m"]
@@ -519,13 +398,8 @@ def _sync_attachments(app_con, chat_con, now: str) -> None:
 
 
 def _sync_chats(app_con, chat_con, now: str) -> int:
-    """Cache each chat's own metadata (custom group name + group flag) so the
-    People conversations view can label a group by its real name instead of a
-    participant list. Full get-and-replace every run — chat metadata is tiny
-    (a few hundred rows) and mutable (groups get renamed, members join), so a
-    watermark isn't worth it; it also self-heals if the table is dropped. This
-    runs BEFORE the message-sync watermark early-return, since a group can be
-    renamed with no new messages. chat.db `style`: 43 = group, 45 = 1:1."""
+    """Upsert every chat's custom name + group flag (style 43 = group, 45 = 1:1).
+    Runs every cycle, before the no-new-messages early return: renames add no messages."""
     try:
         rows = chat_con.execute(
             "SELECT guid, display_name, style FROM chat").fetchall()
@@ -547,15 +421,9 @@ def _sync_chats(app_con, chat_con, now: str) -> int:
 
 
 def sync_identities(app_con, now: str) -> int:
-    """Cache contact identity clusters so a person's fragments (a CRM row
-    keyed by email, texts under a phone) resolve to one human. Clusters come
-    from AddressBook's record grouping via union-find over shared identifiers:
-    all identifiers on one card merge, and cards that share an identifier
-    (an iCloud + a local duplicate of the same person) merge too. A shared
-    NAME never merges — the union key is always an identifier — so two
-    different people named the same stay separate. Full-replace each run;
-    empty AddressBook leaves the (droppable) cache untouched rather than
-    wiping it, so a transient FDA/read failure doesn't un-merge everyone."""
+    """Full-replace the contact_identities clusters (union-find over identifiers
+    on a card and across cards sharing one). Never merge on name. An empty
+    AddressBook leaves the cache untouched so a read failure doesn't un-merge everyone."""
     groups = [(name, ids) for _uid, name, ids in addressbook_records() if ids]
     if not groups:
         return 0
@@ -591,9 +459,7 @@ def sync_identities(app_con, now: str) -> int:
     with app_con:
         app_con.execute("DELETE FROM contact_identities")
         for root, ids in clusters.items():
-            # canonical = an email if the person has one, else a phone —
-            # matches import_birthdays' email-first keying so the cluster_key
-            # usually equals the existing `people` row's person_key.
+            # Email-first, matching import_birthdays, so cluster_key usually equals people.person_key.
             emails = sorted(i for i in ids if "@" in i)
             canonical = emails[0] if emails else sorted(ids)[0]
             name = cluster_name.get(root)
@@ -606,12 +472,8 @@ def sync_identities(app_con, now: str) -> int:
 
 
 def health() -> dict:
-    """Is chat.db actually readable by *this* process? refresh() degrades to a
-    quiet no-op when it isn't, which looks identical to a week of not texting
-    — and that's the real-world failure here: launched from the .app bundle
-    instead of the terminal, Full Disk Access doesn't carry over, so the sync
-    silently writes nothing forever. Cheap (open + one row), so /api/status
-    can probe it live rather than trusting the last refresh."""
+    """Live probe: can *this* process read chat.db? refresh() no-ops silently
+    when it can't (FDA doesn't carry over to the .app bundle)."""
     if not CHAT_DB_PATH.exists():
         return {"state": "off", "detail": f"no {CHAT_DB_PATH.name} on this machine"}
     try:
@@ -629,9 +491,7 @@ def health() -> dict:
 
 
 def refresh() -> dict:
-    """Poller entrypoint: incremental by ROWID watermark (90-day backfill on
-    first run). Quiet no-op if chat.db isn't readable yet (no Full Disk
-    Access granted, or this machine has no Messages)."""
+    """Poller entrypoint: incremental by ROWID watermark; no-op if chat.db is unreadable."""
     try:
         chat_con = _ro(CHAT_DB_PATH)
     except Exception as e:
@@ -646,20 +506,15 @@ def refresh() -> dict:
         with db.session() as app_con:
             _sync_chats(app_con, chat_con, now)  # cheap; refresh GC names every tick
             sync_identities(app_con, now)       # contact clusters for person unification
-            # Above the no-new-messages early return on purpose: this table lands
-            # on an already-synced DB and windows itself, so gating it on new
-            # messages would leave the entire back catalogue unrecorded.
+            # Not gated on new messages: it windows itself and must backfill history.
             _sync_attachments(app_con, chat_con, now)
             watermark = _watermark(app_con)
             n = 0
             if watermark is None or (chat_con.execute(
                     "SELECT MAX(ROWID) AS m FROM message").fetchone()["m"] or 0) > watermark:
-                # Only when there is something new — this is what pays for
-                # the AddressBook reload.
+                # Gated: this pays for the AddressBook reload.
                 n = _sync(app_con, chat_con, _load_contacts(), now)
-            # After _sync, so a message that arrived and was read since the
-            # last cycle has its row to land on. Not gated on new messages:
-            # someone reading your text writes no new row anywhere.
+            # After _sync, so new rows exist; not gated, since a read writes no new row.
             receipts = _refresh_receipts(app_con, chat_con)
     finally:
         chat_con.close()
@@ -667,13 +522,7 @@ def refresh() -> dict:
 
 
 def cite(it: dict) -> str | None:
-    """One message's citation ref, or None for the aggregate metrics.
-
-    `sent` / `received` / `contacts` / `reply_latency` are day counts — there
-    is no one message behind a number, and a pill offering to open one would
-    be picking arbitrarily. `unanswered` rows are a person, not a message, so
-    they get none either.
-    """
+    """One message's citation ref; None for aggregates and `unanswered` (no single message)."""
     guid = it.get("guid")
     if not guid:
         return None
@@ -691,17 +540,13 @@ def brief_line(it: dict) -> str:
         who = it["contact_name"] or it["handle"] or "?"
         arrow = "->" if it["is_from_me"] else "<-"
         line = f"{it['ts']} {arrow} {who}: {it['text'][:80]}"
-        # Outbound only: whether they've seen yours is the question a receipt
-        # answers. "delivered" alone on iMessage means receipts are off or it
-        # is still unread; SMS carries neither, so it gets no mark.
+        # Outbound only; SMS carries no receipts, so it gets no mark.
         if it["is_from_me"]:
             if it.get("read_at"):
                 line += f"  [read {it['read_at'][11:16]}]"
             elif it.get("is_delivered"):
                 line += "  [delivered]"
-        # Named, not counted: "(2 photos)" is what `text` already falls back
-        # to, and the name is the part you can act on — you go looking for
-        # the packet. The mark says whether its text is searchable yet.
+        # Named (actionable); "(unread)" = text not extracted yet.
         for a in it.get("attachments") or []:
             line += f"  📎 {a['filename'] or a['mime']}"
             line += "" if a["status"] == "ok" else " (unread)"
@@ -709,55 +554,25 @@ def brief_line(it: dict) -> str:
     return f"{it['day']} {it['value']}"  # sent/received/contacts
 
 
-# Whether a row moves the "who owes whom" needle. Tapbacks are asymmetric:
-# one you left answers the thread, one they left asks nothing of you — so
-# an incoming ❤️ must not start the clock, and must not hide the message
-# underneath it that's still genuinely unanswered.
+# Your tapbacks answer a thread; theirs must neither start the clock nor hide an unanswered message.
 COUNTS_AS_TRAFFIC = "NOT (is_reaction = 1 AND is_from_me = 0)"
 
 
 def _is_correspondent(handle: str, name: str | None, ever_replied: bool) -> bool:
-    """Is this sender a person you actually correspond with?
-
-    "Unanswered" is a nudge to reply, so it's only useful for humans. Two
-    tells, either of which is enough: they're in Contacts (so `name` resolved),
-    or you have written back to them at least once. A nameless number you have
-    never answered is a robot, a wrong number, or spam — the list was ~65
-    entries and mostly shortcodes before this.
-
-    Shortcodes are rejected outright: SMS shortcodes are 3–8 digits (banks,
-    2FA, delivery alerts) and can never be dialed back, so even a stray reply
-    to one doesn't make it a correspondent."""
+    """In Contacts or ever replied to. SMS shortcodes (<10 digits) never qualify."""
     if handle.isdigit() and len(handle) < 10:
         return False
     return bool(name) or ever_replied
 
 
 def _unanswered(con) -> tuple[list[dict], str | None]:
-    """People who texted you and haven't heard back, newest-silence last.
+    """People who texted you and haven't heard back, longest silence first.
 
-    Deliberately range-independent: a thread gone quiet for months is exactly
-    what this should surface, so the candidate set is every conversation's
-    true last message, not just ones with a message inside some range.
-
-    Two things this is careful about, both of which used to produce phantom
-    "you've ignored X for 94 days" entries in the People widget:
-
-    1. **Group chats don't count.** A 15-person chat going quiet is not a
-       reply you owe, but the last person to speak in it got billed for it.
-       (`chats.is_group`; an unknown chat_guid is assumed 1:1, so a dropped
-       chats cache degrades to the old behaviour instead of showing nothing.)
-    2. **One row per person, not per thread.** The same human has an iMessage
-       thread and an SMS thread; replying in one answers both. Threads are
-       collapsed by the counterpart's identity cluster, and the person is
-       only "unanswered" if their newest message *anywhere* went unreplied.
-    3. **Only actual correspondents.** A 2FA shortcode or a delivery robot is
-       not owed a reply, and unknown numbers you never wrote back to made the
-       list mostly junk. See `_is_correspondent`.
-
-    Outgoing rows mostly carry no handle (chat.db leaves `handle_id` unset on
-    messages you sent), so a chat's counterpart is read off its inbound rows
-    and then applied to the whole thread."""
+    Range-independent: the candidates are every chat's true last message.
+    Excludes group chats (unknown chat_guid counts as 1:1), collapses threads
+    per identity cluster (unanswered only if their newest message anywhere
+    is), and keeps only `_is_correspondent`. A chat's counterpart is read off
+    its inbound rows, since outgoing rows mostly lack a handle."""
     latest_ts: dict[str, str] = {}       # person key -> newest ts in any thread
     latest_row: dict[str, dict] = {}
     replied: set[str] = set()            # person keys you've ever written to
@@ -806,11 +621,8 @@ def _unanswered(con) -> tuple[list[dict], str | None]:
                 "chat_guid": last["chat_guid"], "handle": last["peer_handle"],
                 "person_key": key, "contact_name": last["person_name"],
                 "last_ts": last["ts"], "hours": round(age_h, 1),
-                # the message actually owed a reply — "6d · Wren Ellis" says
-                # nothing about whether it needs two words or ten minutes
                 "text": (last["text"] or "").strip()[:PREVIEW_CAP],
-                # when you opened it — None is "never even read", a
-                # different kind of owing than "read it and said nothing"
+                # None = never read, distinct from read-and-ignored
                 "read_at": last["read_at"],
             })
     data.sort(key=lambda d: -d["hours"])
@@ -818,39 +630,15 @@ def _unanswered(con) -> tuple[list[dict], str | None]:
 
 
 def reply_latency_by_day(con, start_key: str, end_key: str) -> dict[str, float]:
-    """Median minutes you took to answer, per day — `{day: minutes}`.
+    """Median minutes you took to answer, per day: `{day: minutes}`.
 
-    Shared by `get('reply_latency')` and features.py's extractor on purpose:
-    Spotify's novelty bug was a second copy of the math in features.py drifting
-    from the provider's, so there is exactly one implementation here.
-
-    Each inbound message opens a debt in its 1:1 chat; your next outbound
-    message closes it, and the pair's gap is one latency sample. Only the
-    *first* unanswered inbound counts — if someone sends five texts and you
-    answer once, you took as long as the first one waited, not the fifth.
-    Group chats are excluded for the same reason `_unanswered` excludes them:
-    nobody owes a group a reply, so the gap isn't a decision you made.
-
-    Samples land on the day of **your reply**, not of their message. That
-    keeps a day's value final once the day ends (keying on their message
-    would revise last Tuesday every time you finally answered something),
-    and it reads the way the feature is meant to: "how quickly was I
-    answering people on this day".
-
-    A day with inbound messages you never answered contributes nothing
-    rather than a zero or an infinity — silence is what `unanswered`
-    measures, and folding it in here as a huge number would let one ignored
-    text swamp a day of fast replies.
-
-    When the oldest unanswered message is older than REPLY_MAX_GAP_MIN, the
-    pair is retried against their *most recent* message before falling back
-    to dropping it. Without that, a thread with an ancient unreplied text in
-    it discards every later reply as "a new conversation" — on real history
-    that was 61 of 111 dropped pairs, most of them genuinely fast answers to
-    something said minutes earlier."""
-    # Reach back a full gap-window before the range: a message that arrived
-    # Sunday night and was answered Monday morning is a Monday sample, and
-    # the inbound half of that pair lives outside the requested range.
+    The single implementation, shared with features.py. One sample per
+    inbound-to-next-outbound pair in 1:1 chats, measured from the *first*
+    unanswered inbound (fallback: their newest, when the first is older than
+    REPLY_MAX_GAP_MIN), landing on the day of *your reply*. Unanswered
+    messages contribute nothing; days under REPLY_MIN_SAMPLES are omitted.
+    Design: DESIGN.md → §9 Messages."""
+    # Look back one gap-window: the inbound half of a Monday-morning reply may predate the range.
     lookback = (datetime.fromisoformat(start_key)
                 - timedelta(minutes=REPLY_MAX_GAP_MIN)).date().isoformat()
     rows = con.execute(
@@ -887,9 +675,7 @@ def reply_latency_by_day(con, start_key: str, end_key: str) -> dict[str, float]:
 
 
 def get(rng: Range, metric: str | None = None) -> dict:
-    """Slice the `messages` cache for the range — chat.db already keeps
-    full local history, so unlike Spotify there's no on-demand backfill:
-    refresh() staying current (poller cadence) is enough."""
+    """Slice the `messages` cache for the range (no on-demand backfill)."""
     metric = metric or DEFAULT_METRIC
     with db.session() as con:
         rows = [dict(r) for r in con.execute(
@@ -901,9 +687,6 @@ def get(rng: Range, metric: str | None = None) -> dict:
         refreshed = max((r["refreshed_at"] for r in rows), default=None)
 
         if metric == "messages":
-            # Files a message carried, named — `text` only falls back to
-            # "(photo)" when nothing was typed, so a captioned file is
-            # otherwise invisible in the log.
             attachments.decorate(con, rows)
             data = rows
 

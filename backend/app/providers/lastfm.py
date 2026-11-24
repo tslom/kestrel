@@ -1,35 +1,9 @@
-"""Last.fm provider — genre/mood tags for the artists in `plays`.
+"""Last.fm provider: genre tags for the artists in `plays` (Spotify no longer supplies them).
 
-Exists because Spotify stopped supplying them. The v16 `artist_genres` table
-was fed by GET /artists?ids=, which 403s for this app (only single-resource
-GETs are permitted), and the artist object no longer carries a `genres` field
-at all — the response is down to id/name/images/urls. Verified live;
-the community reads it as a deliberate taxonomy change, not an outage. See the
-v35 migration comment.
-
-So genres come from Last.fm's artist.getTopTags, which is name-keyed — no
-Spotify artist id is involved, and none is needed. The join key is
-`plays.artist_key` (spotify.artist_key: the artist's name, casefolded), which
-is also what makes the imported history and the live rows agree in the first
-place.
-
-Tags are crowd-sourced, so they're richer than a label taxonomy but noisier:
-weights are 0-100 relative to the artist's own top tag, and the long tail is
-listener chatter ("seen live", "favourites"). We keep tags at or above
-LASTFM_MIN_TAG_WEIGHT, drop TAG_BLOCKLIST, and cap at LASTFM_MAX_TAGS.
-
-Enrichment is a bounded trickle, not a batch: refresh() tags at most
-LASTFM_ENRICH_PER_CYCLE artists per poll, **recently-played first, then
-most-played**, so anything you put on today is tagged by the next cycle while
-the 9k-artist tail fills in over the following days. An artist Last.fm has
-never heard of is marked missing=1 rather than retried forever.
-
-Tag cleaning is deliberately reversible: the untouched reply is kept in
-`artist_tags.raw`, so revising the blocklist or the cap is a local `reclean`
-rather than another 9.8k requests.
-
-No key configured = provider reports "off" and refresh() no-ops. Get a free
-one at last.fm/api/account/create, then set LASTFM_API_KEY in backend/.env.
+Name-keyed via `plays.artist_key` (spotify.artist_key: casefolded name). `artist_tags`
+keeps Last.fm's untouched reply in `raw`, so `reclean` re-derives `tags` offline.
+No LASTFM_API_KEY = state "off", refresh() no-ops. Reads never call Last.fm.
+Design: DESIGN.md → §8 Last.fm tags.
 
 CLI:
     python -m app.providers lastfm --range this-week          # top genres
@@ -62,8 +36,7 @@ REQUEST_TIMEOUT = 15
 ENRICH_PAUSE_SEC = 0.25   # Last.fm asks for <=5 req/s averaged; well under
 RECENT_DAYS = 7           # what counts as "recently played"; see _untagged
 
-# Listener chatter that rides along with the genre tags. Matched casefolded and
-# exactly — "favourites" goes, "favourite metal" is left alone.
+# Listener chatter, matched casefolded and exactly ("favourite metal" stays).
 TAG_BLOCKLIST = {
     "seen live", "favourites", "favorites", "favourite", "favorite",
     "favourite songs", "favorite songs", "favourite artists", "favorite artists",
@@ -72,12 +45,7 @@ TAG_BLOCKLIST = {
     "albums i own", "vinyl", "male vocalists", "female vocalists",
 }
 
-# Where an artist is from is not what they sound like. Last.fm's tag cloud is
-# thick with these and they'd otherwise chart alongside real genres — "usa" and
-# "united states" both showed up in the first 79 artists. Bare nationalities
-# only: compounds like "uk garage", "french house" and "j-pop" are genuine
-# genres and don't match. Cities are left alone for the same reason (Chicago
-# house, Detroit techno), and are rare enough not to distort the chart.
+# Origins aren't genres. Bare nationalities only: "uk garage", "french house", "j-pop" must survive.
 TAG_BLOCKLIST |= {
     "usa", "us", "united states", "american", "america",
     "uk", "united kingdom", "british", "britain", "england", "english",
@@ -94,13 +62,11 @@ TAG_BLOCKLIST |= {
 
 
 class NotConfigured(Exception):
-    """No LASTFM_API_KEY — nothing to do, and not an error worth alarming on."""
+    """No LASTFM_API_KEY; not alarming."""
 
 
 class NotFound(Exception):
-    """Last.fm has never heard of this artist. A settled answer, not a failure:
-    it must be recorded as missing=1 like an empty tag list, or the artist is
-    re-requested every cycle forever and logs a `degraded` event each time."""
+    """Unknown artist: a settled answer, recorded as missing=1 (else re-requested forever)."""
 
 
 ERR_NOT_FOUND = 6
@@ -124,33 +90,15 @@ def _api(method: str, params: dict) -> dict:
 
 
 def _tag_id(name: str) -> str:
-    """Canonical form of a tag. Last.fm's tags are free text, so the same genre
-    arrives punctuated several ways — Drake returns both "hip-hop" and
-    "hip hop" — and each spelling would otherwise rank as its own genre,
-    splitting one genre's play count between them.
-
-    This is what gets *stored*, not just a de-dupe key: two artists can return
-    different preferred spellings ("hip-hop" from one, "hip hop" from the
-    other), so per-artist de-duping isn't enough to make them one genre in the
-    chart. Separators collapse to a space, which costs a little prettiness
-    ("lo-fi" -> "lo fi") and buys one row per genre.
-    """
+    """Canonical stored form: separators collapse to a space ("hip-hop" == "hip hop"), so one genre is one row."""
     return " ".join(re.split(r"[\s\-_/]+", name.casefold())).strip()
 
 
 def _clean_tags(raw: list, artist: str = "") -> list[str]:
     """Weighted tag list -> ranked genre names, chatter removed.
 
-    The docs' sample response carries only name+url — `count` is undocumented,
-    even though live JSON returns it. So weights are treated as an optional
-    refinement: if none of the tags carry one, the list is already ordered by
-    popularity, and we keep the top N rather than dropping everything and
-    recording the artist as unknown.
-
-    `artist` drops self-referential tags: Last.fm users tag Drake "drake",
-    which is true and useless — it would chart as a genre of its own. Only an
-    exact name match goes; stylised spellings ("travis scott" on Travi$ Scott)
-    survive, and aren't worth guessing at.
+    `count` is undocumented, so weights are optional: with none, keep the top N in order.
+    `artist` drops an exact self-named tag (Drake tagged "drake"); stylised spellings survive.
     """
     def weight(t) -> int:
         try:
@@ -180,8 +128,7 @@ def _clean_tags(raw: list, artist: str = "") -> list[str]:
 
 
 def _fetch_artist(key: str, display_name: str) -> dict:
-    """One artist -> a row for `artist_tags`. autocorrect=1 lets Last.fm fix
-    spelling/casing, so we store the name it settled on."""
+    """One artist -> an `artist_tags` row; autocorrect=1 so we store Last.fm's settled name."""
     try:
         blob = _api("artist.gettoptags",
                     {"artist": display_name, "autocorrect": "1"})
@@ -209,18 +156,10 @@ def _fetch_artist(key: str, display_name: str) -> dict:
 
 
 def _untagged(con, limit: int) -> list[tuple[str, str]]:
-    """(artist_key, display name) for artists we haven't looked up yet.
-
-    Recently-played first, then most-played. Play count alone looks right and
-    isn't: a one-off artist you tried today sits behind the whole ~8k tail, so
-    today's genre coverage reads 0% for days — zero exactly when you'd look at
-    it. Recent listening is both the smallest bucket and the only one anyone
-    reads, so it jumps the queue; play count still orders everything else, so
-    the backfill keeps buying the most coverage per request.
-    """
+    """(artist_key, display name) for untagged artists: recently-played first, then most-played
+    (play count alone leaves today's one-off behind the ~8k tail, so today's coverage reads 0%)."""
     spotify.ensure_artist_keys(con)
-    # day_key(), not date.today() — `plays.day` is written with the 4am
-    # rollover, so a 2am play belongs to the previous day on both sides.
+    # day_key(), not date.today(): `plays.day` uses the 4am rollover.
     recent = (date.fromisoformat(db.day_key())
               - timedelta(days=RECENT_DAYS)).isoformat()
     return [(r["artist_key"], r["artist"]) for r in con.execute(
@@ -234,8 +173,7 @@ def _untagged(con, limit: int) -> list[tuple[str, str]]:
 
 
 def enrich(limit: int, *, pause: float = ENRICH_PAUSE_SEC) -> dict:
-    """Look up `limit` so-far-untagged artists. Returns counts; a single
-    artist's failure is logged and skipped rather than sinking the batch."""
+    """Look up `limit` untagged artists and return counts; one artist's failure is logged and skipped."""
     if not LASTFM_API_KEY:
         raise NotConfigured("LASTFM_API_KEY not set")
     with db.session() as con:
@@ -271,14 +209,8 @@ def enrich(limit: int, *, pause: float = ENRICH_PAUSE_SEC) -> dict:
 
 
 def reclean() -> dict:
-    """Re-derive `tags` from the stored raw replies. No network.
-
-    Run this after changing TAG_BLOCKLIST, the weight floor or the tag cap —
-    it applies the new rules to every artist already fetched, instead of
-    spending another 9.8k requests re-asking Last.fm the same questions. Rows
-    from before v36 have no raw reply and are left alone (`skipped`); they
-    pick up the new rules whenever they're next fetched.
-    """
+    """Re-derive `tags` from stored raw replies, no network. Run after changing the blocklist,
+    weight floor or cap. Rows without `raw` (pre-v36) are `skipped`."""
     with db.session() as con:
         rows = con.execute(
             "SELECT artist_key, name, tags, raw FROM artist_tags").fetchall()
@@ -314,17 +246,9 @@ def _tag_map(con) -> dict[str, list[str]]:
 
 
 def day_mix(con, day: str, limit: int = 3) -> dict | None:
-    """Top genres for a single day, with the share of that day's plays they're
-    computed from. One query, for callers that already hold a connection —
-    spotify.summary() folds this into the MusicWidget payload rather than
-    making the card fetch a second endpoint.
-
-    `coverage` travels with the genres on purpose: a mix drawn from 20% of a
-    day's plays is a different claim from one drawn from 95%, and the caller
-    can't tell them apart from the genre list alone. None means no plays.
-    """
-    # Self-healing like every other artist_key reader: without this, a DB whose
-    # backfill hasn't run matches no rows and reads as "no plays today".
+    """Top genres for one day plus `coverage`, the share of plays they come from; None means no plays.
+    For callers already holding a connection (spotify.summary())."""
+    # Without this an un-backfilled DB matches no rows and reads as "no plays today".
     spotify.ensure_artist_keys(con)
     rows = con.execute(
         "SELECT p.artist_key, COUNT(*) AS plays, t.tags"
@@ -358,9 +282,7 @@ def brief_line(it: dict) -> str:
 
 
 def get(rng: Range, metric: str | None = None) -> dict:
-    """Join the range's plays against the tag cache. Local-only: this never
-    calls Last.fm (enrichment is refresh()'s job), so an unenriched artist
-    simply doesn't contribute genres yet — `coverage` is how you tell."""
+    """Join the range's plays against the tag cache; local-only, `coverage` shows what's untagged."""
     metric = metric or DEFAULT_METRIC
     with db.session() as con:
         spotify.ensure_artist_keys(con)
@@ -373,8 +295,7 @@ def get(rng: Range, metric: str | None = None) -> dict:
             "SELECT MAX(refreshed_at) AS m FROM artist_tags").fetchone()["m"]
 
         if metric == "genres":
-            # A play votes for each of its artist's tags. Tags are ranked, not
-            # exclusive, so shares are of total votes and don't sum to 1.
+            # A play votes for each tag, so shares are of total votes and don't sum to 1.
             counts: dict[str, int] = defaultdict(int)
             votes = 0
             for r in rows:
@@ -394,8 +315,6 @@ def get(rng: Range, metric: str | None = None) -> dict:
             data = sorted(by_artist.values(), key=lambda a: -a["plays"])
 
         elif metric == "coverage":
-            # Share of each day's plays whose artist has tags — how much to
-            # trust that day's genre mix.
             total, known = defaultdict(int), defaultdict(int)
             for r in rows:
                 total[r["day"]] += r["plays"]
@@ -411,14 +330,11 @@ def get(rng: Range, metric: str | None = None) -> dict:
 
 
 def health() -> dict:
-    """Coverage, not freshness: `artist_tags` has no day column, so there's
-    nothing for heartbeat.FRESHNESS to check. What can actually go wrong is a
-    backfill that stalls far short of your library."""
+    """Coverage, not freshness: `artist_tags` has no day column for heartbeat.FRESHNESS."""
     if not LASTFM_API_KEY:
         return {"state": "off", "detail": "no LASTFM_API_KEY configured"}
     with db.session() as con:
-        # Without this an unbackfilled `plays` has no keys to count, and the
-        # panel would read "off" — the one state that renders as fine.
+        # Without this an unbackfilled `plays` has no keys and the panel reads "off", which renders as fine.
         spotify.ensure_artist_keys(con)
         row = con.execute(
             "SELECT COUNT(DISTINCT p.artist_key) AS artists,"
@@ -430,8 +346,7 @@ def health() -> dict:
         return {"state": "off", "detail": "no plays to tag yet"}
     pct = tagged / artists
     detail = f"{tagged}/{artists} artists tagged ({pct:.0%})"
-    # Enrichment is a deliberate trickle, so "incomplete" is the normal state
-    # for a while — only a backfill that has barely started is worth flagging.
+    # The trickle is slow, so incomplete is normal; only an unstarted backfill is flagged.
     return {"state": "ok" if tagged else "stale", "detail": detail,
             "artists": artists, "tagged": tagged}
 

@@ -16,19 +16,9 @@ export const trendUrl = (m, range) =>
     ? `/api/health?range=${range}&metric=${m.slice(7)}`
     : `/api/trends?range=${range}&metric=${encodeURIComponent(m)}`;
 
-// Trends card, on the lede form, narrowed to **energy**.
-//
-// Sleep and steps are the health card's own headline metrics, and with both
-// cards leading with a conclusion instead of a chart, drawing them here would
-// announce the same short night twice in two different voices. DESIGN.md's rule about not
-// answering a question twice settles it: health owns the body's raw metrics,
-// and this card keeps the one signal nothing else on the desk derives —
-// energy, the 0-100 readiness score built from sleep, resting HR and HRV.
-//
-// Sleep and steps are still here as the muted line under the
-// lede, where they read as the inputs to the score rather than as claims of
-// their own. The full metric picker, every range and the charts are in the
-// sheet.
+// Trends card, lede form, narrowed to energy (0-100 readiness from sleep, resting HR, HRV): health
+// owns the raw metrics (don't answer a question twice); sleep/steps stay as the muted inputs line.
+// Design: DESIGN.md → Sheets are written to the subject, not the provider.
 const METRIC = "energy";
 
 // Energy is a 0-100 score, so a point is a point across the whole range and a
@@ -39,15 +29,8 @@ const CARD_METRICS = [
 ];
 
 export function useTrendsCard() {
-  // A calendar month is the only anchored window the range vocabulary offers
-  // that's long enough, and on the 3rd it's three days long. So: ask for this
-  // month, and if that can't reach MIN_BASELINE, prepend last month. The
-  // second call only happens in the first week or so of a month, which is
-  // exactly when it's needed and the rest of the time costs nothing.
-  //
-  // Both spans are resolved server-side from db.day_key(), which is the point
-  // — the frontend must never compute a day key off the wall clock, because
-  // between midnight and 4am it would be a day out (CLAUDE.md).
+  // This month is the only anchored window long enough, but on the 3rd it's 3 days: if it can't
+  // reach MIN_BASELINE, prepend last month. Spans resolve server-side (db.day_key()), never off the wall clock.
   const { data: loaded, error, reload, busy: refreshing } = useWidgetData(async () => {
     const cur = await fetchJSON(trendUrl(METRIC, "this-month"));
     let data = cur.data;
@@ -62,8 +45,7 @@ export function useTrendsCard() {
   const series = loaded?.series ?? null;
   const stale = loaded?.stale ?? null;
 
-  // The last point with a value is today's reading; anything after it is a
-  // day the score couldn't be computed for, which is a gap and not a zero.
+  // The last valued point is today's reading; later days are gaps, not zeros.
   const pts = (series || []).filter((p) => p.value != null);
   const latest = pts.length ? pts[pts.length - 1] : null;
   const readings = latest

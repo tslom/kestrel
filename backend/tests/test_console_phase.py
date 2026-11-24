@@ -1,9 +1,7 @@
 """The `phase` lines a turn sends before it has text or a chip to show.
 
-Measured: on a tool turn the thinking block opens ~0.7s in and the call's
-block ~0.9s before its full input arrives, and without these the page shows
-only a bare "working…" through all of it. A subagent's blocks are its own
-business and send nothing.
+Measured: thinking opens ~0.7s in and the call's block ~0.9s before its input arrives;
+without these the page shows a bare "working…". A subagent's blocks send nothing.
 """
 
 import asyncio

@@ -1,32 +1,9 @@
-"""Citations: the handle that gets a sentence's source back.
+"""Citations: the short stable ref that gets a sentence's source back.
 
-The console reads an address out of an email and tells you where the meeting
-is. The address survives the retelling; the email does not. This module gives
-every citable row a short stable ref, hands it to the model alongside the row,
-and resolves it back to something clickable when the model quotes it.
-
-Three rules shape the whole thing:
-
-**The ref is derived, never assigned.** `sha1(kind + target)` truncated to
-five hex digits, behind a one-letter kind. No counter, so nothing needs to
-know which session is asking, and the same email is `e7a3f1` today and in a
-transcript replayed next March. A per-session counter looked cheaper until you
-replay a transcript: its `e3` means whatever the *replaying* session numbered
-third.
-
-**Resolution is the validation.** There is no separate check that the turn
-really read what it cites. A ref the model invented is five random hex digits
-that were never handed out, so it does not resolve, and the frontend renders
-it dead rather than linking to the wrong email with a straight face. The one
-failure that would be silent is a collision — two targets, one ref — so
-`remember()` is INSERT OR IGNORE and never overwrites: whoever got the ref
-first keeps it, `resolve()` returns that row, and the loser gets a ref with a
-longer hash instead (see `_ref`).
-
-**Targets are ids the provider caches already hold.** Nothing here stores an
-email body or a message text; a ref is a pointer into `emails` / `events` /
-`messages`, and `resolve()` reads the live row. So a re-synced subject shows
-its new self, and a purged cache resolves to nothing — which is the truth.
+`sha1(kind + target)` truncated, behind a kind letter: derived, never
+assigned. Resolution is the validation (an unhanded-out ref doesn't resolve).
+`remember()` never overwrites. Refs point into provider caches; no bodies stored.
+Design: DESIGN.md → Citations — what a sentence was read off.
 """
 from __future__ import annotations
 
@@ -37,18 +14,12 @@ from typing import Any
 
 from . import db
 
-# Kind ↔ the letter its refs start with. The letter is not decoration: it is
-# what makes `[cite:e7a3f1]` readable in a raw transcript, and it splits the
-# hash space by kind so a collision has to be within one kind.
+# Kind -> ref letter. Readable in a raw transcript; splits the hash space by kind.
 KINDS = {"email": "e", "event": "v", "message": "m", "doc": "d"}
 
-# What the model writes and the frontend matches. Anchored to the letters
-# above so `[cite:x1234]` is a non-match rather than an unresolvable ref —
-# the distinction matters when deciding whether to blame the model or the DB.
+# Anchored to the kind letters: `[cite:x1234]` is a non-match, not an unresolvable ref.
 REF_RE = re.compile(r"\b([evmd])([0-9a-f]{5,10})\b")
-# A document citation carries where in the document, after the ref:
-# `[cite:d3f9a1#p12 "the quoted words"]`. The ref is still group 1; the page
-# and quote are the frontend's to use (ui/DocPage.jsx), not something to look up.
+# Doc cites add `#p12 "quote"` after the ref (group 1); the frontend uses those (ui/DocPage.jsx).
 CITE_RE = re.compile(r"\[cite:([evmd][0-9a-f]{5,10})(?:#p\d{1,4}(?:\s+\"[^\"\]\n]*\")?)?\]")
 
 _HASH_MIN = 5      # digits in the usual ref
@@ -64,13 +35,8 @@ def _ref(kind: str, target: str, width: int) -> str:
 def remember(kind: str, target: str, label: str, day: str | None,
              con: Any = None) -> str:
     """Give this row its ref, recording it the first time it is handed out.
-
-    The recording is the whole point: `resolve()` is a lookup on this table,
-    so a ref that was never written here is indistinguishable from one the
-    model invented. That is deliberate — see the module docstring — but it
-    means this must be called on the way *out*, as the row is rendered into
-    the model's context, never lazily when the citation comes back.
-    """
+    Call on the way *out* (row rendered into context), never lazily when the
+    citation comes back: `resolve()` can't tell an unrecorded ref from an invented one."""
     if kind not in KINDS:
         raise ValueError(f"unknown citation kind: {kind}")
     target = str(target)
@@ -92,11 +58,8 @@ def remember(kind: str, target: str, label: str, day: str | None,
                 return ref
             if held["kind"] == kind and held["target"] == target:
                 return ref          # already ours — the common path
-            # Taken by someone else. Lengthen rather than steal: the ref
-            # already in a past transcript keeps pointing where it pointed.
-        # Ten hex digits deep and still colliding is not a thing that happens;
-        # returning the long form unrecorded is better than raising inside a
-        # brief-line render.
+            # Taken: lengthen, never steal (past transcripts keep their meaning).
+        # Unreachable in practice; unrecorded beats raising inside a brief-line render.
         return _ref(kind, target, _HASH_MAX)
 
     if con is not None:
@@ -130,9 +93,7 @@ def _event(con, target: str) -> dict[str, Any] | None:
         " calendar_name FROM events WHERE day = ? AND event_id = ?",
         (day, event_id)).fetchone()
     if r is None:
-        # A recurring event keeps its id across days, and a cache re-sync can
-        # drop the exact day a past ref was minted on. Any surviving instance
-        # answers "what was this" better than a dead pill does.
+        # Recurring events keep their id; a re-sync can drop the minted day. Nearest instance beats a dead pill.
         r = con.execute(
             "SELECT day, event_id, summary, start_at, end_at, all_day,"
             " location, calendar_name FROM events WHERE event_id = ?"
@@ -186,10 +147,8 @@ _READERS = {"email": _email, "event": _event, "message": _message, "doc": _doc}
 def resolve(ref: str) -> dict[str, Any] | None:
     """One ref → what it points at, or None if it was never handed out.
 
-    A ref that *was* handed out but whose row has since left the cache comes
-    back `found: False` with the label it was minted with, rather than None.
-    The two cases read differently on screen and should: one is "the console
-    made that up", the other is "that email is no longer in the cache".
+    Handed out but row gone from the cache: `found: False` with the minted
+    label, not None ("no longer cached" vs "the console made that up").
     """
     ref = (ref or "").strip().lower()
     m = REF_RE.fullmatch(ref)

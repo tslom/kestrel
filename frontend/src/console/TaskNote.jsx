@@ -1,10 +1,7 @@
 import { useState } from "react";
 
-// A background agent or shell finishing, failing, hitting its time limit, or
-// found cut off when the last session ended (backend: task_notes.py). The CLI
-// tells the model with a <task-notification> message, which used to show as a
-// bubble of raw XML in your own voice. One status-style line instead; open it
-// for the CLI's note, the agent's report and the ids.
+// A background agent/shell finishing, failing, timing out or found cut off (backend task_notes.py): one
+// status line instead of the CLI's raw <task-notification> XML; open it for the note, report and ids.
 
 const ICON = { completed: "✓", failed: "✕", killed: "⏱", stopped: "⏹" };
 

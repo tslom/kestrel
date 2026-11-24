@@ -1,19 +1,9 @@
-"""Course reference — office hours, instructors, syllabus links.
+"""Course reference: office hours, instructors, syllabus links.
 
-The vault stays the source of truth: one note per course under
-`02-Areas/usc/<term>/` with `type: course` frontmatter. There's no table and
-no migration here — index.db already stores frontmatter as JSON, so a course
-you add or edit in Obsidian shows up on the next reindex.
-
-The only computed thing is *when*: office hours are written as "Mon 09:30-10:30",
-and the point of the widget is to answer "is anyone in right now, and if not,
-who's next" without you doing that arithmetic in your head.
-
-Professors amend hours for one week without changing the standing rule, so an
-entry may carry an `except:` list of dated overrides — see `_exceptions`. The
-rule and the exception are both kept: the week view answers "when are 103's
-hours", today's rows answer "can I walk in now", and those differ on exactly
-the days that matter most.
+Source of truth: one note per course under `02-Areas/usc/<term>/` (`type: course`
+frontmatter); no table. The writers below edit the note, then reindex. An entry's
+`except:` list holds dated overrides; the week view shows the rule, today's rows the
+hours actually held. Design: DESIGN.md → `app/courses.py`.
 """
 
 import json
@@ -36,15 +26,13 @@ _WHEN_RE = re.compile(
     r"(?P<start>\d{1,2}:\d{2})\s*[-–—to]+\s*(?P<end>\d{1,2}:\d{2})\s*$"
 )
 
-# An exception's own `when` may drop the weekday — its `date` already fixes
-# which day it is. "14:00-15:00" and "Tue 14:00-15:00" both parse.
+# An exception's `when` may drop the weekday (its `date` fixes it).
 _EXC_WHEN_RE = re.compile(
     r"^\s*(?:[A-Za-z][A-Za-z,&/ ]*?\s+)?"
     r"(?P<start>\d{1,2}:\d{2})\s*[-–—to]+\s*(?P<end>\d{1,2}:\d{2})\s*$"
 )
 
-# Aug–Dec is fall, Jan–May spring, Jun–Jul summer. Used only to pick which
-# term's notes the widget shows once a second term's folder exists.
+# Aug–Dec fall, Jan–May spring, Jun–Jul summer; only picks which term's notes show.
 _SEASONS = [(1, "spring"), (6, "summer"), (8, "fall")]
 
 
@@ -64,17 +52,10 @@ def _fmt(minutes: int) -> str:
 
 
 def _exceptions(entry: dict) -> dict[str, dict]:
-    """An entry's `except:` list, keyed by ISO date.
+    """An entry's `except:` list, keyed by ISO date: new hours or `cancelled: true` for one date.
 
-    A weekly `when` can't say "2pm this Tuesday only": amend the rule and it's
-    wrong from next week, leave it and it's wrong tomorrow. A dated exception
-    overrides the rule on exactly one date — new hours, or `cancelled: true`.
-    Hours that *move* to another weekday are two exceptions, a cancellation on
-    the old date and hours on the new one, because that is what happened.
-
-    An exception whose `when` doesn't parse keeps the rule's hours and only
-    annotates them, on the same principle as an unparseable `when` above: say
-    the odd thing rather than drop the person holding the hours."""
+    Moved hours are two exceptions (cancel the old date, hours on the new). An
+    unparseable exception `when` keeps the rule's hours and only annotates them."""
     out: dict[str, dict] = {}
     for raw in entry.get("except") or []:
         if not isinstance(raw, dict):
@@ -100,8 +81,7 @@ def _exceptions(entry: dict) -> dict[str, dict]:
 
 
 def _effective(slot: dict, day: date) -> dict | None:
-    """The slot's real hours on `day` — the rule unless an exception says
-    otherwise. None when nobody is holding hours that day."""
+    """The slot's real hours on `day` (rule unless an exception overrides); None when nobody holds hours."""
     exc = slot["_exc"].get(day.isoformat())
     if exc:
         if exc["cancelled"]:
@@ -117,7 +97,7 @@ def _effective(slot: dict, day: date) -> dict | None:
 
 
 def _public(slot: dict, **over) -> dict:
-    """A slot as the API returns it — overrides applied, working state gone."""
+    """A slot as the API returns it, working state dropped."""
     out = {**slot, **over}
     out.pop("_exc", None)
     return out
@@ -129,11 +109,8 @@ def _label(slot: dict) -> str:
 
 
 def _slots(entry: dict, code: str, title: str) -> list[dict]:
-    """One office-hours entry -> one slot per weekday it covers.
-
-    An unparseable `when` (a "TBA", a shape we haven't seen) still comes back
-    as a slot with day_i None, so the card shows the text instead of dropping
-    the person silently."""
+    """One office-hours entry -> one slot per weekday. An unparseable `when` ("TBA") still
+    comes back with day_i None, so the card shows the text instead of dropping the person."""
     when = str(entry.get("when") or "").strip()
     base = {
         "code": code,
@@ -162,13 +139,8 @@ def _slots(entry: dict, code: str, title: str) -> list[dict]:
 def _next_occurrence(slot: dict, now: datetime) -> tuple[datetime, dict] | None:
     """When this slot next opens, at or after `now`, and with which hours.
 
-    Walks dates rather than jumping to the rule's weekday, because exceptions
-    make the two different: a cancelled week has to be skipped rather than
-    promised, and hours moved onto another day have to be found there.
-
-    Three weeks, not the one a weekly rule needs: a cancellation pushes the
-    next occurrence past the 7-day mark, and a horizon that stopped there
-    would report no upcoming hours at all for the week they're called off."""
+    Walks dates (exceptions cancel or move hours). 22 days, not 7: a cancellation pushes the
+    next occurrence past a week."""
     for ahead in range(22):
         d = now.date() + timedelta(days=ahead)
         eff = _effective(slot, d)
@@ -181,12 +153,9 @@ def _next_occurrence(slot: dict, now: datetime) -> tuple[datetime, dict] | None:
 
 
 def load(term: str | None = None) -> dict:
-    """Every course note for the term, with its office hours placed in the week.
+    """Every course note for the term, office hours placed in the week.
 
-    `day_key()` (not date.today()) decides which weekday counts as today, so
-    the card agrees with the rest of the desk across the 4am rollover. "Open
-    now" is still measured against the wall clock — nobody holds hours at 3am.
-    """
+    Today is `day_key()`; "open now" is measured against the wall clock."""
     now = datetime.now()
     today_key = db.day_key()
     today_date = date.fromisoformat(today_key)
@@ -200,8 +169,7 @@ def load(term: str | None = None) -> dict:
             if meta.get("type") == "course":
                 rows.append((row["path"], meta))
 
-    # Only filter by term when the term actually has notes — mid-August the
-    # calendar says fall while the vault may still only hold last spring.
+    # Filter by term only when it has notes (mid-August the vault may still hold only spring).
     want = term or current_term()
     if any(m.get("term") == want for _, m in rows):
         rows = [(p, m) for p, m in rows if m.get("term") == want]
@@ -217,25 +185,18 @@ def load(term: str | None = None) -> dict:
         for s in hours:
             exc_today = s["_exc"].get(today_key)
             eff = _effective(s, today_date)
-            # On today's board if the rule lands today *or* an exception is
-            # dated today — a cancellation belongs on the card as much as
-            # hours do, since "don't walk over" is the same decision.
+            # A cancellation dated today belongs on today's board too.
             s["today"] = eff is not None or exc_today is not None
             if exc_today and exc_today["cancelled"]:
                 s["state"] = "cancelled"
             elif eff is None:
                 s["state"] = "unknown" if s["day_i"] is None else "other-day"
             else:
-                # Against the slot's real datetime, not the bare clock: inside
-                # the 4am rollover "today" is yesterday, and comparing 01:00 to
-                # a 09:30 slot would call yesterday morning's hours upcoming.
+                # Real datetime, not bare clock: after midnight, before the 4am rollover, "today" is yesterday.
                 opens = midnight + timedelta(minutes=eff["start"])
                 closes = midnight + timedelta(minutes=eff["end"])
                 s["state"] = "now" if opens <= now < closes else "past" if now >= closes else "later"
-            # The week view keeps showing the *rule*, annotated with the next
-            # exception rather than quietly swapping its hours in: someone
-            # opening the week asks "when are 103's hours", and the standing
-            # answer with the one-off called out beside it is that answer.
+            # The week view keeps the rule, annotated with the next exception.
             s["exception"] = next(
                 (e for k, e in sorted(s["_exc"].items()) if k >= today_key), None)
             s["label"] = _label(s)
@@ -254,8 +215,7 @@ def load(term: str | None = None) -> dict:
         })
     courses.sort(key=lambda c: c["code"])
 
-    # Today's rows carry the hours actually being held, where the week view
-    # above carries the rule. Same slot, two questions.
+    # Today's rows carry the hours actually held; the week view carries the rule.
     today = []
     for s in slots:
         if not s["today"]:
@@ -268,17 +228,12 @@ def load(term: str | None = None) -> dict:
             exc = s["_exc"].get(today_key)
             if exc and exc.get("where"):
                 row["where"] = exc["where"]
-            # The weekday it normally falls on, when that isn't today — the row
-            # overwrites `day` with today's, so this is the only thing left
-            # that can say a Tuesday block is being held on a Wednesday. None
-            # (not False) when it's where it belongs, so the card can print it.
+            # Normal weekday when not today (the row overwrites `day`); None, not False, otherwise.
             row["moved_from"] = (s["day"] if s["day_i"] is not None
                                  and s["day_i"] != today_i else None)
         row["label"] = _label(row)
         today.append(row)
-    # A cancelled slot keeps the rule's start so it sorts into place, and a
-    # dated exception on TBA hours has no start at all — neither could reach
-    # the old bare `s["start"]` key, both can now.
+    # A dated exception on TBA hours has no start, hence the None guard.
     today.sort(key=lambda s: (s["start"] is None, s["start"] or 0))
     open_now = [s for s in today if s["state"] == "now"]
 
@@ -312,20 +267,10 @@ def load(term: str | None = None) -> dict:
 
 
 # ---------- writing ----------
-#
-# Everything above reads. These write, and they exist because the amendments
-# arrive by mail: "hours are 2pm this week", "no hours Thursday, I'm away".
-# Retyping those into Obsidian is exactly the chore that leaves the card
-# stale, and a stale office-hours card is worse than none — you walk over.
-#
-# The note stays the source of truth, so these edit the note and reindex; they
-# never write a table. What they add over the console's plain Edit tool is the
-# schema: the weekly `when` grammar the card can actually place, dates that
-# resolve, and an entry matched to the right person before it's overwritten.
+# Amendments arrive by mail; these edit the note (never a table) and reindex, adding the
+# `when` grammar, date resolution and who-matching over a plain Edit.
 
-# What may be amended. Deliberately closed: these are the syllabus facts the
-# card reads. The rest of the note — the schedule table, your own notes — is
-# yours, and a writer that could rewrite any key would eventually rewrite one.
+# Deliberately closed: only the syllabus facts the card reads; the rest of the note is the user's.
 EDITABLE = ("instructor", "instructor_email", "lms", "syllabus", "section",
             "units", "title")
 
@@ -340,13 +285,8 @@ def course_key(code: str) -> str:
 
 
 def known_codes(term: str | None = None) -> list[str]:
-    """Course codes in the vault for the term, exactly as written there.
-
-    Exists so the office-hours mail extractor can be *given* the valid codes instead of
-    being asked to produce them: a model left to guess writes "CS 103" for
-    "CSCI 103", and the proposal then points at a note `find_course` can't open.
-    Handing it the real list turns that whole class of miss into an honest
-    `relevant: false`."""
+    """Course codes in the vault for the term, as written there. The mail extractor is given these
+    rather than asked to produce them (a model writes "CS 103" for "CSCI 103")."""
     return [c["code"] for c in load(term)["courses"] if c.get("code")]
 
 
@@ -375,12 +315,9 @@ def find_course(code: str) -> tuple[Path, frontmatter.Post]:
 
 
 def _save(path: Path, post: frontmatter.Post) -> None:
-    """Rewrite the note and reindex it.
+    """Rewrite the note and reindex now (the watcher would, a moment later).
 
-    `sort_keys=False` because python-frontmatter alphabetizes by default, and
-    reordering every key of a hand-written note is not an edit anyone asked
-    for. The reindex is the same full rebuild the file watcher would do a
-    moment later — doing it here means the card is right before we answer."""
+    `sort_keys=False`: python-frontmatter alphabetizes by default."""
     path.write_text(frontmatter.dumps(post, sort_keys=False) + "\n", encoding="utf-8")
     indexer.rebuild()
 
@@ -396,20 +333,14 @@ def _hours_list(post: frontmatter.Post) -> list:
 
 
 def _match(hours: list, who: str, slot: str | None) -> list[dict]:
-    """Entries for `who`, narrowed by `slot` (a substring of the weekly when).
-
-    One person often holds two blocks — Mon and Wed — so `who` alone is not an
-    address, and silently amending the wrong one is the failure that matters
-    here."""
+    """Entries for `who`, narrowed by `slot` (substring of the weekly when). `who` alone isn't an
+    address: one person often holds two blocks."""
     needle = (who or "").strip().lower()
     if not needle:
         raise CourseError("whose hours? pass the name as written on the note")
     words = set(re.findall(r"[a-z0-9']+", needle))
 
-    # Substring as before ("halvorsen" finds Martin Halvorsen), or every word of
-    # the name on file inside the one given: mail signs with a middle name,
-    # and "Martin James Halvorsen" not matching "Martin Halvorsen" made an
-    # office-hours move unapprovable (409 on every try).
+    # Substring, or every word on file inside the given name (mail adds middle names).
     def same(on_file: str) -> bool:
         on_file = on_file.lower()
         file_words = set(re.findall(r"[a-z0-9']+", on_file))
@@ -438,12 +369,7 @@ def _one(hours: list, who: str, slot: str | None) -> dict:
 
 
 def _one_on(hours: list, who: str, slot: str | None, weekday: int) -> dict:
-    """`_one`, but a dated override already says which block it's about.
-
-    A TA with Mon and Thu blocks is ambiguous by name, not on a given Thursday —
-    only one of them meets that day. Falls through to `_one` (and its question)
-    when the date doesn't settle it: no slot given, and zero or several of
-    `who`'s blocks on that weekday."""
+    """`_one`, but the date can settle which block; falls through to `_one` when it doesn't."""
     if not slot:
         on_day = [e for e in _match(hours, who, None)
                   if weekday in _weekdays(str(e.get("when") or ""))]
@@ -461,21 +387,14 @@ def _weekdays(when: str) -> frozenset[int]:
 def _amendable(hours: list, who: str, when: str, slot: str | None) -> dict | None:
     """The entry `when` amends, or None when it's a second block for `who`.
 
-    Same person, same weekdays is the same standing block, so a new time for
-    it is an edit; different weekdays is another block. Matching on `who`
-    alone is what once lost three of one TA's four blocks — each
-    call amended the entry the call before it had just written, and each
-    reported "updated", which nobody read. One person holding Mon 16:00-18:00,
-    Tue 09:00-12:00 and Tue/Thu 15:00-18:00 is the ordinary case, not the
-    ambiguous one."""
+    Same person and weekdays = same block. Matching on `who` alone lost blocks (each call
+    amended the previous call's entry)."""
     candidates = _match(hours, who, slot)
     if slot:
-        # An explicit slot is an address, not a hint: it names a block to
-        # amend, so missing or ambiguous is a question rather than an append.
+        # An explicit slot is an address: missing or ambiguous is a question, not an append.
         return _one(hours, who, slot)
     want = _weekdays(when)
-    # An unparseable `when` ("TBA", a shape we haven't seen) has no weekdays to
-    # compare, so fall back to `who` alone — that's how a TBA gets replaced.
+    # No weekdays to compare (e.g. "TBA"): fall back to `who` alone, so a TBA gets replaced.
     same = [e for e in candidates
             if not want or _weekdays(str(e.get("when") or "")) == want]
     if len(same) > 1:
@@ -519,16 +438,11 @@ def set_hours(code: str, who: str, when: str, *, where: str | None = None,
     _save(path, post)
 
     note = f'{verb} {entry["who"]}: {when}'
-    # Which of the two happened is the thing to report back: "added" beside the
-    # blocks left standing is how a caller writing a person's schedule one call
-    # at a time can tell it landed as a third block rather than over the second.
+    # Report added vs updated so a caller can tell a third block from an overwrite.
     if others:
         kept = ", ".join(str(e.get("when")) for e in others)
         note += f' — their other blocks ({kept}) are unchanged'
-        # A block the card can't place is the one shape that is often a
-        # placeholder rather than a block. Posted hours don't overwrite it —
-        # nothing here overwrites anything it can't compare — but leaving a
-        # "TBA" row beside the real hours silently is its own wrong card.
+        # An unplaceable block is often a placeholder; it isn't overwritten, so say so.
         stale = [e for e in others
                  if not _WHEN_RE.match(str(e.get("when") or ""))]
         if verb == "added" and stale:
@@ -542,12 +456,8 @@ def set_hours(code: str, who: str, when: str, *, where: str | None = None,
 
 
 def standing_block(code: str, who: str, when: str) -> dict | None:
-    """A copy of the entry `set_hours(code, who, when)` would amend, or None
-    when it would add a new block. Raises CourseError where set_hours would.
-
-    For the office-hours mail proposals: one reads it to tell a post that only restates
-    hours already on file from news, and approval keeps it so the undo can
-    put back the block it replaced rather than delete it."""
+    """A copy of the entry `set_hours(code, who, when)` would amend, or None if it would add a block.
+    Raises CourseError where set_hours would. Used by mail proposals (restated vs news; undo)."""
     _, post = find_course(code)
     entry = _amendable(_hours_list(post), who, when, None)
     return dict(entry) if entry is not None else None
@@ -559,8 +469,7 @@ def is_weekly(when: str) -> bool:
 
 
 def same_rule(a: str, b: str) -> bool:
-    """Whether two weekly `when`s are the same hours, however they're spelled —
-    "Thu 12:00-14:00" and "Thurs 12:00–14:00" are one rule."""
+    """Whether two weekly `when`s are the same hours however spelled ("Thu" / "Thurs")."""
     ma, mb = _WHEN_RE.match(a or ""), _WHEN_RE.match(b or "")
     if not (ma and mb):
         return (a or "").strip().lower() == (b or "").strip().lower()
@@ -638,8 +547,7 @@ def set_field(code: str, field: str, value: str) -> str:
         raise CourseError(f"{field!r} isn't editable here — one of {', '.join(EDITABLE)}")
     path, post = find_course(code)
     before = post.metadata.get(field)
-    # `units: 4` is a number in every note that has it; writing "4" would make
-    # this the one note where it's a string.
+    # `units` is numeric in every note.
     post.metadata[field] = int(value) if field == "units" and str(value).isdigit() else value
     _save(path, post)
     return f'{code} {field}: {before!r} -> {post.metadata[field]!r}'

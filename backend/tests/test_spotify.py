@@ -1,8 +1,4 @@
-"""providers/spotify.summary — the MusicWidget's compact one-call payload.
-It reads only the `plays` cache: today's minutes/plays/top-track/last-play +
-novelty, plus a rolling-7-day sparkline and week top artist. Tests seed `plays`
-directly and pin `day_key` so "today" is deterministic; novelty is checked to
-match the provider's own `novelty` metric so the two never drift."""
+"""providers/spotify.summary, the MusicWidget payload from the `plays` cache; novelty must match the provider's `novelty` metric."""
 
 from datetime import date, timedelta
 
@@ -31,8 +27,7 @@ def _play(con, played_at, day, track_id, track, artist, artist_id, ms):
 
 
 def _pin_today(monkeypatch, day=TODAY):
-    # Only the no-arg "today" call is pinned; day_key(dt) (used by _day_key_of
-    # to bucket a play's instant) must keep computing the real key.
+    # Pin only the no-arg "today" call; day_key(dt) (bucketing a play's instant) must stay real.
     real = db.day_key
     monkeypatch.setattr(db, "day_key",
                         lambda *a, **k: day if not a and not k else real(*a, **k))

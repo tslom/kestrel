@@ -1,24 +1,9 @@
 """Stats for nerds: a turn's speed, measured off the stream (console.py).
 
-The turn footer already says how long a turn took and how many tokens it
-read and wrote. Neither is a speed: a dev turn is a dozen model calls with
-tool runs between them, so tokens over wall-clock time measures the tools as
-much as the model. So this times the model calls themselves.
-
-  * **time to first token**: from the message leaving (`sent`) to the first
-    content block of the turn's first reply. A thinking block counts: that's
-    the model answering, even when the thinking text itself isn't shown.
-  * **tok/s**: output tokens over the time spent *inside* model calls,
-    `message_start` to `message_stop`, summed. `message_start` arrives with
-    the response's first bytes, so this is the generation rate: the wait
-    before it is what TTFT reports, not part of this.
-  * **calls**: model requests the turn made (`message_start`s).
-
-Subagent calls are left out (console.py only passes top-level events): they
-run on other models, often in parallel, and would blur both numbers.
-
-Shown only behind Settings → "Stats for nerds"; computed always, since it's a
-few clock reads per event.
+Times the model calls themselves, not the turn: time to first token (message sent to
+first content block; thinking counts), tok/s (output tokens over `message_start` to
+`message_stop`, summed) and call count. Subagent events are never passed in.
+Computed always (a few clock reads); shown behind Settings. Design: DESIGN.md → Console (Stats for nerds).
 """
 
 from __future__ import annotations
@@ -67,10 +52,8 @@ class TurnStats:
             self.call_start, self.call_out = None, 0
 
     def finish(self) -> dict | None:
-        """The footer's numbers, or None when nothing was timed (a turn with
-        no stream events: partial messages off, or an error before any).
-        Starts the count over, so a turn the CLI begins on its own (a
-        background task finishing) is timed from zero, with no TTFT."""
+        """The footer's numbers, or None when nothing was timed (no stream events).
+        Resets, so a turn the CLI starts itself is timed from zero with no TTFT."""
         calls, out, gen_s = self.calls, self.out, self.gen_s
         ttft = (round((self.first_at - self.sent_at) * 1000)
                 if self.first_at is not None and self.sent_at is not None else None)

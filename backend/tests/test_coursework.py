@@ -57,8 +57,7 @@ def test_a_due_item_carries_course_deadline_and_its_dropbox(feed):
 
 
 def test_a_late_night_utc_deadline_lands_on_its_pacific_day(feed):
-    """06:59Z on the 15th is 11:59pm on the 14th — the ENGR pitch the
-    calendar had a day early."""
+    """06:59Z on the 15th is 11:59pm on the 14th (a day early otherwise)."""
     r = _rows("2026-10-14")["1-2@brightspace.usc.edu"]
     assert r["start"] == "2026-10-14T23:59" and r["kind"] == "event"
     assert r["details"] == "Submit a 3-5 minute video on your pitch."

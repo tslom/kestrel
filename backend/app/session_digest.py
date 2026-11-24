@@ -1,18 +1,8 @@
-"""A past session, made small: a digest to attach as context, and a title.
+"""A past session, made small: an extractive digest to attach as context, and a title.
 
-Both read the transcript through `sessions.session_transcript`, the same
-replay the console's back-scroll uses, so what's summarised is what you'd
-see scrolling back.
-
-The digest is extractive on purpose: what you asked, in
-order, the files it changed and the last thing it said, cut to a budget. A
-model-written summary would be a claim about the session, costs a call on
-every attach, and is one more thing to be wrong; this is a record, and the
-tab reading it can open the session by id if it needs the rest.
-
-The title is the one place a model is asked (#102): a first message like
-"ok so" names nothing, and only a reading of the whole session can do better.
-One Haiku turn over the digest, asked for when you click, never in bulk.
+Both read `sessions.session_transcript`. The digest is a record (asks, files changed, last reply,
+cut to a budget), not a model summary (a claim, a call per attach). The title is the one model call
+(#102): one Haiku turn over the digest, on click, never in bulk.
 """
 
 from __future__ import annotations
@@ -51,8 +41,7 @@ def digest(session_id: str, cwd: Path | None = None) -> dict | None:
                 files.append(path)
     replies = [e["text"] for e in entries if e["kind"] == "text"]
     last = _clip(replies[-1], LAST_REPLY_CHARS) if replies else ""
-    # The first ask frames the session and the newest are where it ended;
-    # past ASKS_KEPT the middle goes, and the digest says how many.
+    # Keep the first asks and the newest; the middle goes past ASKS_KEPT.
     kept = asks if len(asks) <= ASKS_KEPT else (
         asks[:4] + [None] + asks[-(ASKS_KEPT - 4):])
     lines = []

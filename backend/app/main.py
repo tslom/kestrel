@@ -10,10 +10,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .delegates import api as delegates_api
-from . import (activity, brain, brief, claude_account, console, console_project, console_terminal, db,
+from . import (activity, brain, brief, claude_account, claude_accounts, console, console_project, console_terminal, db,
                email_schedule, expenses,
                failures, files, indexer,
-               leave, lists, people,
+               leave, lists, model_catalog, people,
                looks, phone, schedules, snoozes, tiles, token_usage, trends, usage, visits,
                voice, watcher, widgets)
 from .config import VAULT_PATH
@@ -33,12 +33,8 @@ from .routes import status as status_routes
 from .routes import food as food_routes
 from .routes import study as study_routes
 
-# Nothing configured logging before this, so the root logger had no handler
-# and Python's last-resort one printed WARNING and up, bare: every log.info in
-# app/ (brief's "brief ready", …) went nowhere. INFO for our own `app.*`
-# loggers only — root stays at WARNING so third-party libraries (the voice
-# stack's model downloads, httpx) don't start narrating every request.
-# uvicorn's own loggers don't propagate to root, so nothing prints twice.
+# INFO for `app.*` only; root stays WARNING so third-party libraries (httpx,
+# voice model downloads) stay quiet. Without this, log.info in app/ went nowhere.
 logging.basicConfig(level=logging.WARNING, format="[%(name)s] %(message)s")
 logging.getLogger("app").setLevel(logging.INFO)
 
@@ -54,9 +50,11 @@ async def lifespan(app: FastAPI):
         print(f"[index] SKIPPED: {e}\n        Set VAULT_PATH and POST /api/reindex.")
     refresh_task = asyncio.create_task(poller.refresh_loop())
     send_task = asyncio.create_task(email_schedule.send_loop())
-    # Fully merged branches that closed tabs and finished --worktree sessions
-    # left behind, gone (console_worktree.sweep); in the background, since
-    # it's a few git calls per branch per project.
+    # Every saved Claude account's usage, and the rules that pick one.
+    accounts_task = asyncio.create_task(claude_accounts.loop())
+    # Each provider's live model list, and what each Claude account may run.
+    models_task = asyncio.create_task(model_catalog.loop())
+    # Sweep merged branches left by closed tabs (console_worktree.sweep); off-thread: git calls per branch.
     sweep_task = asyncio.create_task(asyncio.to_thread(console.sweep_orphans))
     def _swept(t: asyncio.Task) -> None:
         if t.cancelled():
@@ -66,8 +64,7 @@ async def lifespan(app: FastAPI):
         elif t.result():
             print(f"[worktrees] swept merged orphans: {t.result()}")
     sweep_task.add_done_callback(_swept)
-    # The phone door (app/phone.py): its own listener on 127.0.0.1:8791, and
-    # only if Settings > Phone has it switched on.
+    # The phone door (app/phone.py): :8791, only if Settings > Phone is on.
     try:
         await phone.sync()
     except Exception as e:   # the door never keeps the app from starting
@@ -75,6 +72,8 @@ async def lifespan(app: FastAPI):
     yield
     await phone.stop()
     send_task.cancel()
+    accounts_task.cancel()
+    models_task.cancel()
     refresh_task.cancel()
     if watch_task:
         watch_task.cancel()
@@ -82,7 +81,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Personal Dashboard", lifespan=lifespan)
 
-# Vite dev server origin. Localhost-only app; tighten later if you deploy.
+# Vite dev server origin only.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -92,10 +91,7 @@ app.add_middleware(
 # Outermost: DNS-rebinding and cross-site simple requests (app/localguard.py).
 app.add_middleware(LocalGuard)
 
-# Durable record of any 500, which otherwise exists only in a /tmp log that
-# gets cleaned. Body lives in failures.py so the suite tests this exact
-# function rather than a copy of it. Also installs the HTTPException handler
-# that lets a hand-raised 502 be logged with its reason, not just "HTTP 502".
+# Durable record of any 500, plus the HTTPException handler that logs a raised 502's reason.
 failures.install(app)
 
 app.include_router(failures.router)  # /api/failures: the desk reports here, the status panel reads
@@ -112,6 +108,8 @@ app.include_router(delegates_api.router)  # other models on errands: providers p
 app.include_router(console_terminal.router)
 app.include_router(console_project.router)  # dev tabs: project.json scripts, a port per worktree, PR watch
 app.include_router(claude_account.router)  # Settings: which Claude login, via the CLI; no tokens cross
+app.include_router(claude_accounts.router)  # saved Claude accounts: switch, rules, usage for each
+app.include_router(model_catalog.router)  # live model lists, per-account access, Settings → Models
 app.include_router(voice.router)  # mic in / speech out for the console; audio never leaves the machine
 app.include_router(email_routes.router)  # write actions; GET /api/email stays provider-generated
 app.include_router(calendar_routes.router)  # ditto: writes only, reads are the calendar provider's
@@ -139,17 +137,11 @@ app.include_router(files.router)  # paths a reply names: resolve under ~, view i
 app.include_router(providers_api.router)
 
 
-# /api/health belongs to the health provider; the liveness probe is
-# the conventional /api/healthz.
+# /api/health belongs to the health provider; liveness is /api/healthz.
 @app.get("/api/healthz")
 def healthz(db_check: bool = Query(False, alias="db")):
-    # `day` is the server's day_key — the frontend polls this on wake to
-    # notice a rollover (laptop reopened the next morning) and reload its
-    # widgets. It must come from db.day_key(), never the client's clock:
-    # the 4am rollover is a backend rule and the caches are keyed by it.
-    # `?db=1` also opens app.db, which runs any pending migration: the merge
-    # guard's probe (merge_guard.py), since a server can answer while its
-    # first connection would still fail.
+    # `day` must be db.day_key(), never the client's clock: the frontend polls it to notice
+    # the 4am rollover. `?db=1` opens app.db (runs pending migrations): the merge guard's probe.
     if db_check:
         try:
             with db.session() as con:
@@ -159,18 +151,13 @@ def healthz(db_check: bool = Query(False, alias="db")):
     return {"ok": True, "vault": str(VAULT_PATH), "day": db.day_key()}
 
 
-# Serve the built frontend (npm run build -> frontend/dist) so the whole app
-# is one process on one port for the desktop launcher (launch_app.py). Mounted
-# last so every /api and /ws/* route above wins; the SPA has no client-side
-# routing, so StaticFiles(html=True) serving index.html at "/" is enough.
-# Skipped in dev, where Vite serves :5173 and proxies /api back here.
+# Built frontend for the desktop launcher; mounted last so every /api and /ws/* route
+# wins. Skipped in dev (Vite serves :5173).
 _DIST = Path(__file__).resolve().parents[1].parent / "frontend" / "dist"
 
 
 class _Dist(StaticFiles):
-    """dist minus the sourcemaps. The build writes them (hidden) for
-    failures.py to read off disk; the page never references them, so
-    there's no reason to hand them to anything that asks."""
+    """dist minus sourcemaps (kept on disk for failures.py, never served)."""
 
     def lookup_path(self, path):
         if path.endswith(".map"):

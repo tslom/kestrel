@@ -3,17 +3,10 @@ import { palette } from "../lib/tokens.js";
 import { useLook } from "../lib/look.js";
 import { GROUND_PAINTERS } from "./mapGrounds.js";
 
-// The ground under the map, and the one place on the desk that moves. It is a
-// height field, not a texture: every card raises a hill as tall as it needs you
-// (`hills`), so a heavy day is a range of peaks and a clear one goes almost
-// flat. A console call hitting a node sends a ripple through the field, and the
-// contours bend as it passes; the ground also swells a little under the pointer.
-// At rest it barely breathes: movement here means the agent, or you.
-//
-// Drawn on a canvas under the SVG, which keeps every node, label and click.
-// Heights ease towards their targets in the loop, so nothing here re-renders
-// React. No frames while hidden, off screen or under a full view; with reduced
-// motion it draws one still frame per change, with no ripples or swell.
+// The ground under the map: a height field (a hill per card, as tall as it needs you) with ripples
+// from console calls and a swell under the pointer; at rest it barely breathes. A canvas under the SVG.
+// Heights ease in the loop (no React re-render). No frames while hidden, off screen or under a full
+// view; reduced motion draws one still frame per change. Design: DESIGN.md → The map (the ground).
 
 const STEP = 9;                 // px between samples: finer costs more than it shows
 const FRAME_MS = 1000 / 24;
@@ -34,9 +27,7 @@ function noise(x, y) {
     + (hash(i, j + 1) * (1 - u) + hash(i + 1, j + 1) * u) * v;
 }
 
-// Marching squares for one level over one cell. Corners run clockwise from the
-// top left; each crossed edge is interpolated, so a contour glides as the field
-// moves rather than stepping from sample to sample.
+// Marching squares for one level over one cell; corners clockwise from top left, edges interpolated (contours glide).
 function cell(path, x, y, a, b, c, d, l) {
   const code = (a > l ? 8 : 0) | (b > l ? 4 : 0) | (c > l ? 2 : 0) | (d > l ? 1 : 0);
   if (code === 0 || code === 15) return;
@@ -70,13 +61,11 @@ export default function MapTerrain({ width, height, hills, ripples, working, sti
   const s = scene.current;
   s.working = working;
   s.still = still;
-  // The look lab's map ground (round 4): contours are drawn here, the rest by
-  // a painter over the same field (plan/mapGrounds.js).
+  // Look lab map ground: contours here, the rest by a painter over the same field (plan/mapGrounds.js).
   const { ground } = useLook();
   const painter = GROUND_PAINTERS[ground] || null;
 
-  // Keep hills as eased objects: a new one rises out of the ground, and one
-  // that changes band moves there rather than jumping.
+  // Hills are eased objects: a new one rises, a band change moves rather than jumps.
   useEffect(() => {
     const live = new Set();
     for (const h of hills) {
@@ -91,7 +80,7 @@ export default function MapTerrain({ width, height, hills, ripples, working, sti
     s.draw?.();
   }, [hills, still, s]);
 
-  // A node newly in use throws one ripple, and only one.
+  // A node newly in use throws one ripple.
   useEffect(() => {
     const now = performance.now() / 1000;
     const next = new Set(ripples.map((r) => r.id));
@@ -169,8 +158,7 @@ export default function MapTerrain({ width, height, hills, ripples, working, sti
         const rgb = hexToRgb(h.tint === "bad" ? colors.bad : colors.accent);
         const r = Math.sqrt(h.sig2) * 1.9;
         const wash = ctx.createRadialGradient(h.x, h.y, 0, h.x, h.y, r);
-        // Round 2 (docs/ui-overhaul.md): half the old strength. The tint is
-        // a hint of where to look, the node's ring and count say what.
+        // Half strength (docs/ui-overhaul.md): the tint hints where to look; the ring and count say what.
         wash.addColorStop(0, `rgba(${rgb}, ${0.05 * Math.min(1, h.a)})`);
         wash.addColorStop(1, `rgba(${rgb}, 0)`);
         ctx.fillStyle = wash;
@@ -213,7 +201,7 @@ export default function MapTerrain({ width, height, hills, ripples, working, sti
 
     const tick = (ms) => {
       raf = requestAnimationFrame(tick);
-      // This sits open all day, so at rest it only keeps up with the slow drift.
+      // Open all day: at rest it only keeps up with the slow drift.
       const p = s.pointer;
       const moving = s.working || s.ripples.length > 0 || p.on || p.a > 0.01
         || [...s.hills.values()].some((h) => Math.abs(h.lift - h.a) > 0.01);
@@ -258,8 +246,7 @@ export default function MapTerrain({ width, height, hills, ripples, working, sti
     style={{ width, height }} />;
 }
 
-// Read each time, so a theme flip lands within a second; off the canvas, not
-// the root, so a ground's own tokens on the map pane (looks/grounds.css) win.
+// Read each time (a theme flip lands in a second), off the canvas not the root, so a ground's own tokens (looks/grounds.css) win.
 function terrainColors(el) {
   const css = getComputedStyle(el || document.documentElement);
   const tok = (name, fallback) => css.getPropertyValue(name).trim() || fallback;

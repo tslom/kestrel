@@ -10,8 +10,7 @@ from app import macos, people
 
 
 def test_phone_is_reexpanded_to_e164():
-    """`messages` stores the last 10 digits; Messages won't resolve a bare
-    10-digit string, so it has to go back to +1."""
+    """A stored 10-digit number goes back to +1 form for Messages."""
     assert people._imessage_handle(["2025550166"], []) == "+12025550166"
 
 

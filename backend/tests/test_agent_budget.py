@@ -1,11 +1,5 @@
-"""agent's budget gate — automatic model calls stand down once a usage window
-passes AUTO_PAUSE_PCT, leaving the rest for the console and for buttons.
-
-What's worth pinning: it pauses background work and nothing else (an
-interactive() call goes through), it never pauses on a window that already
-rolled over, it fails open when no reading exists, and a paused call spawns
-no CLI at all.
-"""
+"""agent's budget gate: automatic calls stand down past AUTO_PAUSE_PCT; interactive() calls pass,
+a rolled-over window never pauses, no reading fails open, a paused call spawns no CLI."""
 
 import asyncio
 import time
@@ -81,8 +75,7 @@ def test_an_interactive_call_ignores_the_gate(windows, spawns):
 
 
 def test_interactive_follows_the_call_into_a_thread(windows, spawns):
-    """The brief's Regenerate and the console's attachment tool run the call
-    on a worker thread; the flag has to survive the hop."""
+    """The interactive flag survives the hop to a worker thread (Regenerate, attachment tool)."""
     windows["windows"] = [win("five_hour", 95)]
 
     async def go():
@@ -136,8 +129,7 @@ def test_one_reading_answers_for_a_while(windows, monkeypatch):
 
 
 def test_on_the_event_loop_the_gate_never_fetches(windows):
-    """blocked() is called from routes (brain.maybe_start); a 10s urlopen
-    there would freeze the backend. ask() hops to a thread, so it may."""
+    """blocked() (called from routes) never does the 10s urlopen; ask(), on a thread, may."""
     async def on_loop():
         agent.blocked()
         agent._budget = None

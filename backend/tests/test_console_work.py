@@ -41,8 +41,7 @@ def test_a_previous_boots_rows_are_the_interrupted_tabs(dbfile, monkeypatch):
     assert set(rows) == {"t1", "t2"}
     assert rows["t1"]["turn"] is True and rows["t1"]["agents"][0]["description"] == AGENT["description"]
     assert rows["t2"]["turn"] is False
-    # This launch's own work (the CLI wakes a turn on resume) is recorded
-    # apart and doesn't erase the record of what was cut off.
+    # This launch's work (the CLI wakes a turn on resume) is kept apart from what was cut off.
     _mark("t1", console_work.snapshot(True, []), con)
     _mark("t1", None, con)
     assert {r["tab"] for r in console_work.interrupted(con)} == {"t1", "t2"}

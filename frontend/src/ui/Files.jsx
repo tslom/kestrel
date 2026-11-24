@@ -1,18 +1,7 @@
-// Files that came with a message or an email. The backend already writes
-// "(photo)" into a text's `text` when nothing was typed, so a chip here is not a
-// duplicate — it names the file, and it's the only thing that shows up at all
-// when someone sent a file *with* a caption. Title carries the state of its
-// extracted text, since "searchable" vs "not read yet" is the difference
-// between the console being able to answer a question about it or not.
-//
-// A chip opens its file. An image opens here, over the page; anything else is
-// a link, so a PDF gets the browser's viewer and the rest download
-// (routes/attachments.py decides which). Bytes are fetched on the click and not
-// before: for an email that's a Gmail round-trip per chip.
-//
-// Shared by the message log, the email review card and the reader: every
-// carrier pins its files to the console (pin.js:pinFiles), so each has to show
-// what it would send.
+// Chips for files that came with a message or email (names the file even when a caption exists; the
+// title carries extracted-text state, "searchable" vs "not read yet"). An image opens here; else a
+// link (routes/attachments.py decides). Bytes load on click: for email, a Gmail round-trip per chip.
+// Shared by the message log, email review card and reader; each pins files to the console (pin.js:pinFiles).
 
 import { useState } from "react";
 import { Lightbox } from "./DocPage.jsx";

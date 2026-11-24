@@ -1,16 +1,6 @@
-"""Named places, and the dated home that motivated them.
+"""Named places and the dated home: a day whose home is unknown must produce no home metric at all (a zero is indistinguishable from a day out).
 
-The bug these tests pin is not hypothetical. `HOME_LAT`/`HOME_LON` were a
-single constant, this vault's owner moved cross-country, and every day before the
-move was scored against the address they moved *to* — 3,561 km away. So
-`time_at_home_min` read a flat 0.0 for a month of days spent at home, twelve of
-which reached the correlation matrix, where they manufactured a
-`steps ~ time_at_home_min` correlation of +0.70 that collapses to +0.15 once
-the mis-scored days are dropped.
-
-The assertions are therefore mostly about what must NOT happen: a day whose
-home is unknown must produce no home metric at all, because a zero there is
-indistinguishable from a real day spent out.
+Design: DESIGN.md → `tests/test_places.py`.
 """
 
 import json
@@ -29,9 +19,7 @@ MOVE_DAY = "2026-08-17"
 
 
 def _seed(monkeypatch, notes):
-    """Stand up an index.db holding the given place notes, through the same
-    `_jsonable` the real indexer writes with — so an unquoted YAML date is
-    tested along the path it actually travels."""
+    """Build an index.db of place notes through the real `_jsonable` (so unquoted YAML dates travel the real path)."""
     con = sqlite3.connect(":memory:")
     con.row_factory = sqlite3.Row
     con.execute("CREATE TABLE notes (path TEXT, title TEXT, frontmatter TEXT)")
@@ -64,17 +52,13 @@ def test_home_follows_the_move(monkeypatch):
 
 
 def test_the_day_of_the_move_has_no_home(monkeypatch):
-    """Neither entry covers 08-17, and that is deliberate: the fixes that day
-    are mid-transit and belong to neither address. An absence is the honest
-    answer; picking one would invent a homecoming or a departure."""
+    """Neither entry covers 08-17 on purpose: mid-transit fixes belong to neither address, and absence is honest."""
     _seed(monkeypatch, _home_notes())
     assert places.home_on(MOVE_DAY) is None
 
 
 def test_an_unknown_home_yields_no_metric_rather_than_a_zero(dbfile, monkeypatch):
-    """The whole point. A day with no known home must be absent from
-    time_at_home_min, not present as 0.0 — a zero is a measurement, and this
-    would be a measurement of the config rather than of the day."""
+    """A day with no known home is absent from time_at_home_min, never 0.0."""
     _seed(monkeypatch, _home_notes())
     from app import db
     con = db.connect()
@@ -94,9 +78,7 @@ def test_an_unknown_home_yields_no_metric_rather_than_a_zero(dbfile, monkeypatch
 
 
 def test_a_pre_move_day_is_scored_against_the_pre_move_home(dbfile, monkeypatch):
-    """The regression proper: these fixes are at the North Carolina address on
-    a North Carolina day, so they are *home*. Against the old single constant
-    they scored 0.0."""
+    """Fixes at the North Carolina address on a North Carolina day are home (the old single constant scored 0.0)."""
     _seed(monkeypatch, _home_notes())
     from app import db
     con = db.connect()
@@ -115,8 +97,7 @@ def test_a_pre_move_day_is_scored_against_the_pre_move_home(dbfile, monkeypatch)
 
 
 def test_no_place_notes_falls_back_to_the_config_constant(monkeypatch):
-    """An untouched install must behave exactly as before — the notes are an
-    upgrade path, never a prerequisite."""
+    """An install with no place notes behaves exactly as before."""
     _seed(monkeypatch, [])
     from app.config import HOME_LAT, HOME_LON
     home = places.home_on("2026-07-25")
@@ -146,10 +127,7 @@ def test_a_note_missing_coordinates_costs_only_itself(monkeypatch):
 
 
 def test_places_too_close_to_separate_say_so(monkeypatch):
-    """The gym is a 15-second walk from the dorm — closer than the GPS error on
-    the fixes that would have to tell them apart. Overlapping declarations are
-    reported rather than silently resolved, because the honest answer is that a
-    fix there could be either."""
+    """Overlapping declarations (gym 15 s from the dorm, inside GPS error) are reported, not silently resolved."""
     _seed(monkeypatch, [
         {"type": "place", "name": "Maple Hall", "lat": NEW[0], "lon": NEW[1],
          "radius_m": 120},
@@ -162,8 +140,7 @@ def test_places_too_close_to_separate_say_so(monkeypatch):
 
 
 def test_places_that_never_coexist_are_not_ambiguous(monkeypatch):
-    """Two homes at the same coordinates in different years overlap in space
-    and not in time, which is not an ambiguity."""
+    """Two homes at the same coordinates in different years overlap in space only: not ambiguous."""
     _seed(monkeypatch, [
         {"type": "place", "name": "Old", "lat": NEW[0], "lon": NEW[1],
          "until": "2026-06-30"},
@@ -176,8 +153,7 @@ def test_places_that_never_coexist_are_not_ambiguous(monkeypatch):
 def test_resolve_names_a_fix_and_declines_when_it_is_nowhere(monkeypatch):
     _seed(monkeypatch, _home_notes())
     assert places.resolve(NEW[0], NEW[1], "2026-09-01").name == "Maple Hall"
-    # The same coordinates before the move: that address wasn't home yet, and
-    # no other note covers it.
+    # Same coordinates before the move: not home yet, and no other note covers it.
     assert places.resolve(OLD[0], OLD[1], "2026-09-01") is None
 
 

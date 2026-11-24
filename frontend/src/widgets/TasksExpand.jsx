@@ -25,11 +25,7 @@ function meta(t) {
   return parts.join(" · ");
 }
 
-// Drill-in detail panel.
-// Everything here is already on the task dict (list_tasks does SELECT *) —
-// this just surfaces the fields the compact row hides: the note, the
-// verbatim source_excerpt, and the
-// full provenance/metadata. Only non-empty fields render.
+// Drill-in: surfaces fields the compact row hides (all on the task dict, list_tasks does SELECT *); non-empty only.
 function TaskDetail({ t }) {
   const fields = [
     ["status", t.status],

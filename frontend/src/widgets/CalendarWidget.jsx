@@ -25,14 +25,11 @@ const VIEWS = [
 ];
 
 function EventRow({ ev, past, onPin }) {
-  // An all-day banner has no span to show, and a spill-over is already showing
-  // nothing but its end — neither gets a trailing end time.
+  // All-day banners and spill-overs get no trailing end time.
   const range = ev.all_day || ev.continued ? null : timeRange(ev.start, ev.end);
   return (
     <li className={past ? "past" : ""} {...dragPin(`event · ${ev.summary}`, ev)}>
-      {/* A spill-over from the previous day carries yesterday's start time —
-          showing it raw made the day look like it began at 10pm. Show when it
-          *ends* here instead. */}
+      {/* A spill-over's start is yesterday's (raw, the day looked like it began at 10pm): show its end. */}
       {ev.span ? <EventTime text="multi-day" />
         : ev.all_day ? <EventTime text="all-day" />
         : ev.continued ? <EventTime text={`\u2192 ${fmtTime(ev.end)}`} />
@@ -50,14 +47,11 @@ function EventRow({ ev, past, onPin }) {
 }
 
 export function useCalendarCard() {
-  // Which day the card shows. It lives here rather than in the view because
-  // it's what the fetch reads.
   const [view, setView] = useState("today");
 
   const { data: payload, setData: setPayload, error, reload, busy: refreshing } =
     useWidgetData(`/api/calendar?range=${view}`, "calendar");
-  // useLoad only fires on mount/sync/rollover; switching the view is our own
-  // trigger. Clear first so the skeleton shows instead of the other day.
+  // useLoad doesn't fire on a view switch; clear first so the skeleton shows, not the other day.
   const firstView = useRef(true);
   useEffect(() => {
     if (firstView.current) { firstView.current = false; return; }
@@ -65,46 +59,30 @@ export function useCalendarCard() {
     reload();
   }, [view, reload, setPayload]);
 
-  // Leave-by times for today's located events. A clock, so it's
-  // re-read every few minutes rather than only on the refresh bus; the
-  // backend caches the Routes lookups for 5 minutes, so the glance strip
-  // asking too costs nothing extra.
+  // Leave-by times: a clock, so polled; the backend caches Routes lookups 5 minutes (the glance strip asks too).
   const { data: leave, reload: reloadLeave } = useWidgetData("/api/leave", "calendar");
   useVisiblePoll(reloadLeave, LEAVE_POLL_MS);
 
   const label = VIEWS.find((v) => v.range === view).label;
   const events = payload?.data || [];
-  // Both views are a single date, so the whole list shares one zone and the
-  // label belongs in the header rather than repeated on every row. It is shown
-  // always, not only when it differs from this machine's zone: a time you have
-  // to remember to doubt is worse than no time at all.
+  // One date, one zone: label in the header, always shown (a time you must remember to doubt is worse than none).
   const zone = events.find((ev) => ev.tz)?.tz;
 
-  // What's still ahead — and while you're looking at tomorrow, none of it
-  // has happened yet.
+  // Tomorrow is all ahead.
   const ahead = view !== "today" ||
     events.some((ev) => ev.all_day || new Date(ev.end) > new Date());
-  // The one thing on a calendar that wants you *now*: leaving. A leave-by
-  // inside LEAVE_SOON_MIN (or already past, with the event not yet started —
-  // you're late) is a clock; everything else on the day is "today".
+  // A leave-by inside LEAVE_SOON_MIN (or past, event not started: late) is the one clock-tier item.
   const now = Date.now();
   const leaving = (leave?.data || [])
     .filter((r) => r.leave_by && new Date(r.start).getTime() > now
       && new Date(r.leave_by).getTime() - now <= LEAVE_SOON_MIN * 60000)
     .sort((a, b) => new Date(a.leave_by) - new Date(b.leave_by))[0] || null;
-  // Folded, the summary *is* the card, so it has to carry what you'd have
-  // scanned the card for — the next thing on the day, not the word "calendar".
+  // All-day events are never "earlier": they cover the part still to come.
   const left = events.filter((ev) => ev.all_day || new Date(ev.end) > new Date());
-  // The split the card renders on. An all-day event is never "earlier": it
-  // covers the whole day, including the part still to come.
   const upcoming = left;
   const past = events.filter((ev) => !left.includes(ev));
   const next = left.find((ev) => !ev.all_day) || left[0];
-  // The one line the folded card gets. A meeting you're *in* has already
-  // answered "when does it start" — the fact left is when it lets you go, and
-  // a stub reading "9:30 AM Standup" at 9:50 reads like something you missed.
-  // Same now-vs-end comparison `left` is already built on, so the stub and the
-  // fold can't disagree about which events are still live.
+  // Folded summary: the next thing on the day; a meeting in progress says "till <end>", not its start.
   const running = next && !next.all_day && new Date(next.start) <= new Date();
   const level = !payload ? null : leaving ? NEEDS : ahead && events.length ? HAS : QUIET;
   const summary = (leaving ? `leave by ${fmtTime(leaving.leave_by)} · ` : "")
@@ -114,8 +92,7 @@ export function useCalendarCard() {
           : fmtTime(next.start)} ${next.summary}`
         + (left.length > 1 ? ` · +${left.length - 1}` : ""));
 
-  // One row: when to leave, for what, and how long you've got. "later" on it
-  // offers minutes (`clock`), since tomorrow is no answer to a leave-by.
+  // `clock`: "later" offers minutes, since tomorrow is no answer to a leave-by.
   const mins = leaving ? Math.round((new Date(leaving.leave_by).getTime() - now) / 60000) : 0;
   const asks = leaving ? [{
     id: `calendar:leave:${leaving.event_id || leaving.start}`, card: "calendar",
@@ -159,11 +136,7 @@ export default function CalendarWidget({ card, onPin }) {
       {error && <WidgetError error={error} />}
       {!payload && !error && <><div className="skel" /><div className="skel w60" /></>}
       {payload && events.length === 0 && <p className="widget-empty">No events {label}.</p>}
-      {/* Everything on the day that's already ended. It used to render inline
-          at full weight under a "now" rule, which on a nine-meeting day meant
-          the card's height was mostly things you could no longer attend and
-          the next one was somewhere in the middle of it. The divider is gone
-          with them: the fold line is the boundary now. */}
+      {/* Ended events fold away; the fold line is the now boundary. */}
       {past.length > 0 && (
         <Folded above summary={`${past.length} earlier`} hideLabel="hide earlier"
           open={!upcoming.length}>

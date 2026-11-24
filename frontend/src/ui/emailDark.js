@@ -1,16 +1,7 @@
-// Dark reading for mail that never chose its colours.
-//
-// Most personal mail is black text on nothing: the white is the client's, not
-// the sender's. That mail is safe to turn over. Mail that paints any ground of
-// its own — a grey wrapper, a coloured header, a button, a background image —
-// was designed on its colours, and turning part of it over breaks the design
-// (white-on-blue headers go blue-on-blue, a logo loses its card). So the rule
-// is all-or-nothing: if every background in the message is transparent or
-// white, the whole message goes dark; if any isn't, none of it does.
-//
-// Read from the computed styles of the rendered frame, not the markup: colour
-// arrives as bgcolor=, inline style, <style> blocks and <font>, and only the
-// browser has resolved all of them.
+// Dark reading for mail that never chose its colours. All-or-nothing: if every background is
+// transparent or white the whole message flips; any own ground (wrapper, header, button, image)
+// means it was designed on its colours and none does (white-on-blue would go blue-on-blue).
+// Read from the frame's computed styles, not the markup (bgcolor=, inline, <style>, <font>).
 
 function rgba(s) {
   const m = /^rgba?\(([^)]+)\)$/.exec(s || "");
@@ -19,8 +10,7 @@ function rgba(s) {
   return [p[0], p[1], p[2], p.length > 3 ? p[3] : 1];
 }
 
-// White, and the off-whites a template means as white (#fafafa, #fdfdfd).
-// Not a light grey: a #f4f4f4 wrapper is a design, framing a white card.
+// White and template off-whites (#fafafa, #fdfdfd); not #f4f4f4, a wrapper design framing a white card.
 const whiteish = ([r, g, b]) =>
   Math.min(r, g, b) >= 245 && Math.max(r, g, b) - Math.min(r, g, b) <= 8;
 
@@ -49,12 +39,8 @@ const luminance = ([r, g, b]) => {
   return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
 };
 
-// Lightness turned over, hue and saturation kept: black text → near-white,
-// a grey footer stays a step dimmer than the body, a link stays blue (a
-// lighter blue). Squeezed into 0.1–0.9 so nothing lands on pure white.
-// `readable` (text that was readable on white) sets a floor on how bright the
-// result is: HSL lightness isn't brightness, and #0000EE turned over is
-// still a blue too deep to read on the dark ground.
+// Lightness turned over, hue and saturation kept, squeezed into 0.1–0.9 (no pure white). `readable`
+// text gets a brightness floor: HSL lightness isn't brightness (#0000EE flipped is still too deep).
 function flip([r, g, b, a], readable = false) {
   r /= 255; g /= 255; b /= 255;
   const max = Math.max(r, g, b), min = Math.min(r, g, b);
@@ -74,9 +60,7 @@ function flip([r, g, b, a], readable = false) {
 
 const SIDES = ["top", "right", "bottom", "left"];
 
-// Every computed value is read before anything is written: colour inherits,
-// so writing a parent first would hand its flipped colour to a child that
-// then gets flipped back.
+// Read every computed value before writing any: colour inherits, so a parent written first would be flipped back in its children.
 export function darken(doc, ground) {
   const win = doc.defaultView;
   const plan = all(doc).map((el) => {

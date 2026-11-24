@@ -1,23 +1,9 @@
-"""The macOS bits that make the window feel like an app rather than a viewport.
+"""The macOS bits that make the window feel like an app: a real menu bar (built on
+AppKit, since pywebview's MenuAction has no accelerator), window frame memory, microphone
+permission, Tab reaching every control, and Kestrel-branded notifications.
 
-Two things pywebview doesn't give us:
-
-- **A real menu bar.** pywebview has a `Menu`/`MenuAction` API, but `MenuAction`
-  takes no accelerator, so everything built with it is click-only. ⌘R and ⌘Q
-  are most of the point, so the menu is built straight against AppKit instead.
-  The Edit items deliberately carry a nil target: that sends them down the
-  responder chain to the web view, which is what makes ⌘C/⌘V work on the
-  selection rather than on whatever Python thinks is focused.
-- **Window frame memory.** Reopening at 1280×860 in the middle of the screen
-  every time is the single most "this is a script" thing about the window.
-- **A microphone.** WKWebView routes every `getUserMedia` call through a
-  `WKUIDelegate` method that pywebview doesn't implement, and an unimplemented
-  one is not a denial — the promise never settles at all. In the browser the
-  voice console works; in the app it hung with the mic button lit and no error
-  anywhere. See `allow_media_capture()`.
-
-macOS-only by construction. Import guarded — on any other platform, or if
-PyObjC isn't there, the launcher runs exactly as it did before.
+macOS-only; the AppKit import is guarded so elsewhere the launcher runs without it.
+Design: DESIGN.md → `backend/desktop_shell.py`: macOS window shell.
 """
 from __future__ import annotations
 
@@ -44,28 +30,13 @@ except ImportError:                                   # pragma: no cover
 
 # ------------------------------------------------------------- media capture
 
-# WKPermissionDecision. Grant rather than Prompt: WebKit's own prompt is not
-# the gate that matters — macOS still asks for microphone access the first
-# time, per app, and that consent is the real one. Prompting twice for one
-# click on a mic button is worse, and the page asking is already a deliberate
-# act (holding talk, or arming the wake word).
+# WKPermissionDecision Grant: macOS's own per-app mic prompt is the real consent.
 _GRANT = 1
 
 
 def allow_media_capture() -> bool:
-    """Teach pywebview's WKWebView to answer a getUserMedia request at all.
-
-    WebKit asks the `WKUIDelegate` for permission, and pywebview's delegate
-    (6.2.1) has no such method. An unimplemented delegate method is not a
-    denial — WebKit drops the request on the floor, so the JS promise never
-    resolves *or* rejects and the caller waits forever with no error to show.
-    That is the difference between the voice console working in a browser tab
-    and hanging silently in the app.
-
-    Adding the selector to pywebview's delegate class is reaching into someone
-    else's object, which is why it's guarded and reports what happened rather
-    than throwing: a mute app is a degraded one, a crashed launcher is not.
-    """
+    """Make pywebview's WKWebView answer getUserMedia at all; without the delegate
+    method the promise never settles. Returns False (never raises) if it can't."""
     if not HAVE_APPKIT:
         return False
     try:
@@ -86,16 +57,8 @@ def allow_media_capture() -> bool:
 
 
 def tab_to_every_control(window) -> None:
-    """Let Tab reach buttons and links, not only text fields.
-
-    WKWebView defaults to Safari's "Tab highlights text fields only", so in
-    the app no button in the page could be reached from the keyboard at all
-    (a browser tab, or Playwright's Chrome, hides that). WKPreferences is
-    shared between the configuration pywebview built and the live web view,
-    so setting it once the window exists takes effect, the same way
-    pywebview's own developerExtrasEnabled does. Scheduled onto the main
-    runloop; a no-op off macOS or if the view can't be found.
-    """
+    """Let Tab reach buttons and links, not only text fields. Scheduled onto the
+    main runloop; a no-op off macOS or if the view can't be found."""
     if not HAVE_APPKIT:
         return
 
@@ -122,12 +85,7 @@ MIN_W, MIN_H = 640, 480
 
 
 def load_frame(path: Path) -> dict:
-    """Last window frame, clamped to something actually visible.
-
-    A frame saved on an external display is off-screen once it's unplugged,
-    and macOS will happily open a window you can't reach. Anything that
-    doesn't fit a current screen falls back to the centred default.
-    """
+    """Last window frame; the centred default if it isn't reachable on a current screen."""
     try:
         saved = json.loads(path.read_text())
     except (OSError, ValueError):
@@ -149,12 +107,8 @@ def load_frame(path: Path) -> dict:
 
 
 def _on_a_screen(frame: dict) -> bool:
-    """Is the window's title bar reachable on some connected display?
-
-    Corner-in-bounds, not fully-contained: a window hanging off the right edge
-    is normal and fine to restore. What isn't fine is a title bar you can't
-    grab, so the check is on the top-left.
-    """
+    """Is the top-left (title bar) corner on some connected display? Not
+    full containment: hanging off the right edge is fine."""
     if not HAVE_APPKIT:
         return True
     x, y = frame["x"], frame["y"]
@@ -175,13 +129,8 @@ def save_frame(path: Path, frame: dict) -> None:
 
 
 def track_frame(window, path: Path) -> dict:
-    """Mirror the live window geometry, and write it out as the window closes.
-
-    Read from the resize/move events rather than polling `window.x` on the way
-    out: by the time `closing` fires the frame is already being torn down, and
-    what you get back is the last thing macOS wrote, not where the user left
-    it.
-    """
+    """Mirror the live geometry from resize/move events and write it on close
+    (at `closing` the window's own frame is already being torn down)."""
     frame = dict(DEFAULT_FRAME)
 
     def on_resize(w, h):
@@ -200,12 +149,8 @@ def track_frame(window, path: Path) -> dict:
 
 if HAVE_APPKIT:
     class _Actions(NSObject):
-        """ObjC target for the menu items that call back into Python.
-
-        Kept alive by the module-level `_actions` reference — a menu item's
-        target is a weak reference, and a collected target silently greys the
-        item out.
-        """
+        """ObjC target for the menu items that call back into Python; held by
+        the module-level `_actions` (a collected target greys the item out)."""
 
         def initWithHandlers_(self, handlers):
             self = objc.super(_Actions, self).init()
@@ -250,11 +195,7 @@ def _submenu(main, title):
 
 
 def install_menu(handlers: dict[str, Callable[[], None]]) -> None:
-    """Build and install the app's main menu. No-op off macOS.
-
-    Scheduled onto the main runloop: pywebview runs `start(func=…)` on a
-    worker thread, and AppKit is main-thread-only.
-    """
+    """Build and install the main menu on the main runloop (AppKit is main-thread-only). No-op off macOS."""
     if not HAVE_APPKIT:
         return
     AppHelper.callAfter(_install_menu_now, handlers)
@@ -273,8 +214,6 @@ def _install_menu_now(handlers: dict[str, Callable[[], None]]) -> None:
     app_menu = _submenu(main, "Kestrel")
     _item(app_menu, "About Kestrel", "orderFrontStandardAboutPanel:")
     app_menu.addItem_(NSMenuItem.separatorItem())
-    # Config lives in backend/.env — vault path, port, model choices. Opening
-    # the real file beats a settings pane that would have to round-trip to it.
     _item(app_menu, "Settings (.env)…", "doSettings:", ",", CMD, _actions)
     _item(app_menu, "Open Log", "doLogs:", "l", CMD | SHIFT, _actions)
     app_menu.addItem_(NSMenuItem.separatorItem())
@@ -282,13 +221,10 @@ def _install_menu_now(handlers: dict[str, Callable[[], None]]) -> None:
     _item(app_menu, "Hide Others", "hideOtherApplications:", "h", CMD | ALT)
     _item(app_menu, "Show All", "unhideAllApplications:")
     app_menu.addItem_(NSMenuItem.separatorItem())
-    # Not terminate: — that tears the process down where it stands, skipping
-    # the uvicorn drain and the process-group sweep. Route ⌘Q through the same
-    # close path as the red button so shutdown stays one code path.
+    # Not terminate: (skips the uvicorn drain and the group sweep); same path as the red button.
     _item(app_menu, "Quit Kestrel", "doQuit:", "q", CMD, _actions)
 
-    # nil target on purpose: these travel the responder chain to the web view,
-    # so they act on the selection instead of on the Python side.
+    # nil target on purpose: the responder chain carries these to the web view's selection.
     edit = _submenu(main, "Edit")
     _item(edit, "Undo", "undo:", "z", CMD)
     _item(edit, "Redo", "redo:", "z", CMD | SHIFT)
@@ -315,17 +251,8 @@ def _install_menu_now(handlers: dict[str, Callable[[], None]]) -> None:
 
 # -------------------------------------------------------------- notifications
 
-# UNUserNotificationCenter, so banners are Kestrel's own: its name and icon,
-# its own row in System Settings › Notifications, and a click that comes back
-# here. osascript's `display notification` is attributed to Script Editor —
-# a click opens Script Editor and the permissions live under its name.
-#
-# What the center demands, found by trial on macOS 26: the process
-# must run from a bundle registered with LaunchServices *and* code-signed —
-# ad-hoc is enough, unsigned gets UNErrorDomain 1 "Notifications are not
-# allowed for this application" (scripts/make-app.sh signs it). A bundle under
-# /tmp is refused even when signed. Outside a bundle (a terminal launch) the
-# center throws, so it's never touched there and osascript carries on.
+# UNUserNotificationCenter needs a LaunchServices-registered, code-signed bundle (not under
+# /tmp); elsewhere it throws or errors, so it is never touched and osascript carries on.
 
 try:
     import UserNotifications as UN
@@ -358,8 +285,7 @@ if HAVE_UN:
             self._on_click = on_click
             return self
 
-        # Kestrel in front still shows the banner: the page only asks for one
-        # when it isn't looking, and by delivery that may have changed.
+        # Show the banner even with Kestrel in front.
         def userNotificationCenter_willPresentNotification_withCompletionHandler_(
                 self, center, notification, handler):
             handler(UN.UNNotificationPresentationOptionBanner
@@ -395,13 +321,11 @@ def bring_forward() -> None:
 class Notifier:
     """Posts banners as Kestrel and routes a click to `on_click(target)`.
 
-    `post()` is callable from any thread. Falls back to osascript whenever
-    the center can't be used — not a bundle, not signed, or permission
-    denied in System Settings — so a misbuilt app still says something.
+    `post()` is callable from any thread. Falls back to osascript whenever the
+    center can't be used (not a bundle, not signed, permission denied).
     """
 
-    # Banners with sound. A test bundle swaps in Provisional (quiet delivery
-    # to Notification Center, no prompt on anyone's screen).
+    # A test bundle swaps in Provisional (quiet delivery, no prompt).
     AUTH_OPTIONS = (UN.UNAuthorizationOptionAlert | UN.UNAuthorizationOptionSound
                     if HAVE_UN else 0)
 
@@ -433,9 +357,6 @@ class Notifier:
                       "Allow it in System Settings › Notifications › Kestrel, "
                       "or re-run scripts/make-app.sh if the error says "
                       "'not allowed for this application'.")
-        # The first launch of a newly signed bundle shows macOS's one-time
-        # "Kestrel would like to send notifications" prompt; after that it's
-        # the System Settings switch.
         self.center.requestAuthorizationWithOptions_completionHandler_(
             self.AUTH_OPTIONS, answered)
 
@@ -449,8 +370,7 @@ class Notifier:
         content.setSound_(UN.UNNotificationSound.defaultSound())
         if target:
             content.setUserInfo_({"target": target})
-        # Grouped per tab in Notification Center, so one chatty tab doesn't
-        # bury the rest.
+        # Grouped per tab in Notification Center.
         content.setThreadIdentifier_(target or "kestrel")
         req = UN.UNNotificationRequest.requestWithIdentifier_content_trigger_(
             uuid.uuid4().hex, content, None)

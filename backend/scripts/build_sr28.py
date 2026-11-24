@@ -1,19 +1,14 @@
 """Build backend/app/food/sr28.json.gz from the USDA SR28 ASCII release.
 
-SR28 (2015, re-published by USDA as "SR Legacy") is the food database behind
-the food tracker: ~8.8k generic foods with full micronutrients and household
-portions. The file it produces is checked in, so this runs only to rebuild it:
+SR28 (USDA "SR Legacy"): ~8.8k generic foods behind the food tracker. The output is
+checked in; this only rebuilds it:
 
     python scripts/build_sr28.py /path/to/sr28/dir
 
-The dir holds FOOD_DES.txt, NUTR_DEF.txt, NUT_DATA.txt, WEIGHT.txt and
-FD_GROUP.txt — the ASCII release (fdc.nal.usda.gov's SR Legacy zip, or the
-mirror at github.com/alyssaq/usda-sqlite/tree/master/data). Fields are
-`^`-separated, text fields wrapped in `~`.
-
-Only the nutrients in app.food.NUTRIENTS are kept (per 100 g), plus the
-household portions ("1 large", "1 cup, chopped") with their gram weights.
-Omega-3 is the sum of ALA + EPA + DHA, which is how a person means it.
+The dir holds the ASCII release (FOOD_DES, NUTR_DEF, NUT_DATA, WEIGHT, FD_GROUP .txt;
+SR Legacy zip or github.com/alyssaq/usda-sqlite/tree/master/data), `^`-separated,
+text wrapped in `~`. Keeps only app.food.NUTRIENTS per 100 g plus household portions
+with gram weights; omega-3 = ALA + EPA + DHA.
 """
 
 import gzip

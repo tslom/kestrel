@@ -1,17 +1,6 @@
-// Quick-add's due parser: "draft the memo @ 5pm" -> a title and a due date
-// with an hour on it.
-//
-// The widget's one input is the only place a task gets created from the
-// dashboard, so without this there is no way to give a task the time a
-// countdown needs — the API takes one, but only the console was reaching it.
-// A trailing `@ …` is the whole grammar. It is deliberately small: anything it
-// doesn't recognise stays part of the title rather than being guessed at, and
-// what it *did* recognise is echoed back under the input before you commit, so
-// it never quietly reschedules something you meant to name.
-//
-// `today` is the backend's day key, never a browser date. The 4am rollover is
-// the server's call (db.day_key), and at 1am the two disagree by a day — which
-// is exactly when "@ 2am" is the thing being typed.
+// Quick-add's due parser: "draft the memo @ 5pm" -> title + due date with an hour. A trailing `@ ...` is the whole
+// grammar; anything unrecognised stays in the title, and what was recognised is echoed before commit.
+// `today` is the backend's day key (4am rollover), never a browser date: at 1am they differ, exactly when "@ 2am" is typed.
 
 const WORD_DAYS = {
   today: 0, tonight: 0, tmr: 1, tom: 1, tomorrow: 1,
@@ -31,28 +20,24 @@ function parseClock(raw) {
   } else if (h > 23) {
     return null;
   } else if (!m[2] && h >= 1 && h <= 7) {
-    // A bare small hour is an evening: "@ 5" is 5pm, not dawn. 8–12 stay as
-    // written, where morning is at least as likely as night.
+    // A bare small hour is an evening ("@ 5" is 5pm); 8-12 stay as written.
     h += 12;
   }
   return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
 }
 
 function addDays(day, n) {
-  // Noon, so a DST jump can't move the date out from under the arithmetic.
+  // Noon, so a DST jump can't move the date.
   const d = new Date(`${day}T12:00:00`);
   d.setDate(d.getDate() + n);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-// Resolve the day part of a `@ …` phrase against the server's day key.
-// Returns null for a phrase this parser doesn't claim.
+// Day part of a `@ ...` phrase against the server's day key; null if unclaimed.
 function parseDay(raw, today) {
   const word = raw.toLowerCase();
   if (word in WORD_DAYS) return addDays(today, WORD_DAYS[word]);
-  // "9/25" or "9/25/26" — month/day in the local convention, since that's what
-  // gets typed here. A date already past this year is not rolled forward; it's
-  // more likely a typo than a plan for next September.
+  // "9/25[/26]", month/day; a past date isn't rolled forward (likelier a typo than next September).
   const md = /^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/.exec(word);
   if (md) {
     const year = md[3]
@@ -65,12 +50,8 @@ function parseDay(raw, today) {
   return null;
 }
 
-// Split "title @ when" into { title, due, due_time, hint }.
-//
-// `hint` is the human echo of what was understood ("tomorrow 5:00 PM"), or null
-// when there was no `@` at all. When an `@` is present but unparseable, the
-// whole string comes back as the title with `unparsed` set, so the widget can
-// say so rather than silently filing "call mum @ hlaf 5".
+// Split "title @ when" into { title, due, due_time, hint }. `hint` echoes what was understood (null with no `@`);
+// an unparseable `@` returns the whole string as title with `unparsed` set, so the widget can say so.
 export function parseQuickDue(input, today) {
   const at = input.lastIndexOf("@");
   if (at === -1 || !today) return { title: input.trim(), due: null, due_time: null, hint: null };
@@ -98,10 +79,8 @@ export function parseQuickDue(input, today) {
     return fail;
   }
 
-  // A time with no day named means the next time that clock comes round: later
-  // today, or tomorrow if it has already gone. Compared as instants, and
-  // through the same rollover rule the backend uses (db.day_instant) — at 1am,
-  // "@ 2am" is an hour away and still belongs to today's day key.
+  // No day named: the next time that clock comes round, compared as instants through the backend's rollover rule
+  // (db.day_instant): at 1am "@ 2am" is an hour away and still today's day key.
   if (!day) {
     day = today;
     const at2am = Number(clock.slice(0, 2)) < 4 ? addDays(day, 1) : day;

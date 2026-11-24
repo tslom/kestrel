@@ -1,11 +1,6 @@
 """Desk usage (v45) — the counters that say whether salience.js is right.
 
-The cases worth pinning are the ones where a naive version of this would lie.
-A card read at a glance is never clicked, so an untouched card must not be
-indistinguishable from a dead one; a card that only appeared last Tuesday must
-not be scored against a month it wasn't there for; and the window must be
-measured against recorded history rather than the wall clock, or a week with
-the backend off makes the whole desk look abandoned.
+Design: DESIGN.md → `app/usage.py`: desk usage counters, test-pinned.
 """
 
 import sqlite3
@@ -36,9 +31,7 @@ def _by_label(summary):
 
 
 def test_repeat_bumps_count_on_one_row_per_day(dbfile):
-    """Per (day, kind, label, band), not per event. The desk flushes a buffer
-    all day; an append-only table would be the same seventeen labels over and
-    over with a timestamp each."""
+    """One row per (day, kind, label, band), not per event."""
     for _ in range(20):
         usage.record("open", "finance")
 
@@ -50,8 +43,7 @@ def test_repeat_bumps_count_on_one_row_per_day(dbfile):
 
 
 def test_band_splits_rows_for_the_same_card(dbfile):
-    """A card that went quiet → needs during the day is two rows. Collapsing
-    them would erase the one distinction that keeps this honest."""
+    """A card going quiet then needs in one day is two rows."""
     usage.record("seen", "email", "quiet")
     usage.record("seen", "email", "needs")
 
@@ -71,8 +63,7 @@ def test_record_rejects_unknown_kinds_and_bands(dbfile):
 
 
 def test_record_never_raises(dbfile, monkeypatch):
-    """Telemetry is not load-bearing. A broken DB must cost a log line, not a
-    500 on whatever the desk was actually doing."""
+    """A broken DB costs a log line, not a 500."""
     def boom():
         raise sqlite3.OperationalError("database is locked")
 
@@ -95,9 +86,7 @@ def test_summary_is_empty_before_anything_is_recorded(dbfile):
 
 
 def test_glanceable_card_is_not_marked_idle(dbfile):
-    """The case this whole module exists to get right. A card that had
-    something to say every day and was never clicked is working perfectly —
-    an interaction-only metric would file it next to the dead ones."""
+    """A card with something to say daily and never clicked is working, not dead."""
     for d in range(1, 15):
         _seed(f"2026-08-{d:02d}", "seen", "calendar", "needs")
 
@@ -118,8 +107,7 @@ def test_quiet_and_untouched_is_the_only_idle_case(dbfile):
 
 
 def test_one_open_clears_the_idle_flag(dbfile):
-    """Unfolding a folded card is the ranking being told it got one wrong —
-    the strongest single signal here, so one is enough to spare the card."""
+    """One unfold is the strongest signal and spares the card."""
     for d in range(1, 15):
         _seed(f"2026-08-{d:02d}", "seen", "watchlist", "quiet")
     _seed("2026-08-09", "open", "watchlist")
@@ -130,8 +118,7 @@ def test_one_open_clears_the_idle_flag(dbfile):
 
 
 def test_a_new_card_is_never_idle(dbfile):
-    """Three days of history can't convict anything. Without the floor, every
-    card added this week would show up as a candidate to cut."""
+    """Too little history convicts nothing."""
     for d in range(1, 4):
         _seed(f"2026-08-{d:02d}", "seen", "courses", "quiet")
 
@@ -149,9 +136,7 @@ def test_touches_sum_opens_and_sheets(dbfile):
 
 
 def test_window_counts_recorded_days_not_calendar_days(dbfile):
-    """Measured back from the newest recorded day. If it counted back from
-    today, a fortnight with the machine off would silently drop every card's
-    history and make the desk look dead."""
+    """The window counts back from the newest recorded day, not today."""
     for d in (1, 2, 3, 20, 21):
         _seed(f"2026-08-{d:02d}", "seen", "tasks", "needs")
 
@@ -162,8 +147,7 @@ def test_window_counts_recorded_days_not_calendar_days(dbfile):
 
 
 def test_least_touched_sorts_first(dbfile):
-    """The list exists to surface the bottom. Burying it under the cards you
-    obviously use is how a panel goes unread."""
+    """The cut list is ordered bottom first."""
     _seed("2026-08-01", "seen", "watchlist", "quiet")
     _seed("2026-08-01", "seen", "email", "needs")
     _seed("2026-08-01", "sheet", "email", count=9)
@@ -172,8 +156,7 @@ def test_least_touched_sorts_first(dbfile):
 
 
 def test_commands_are_reported_separately(dbfile):
-    """A ⌘K command has no band and no card, so folding it into the label
-    table would put a row with days_seen=0 among the cut candidates."""
+    """A ⌘K command stays out of the card label table."""
     _seed("2026-08-01", "command", "act:refresh", count=4)
     _seed("2026-08-02", "command", "act:refresh", count=1)
     _seed("2026-08-01", "seen", "email", "needs")
@@ -185,9 +168,7 @@ def test_commands_are_reported_separately(dbfile):
 
 
 def test_sheets_with_no_card_stay_out_of_the_card_table(dbfile):
-    """`status`, `review` and the usage sheet itself are openable but are not
-    desk cards. Left in, each is a permanent 0-of-0 row in a table whose
-    columns only mean anything for something that sits on the desk."""
+    """`status`, `review` and the usage sheet are openable but not desk cards, so are excluded."""
     _seed("2026-08-01", "seen", "email", "needs")
     _seed("2026-08-01", "sheet", "status", count=6)
 

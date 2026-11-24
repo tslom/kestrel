@@ -7,20 +7,11 @@ import ErrorBoundary from "../ui/ErrorBoundary.jsx";
 import { fmtTime } from "../lib/time";
 import Icon from "../ui/icons.jsx";
 
-// The desk (New Features #46, the look lab's round 5): a
-// sidebar of rooms, a page per room, Today as the home page, under a floating
-// glass bar that reads as a sentence (TodaySentence) and carries the one most
-// urgent ask (FocusLine.jsx). The console is a centred ask bar over the page
-// until ⌘J opens it as a right-hand column. `data-layout="hybrid"` on <html>;
-// Classic, the desk before it, is still in the look lab as a fallback.
-//
-// Every card here is the same CardView over the same hook result the map and
-// the classic side column draw, every ask runs through PlanApp's `act`, and
-// the console is the one PlanApp mounts. That last part is why this only adds
-// siblings inside .plan-main and moves the existing panes with CSS
-// (plan/desk.css): re-parenting the console would remount it and drop every
-// live session. `view` (a room id, or "map") is held in PlanApp so the CSS
-// can read it off .plan[data-cview].
+// The rooms desk (#46, look lab round 5; `data-layout="hybrid"`; Classic remains as fallback): sidebar
+// of rooms, a page per room, Today as home, under a glass bar (TodaySentence + FocusLine.jsx).
+// Cards are the same CardView over the same hook results; asks run through PlanApp's `act`. This only
+// adds siblings in .plan-main and moves panes with CSS (plan/desk.css): re-parenting the console would
+// remount it and drop live sessions. `view` (room id or "map") is held in PlanApp for .plan[data-cview].
 
 // The rooms: every desk card in exactly one, in the map's areas.
 export const ROOMS = [
@@ -43,9 +34,7 @@ export const roomById = (id) => ROOMS.find((r) => r.id === id) || null;
 const rank = (lvl) => (lvl === NEEDS ? 0 : lvl === HAS ? 1 : 2);
 const byNeed = (sal) => (a, b) => rank(sal[a]?.level) - rank(sal[b]?.level);
 
-// What a card's pill says. Its salience, except a card whose every ask is
-// snoozed reads "snoozed" (the map draws it dashed): "needs you" over a room
-// that says nothing needs you was the same card telling two stories.
+// A card's pill: its salience, or "snoozed" when every ask is (else it contradicts its room).
 function Band({ level, snoozed }) {
   if (snoozed) return <span className="band-pill snoozed">snoozed</span>;
   if (level == null) return null;
@@ -79,14 +68,10 @@ function CardBox({ id, card, level, snoozed, onPin, openFull, focus }) {
   );
 }
 
-// A snooze menu takes focus as it opens, so the keys (Tab, Enter, Esc) act
-// on it: WebKit doesn't focus a button on click, so Esc otherwise went to
-// the page and left the room. Module-level, so the ref runs once per open.
+// A snooze menu takes focus on open (WebKit doesn't focus a clicked button, so Esc left the room). Module-level: the ref runs once per open.
 export const focusFirst = (el) => el?.querySelector("button")?.focus({ preventScroll: true });
 
-// An ask, compact: the title, why, and its buttons, run through PlanApp.
-// With `snooze` ({ options, run } from PlanApp's snoozeOptions/snoozeAsk),
-// "Later" opens the same choices the list's `s` key does.
+// An ask, compact. `snooze` ({ options, run } from PlanApp) gives "Later" the list's `s` choices.
 export function AskRow({ a, act, snooze }) {
   const [later, setLater] = useState(false);
   const opts = snooze && !String(a.id).startsWith("console:") ? snooze.options(a) : [];
@@ -126,7 +111,7 @@ export function AskRow({ a, act, snooze }) {
 const roomNeeds = (room, asks) => asks.filter((a) => room.cards.includes(a.card)).length;
 // A room's one line: its most pressing card's summary.
 function roomLine(room, sal) {
-  // nothing read yet isn't "quiet": that's what every door said while loading
+  // nothing read yet isn't "quiet"
   if (!room.cards.some((c) => sal[c])) return "…";
   const top = [...room.cards].sort(byNeed(sal)).find((c) => sal[c]?.summary);
   return top ? `${CARD_NAME[top]} · ${sal[top].summary}` : "Quiet";
@@ -158,9 +143,7 @@ function RoomPage({ room, ctx }) {
   );
 }
 
-// The glance as a sentence: what day and what's next. Drawn in the floating
-// top bar (PlanApp's header), in place of the strip's date and "next" chip;
-// what needs you is the focus line under it.
+// The glance as a sentence (day, what's next) in the floating top bar, replacing the strip's date and "next" chip.
 export function TodaySentence({ cards, loading }) {
   const now = new Date();
   const cal = cards.calendar?.view === "today" ? cards.calendar.upcoming || [] : [];
@@ -179,15 +162,11 @@ export function TodaySentence({ cards, loading }) {
   );
 }
 
-// The console's own asks (an approval, tabs a quit or the limit stopped,
-// branches left unmerged) belong to no room, so Today puts them first.
+// The console's own asks (approval, cut-off tabs, unmerged branches) belong to no room: Today puts them first.
 const consoleAsks = (asks) => asks.filter((a) => !a.card);
 
-// Today's reading order, which the focus line follows too, so the two agree
-// on what comes first. Approvals, then tabs a quit or
-// the limit cut off, then unmerged branches (PlanApp builds the console's
-// asks in that order), then each room's asks in sidebar order. Anything on a
-// card no room holds goes last rather than missing.
+// Today's order (the focus line follows it): approvals, cut-off tabs, unmerged branches (PlanApp's
+// order), then each room's asks in sidebar order; a card no room holds goes last rather than missing.
 export function todayOrder(asks) {
   const inRooms = ROOMS.flatMap((r) => asks.filter((a) => r.cards.includes(a.card)));
   const placed = new Set([...consoleAsks(asks), ...inRooms]);
@@ -216,9 +195,7 @@ function RoomDoors({ ctx }) {
   );
 }
 
-// Today: every ask under its room (Needs you, inline), the console's own
-// first, then the rooms at a glance. The model's brief line sits under the
-// heading: the top bar's second line is the focus line now.
+// Today: every ask under its room, the console's own first, then the rooms at a glance; the brief sits under the heading.
 function TodayPage({ ctx }) {
   const { asks, act, snooze, setView, loading } = ctx;
   const own = consoleAsks(asks);

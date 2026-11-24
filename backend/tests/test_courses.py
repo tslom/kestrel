@@ -1,11 +1,8 @@
 """Office hours, and the dated exceptions that override them.
 
-The interesting case is the one a professor actually sends: "my Tuesday hours
-start at 2pm, not 1pm — tomorrow only". Amending the weekly rule makes the card
-wrong from next Tuesday on; ignoring the mail makes it wrong tomorrow. So these
-tests pin that the rule and the exception both survive, and that each of the
-three answers the card gives — today's rows, the week view, "next" — reads the
-right one of the two.
+Case: "my Tuesday hours start at 2pm, not 1pm, tomorrow only" (amending the rule is
+wrong from next Tuesday, ignoring it wrong tomorrow): the rule and the exception both
+survive, and today's rows, the week view and "next" each read the right one.
 
 2026-08-31 is a Monday, so 09-01 is the Tuesday throughout.
 """
@@ -23,11 +20,7 @@ TUE, WED = "2026-09-01", "2026-09-02"
 
 
 def _seed(monkeypatch, office_hours, *, code="CSCI 103"):
-    """Stand up an index.db holding one course note.
-
-    Frontmatter goes through `indexer._jsonable` exactly as the real indexer
-    writes it, so a YAML date in an exception is tested along the path it
-    actually travels rather than one this fixture invented."""
+    """An index.db holding one course note; frontmatter goes through `indexer._jsonable` as the real indexer does."""
     con = sqlite3.connect(":memory:")
     con.row_factory = sqlite3.Row
     con.execute("CREATE TABLE notes (path TEXT, title TEXT, frontmatter TEXT)")
@@ -62,8 +55,7 @@ def _clock(monkeypatch, when: str):
 
 
 def _rule(exc=None, **over):
-    """The standing Tuesday rule, optionally amended. `except` is a keyword,
-    so it can only go in through a dict."""
+    """The standing Tuesday rule, optionally amended (`except` is a keyword: pass a dict)."""
     base = {"who": "Martin Halvorsen", "role": "instructor",
             "when": "Tue 13:00-14:00", "where": "GCS Lower Level One"}
     if exc is not None:
@@ -90,8 +82,7 @@ def test_exception_moves_todays_hours_but_not_the_rule(monkeypatch):
 
 
 def test_open_now_uses_the_exception_not_the_rule(monkeypatch):
-    """13:30 is inside the rule and outside the amended hours. The card must
-    not say 'open now' about a room nobody is in yet."""
+    """13:30 is inside the rule but outside the amended hours: not 'open now'."""
     _seed(monkeypatch, [_rule([{"date": TUE, "when": "14:00-15:00"}])])
     _clock(monkeypatch, f"{TUE} 13:30")
     assert courses.load()["open_now"] == []
@@ -129,15 +120,13 @@ def test_hours_moved_to_another_day_are_found_there(monkeypatch):
 
     _clock(monkeypatch, f"{WED} 12:00")
     row = courses.load()["today"][0]
-    # `day` is today's, because the row is about today — so the weekday it was
-    # moved off has to survive separately or the card can't name it.
+    # `day` is today's, so the weekday it moved off is kept separately.
     assert row["day"] == "Wed" and row["moved_from"] == "Tue"
     assert row["state"] == "later"
 
 
 def test_hours_held_on_their_usual_day_are_not_marked_moved(monkeypatch):
-    """`moved_from` names a day, so it has to be empty when there wasn't one —
-    an amended time on the usual day is not a move."""
+    """An amended time on the usual day leaves `moved_from` empty."""
     _seed(monkeypatch, [_rule([{"date": TUE, "when": "14:00-15:00"}])])
     _clock(monkeypatch, f"{TUE} 12:00")
     assert courses.load()["today"][0]["moved_from"] is None
@@ -146,8 +135,7 @@ def test_hours_held_on_their_usual_day_are_not_marked_moved(monkeypatch):
 # --- degrading gracefully --------------------------------------------------
 
 def test_unparseable_exception_annotates_rather_than_drops(monkeypatch):
-    """Same principle as an unparseable `when`: say the odd thing, don't lose
-    the person holding the hours."""
+    """An unparseable exception is annotated, never dropped."""
     _seed(monkeypatch, [_rule([{"date": TUE, "when": "sometime after lunch",
                                 "note": "check Piazza"}])])
     _clock(monkeypatch, f"{TUE} 12:00")
@@ -194,8 +182,7 @@ def test_no_exceptions_is_the_old_behaviour(monkeypatch):
 
 
 def test_jsonable_survives_a_nested_date():
-    """A shallow json-ability test flattened the whole list to a repr for one
-    nested date, and the hours vanished from the card."""
+    """One nested date doesn't flatten the whole list to a repr."""
     from datetime import date as _date
 
     out = indexer._jsonable([{"who": "G", "except": [{"date": _date(2026, 9, 1)}]}])
@@ -206,11 +193,7 @@ def test_jsonable_survives_a_nested_date():
 # --- writing the rule --------------------------------------------------
 
 def _note(monkeypatch, tmp_path, office_hours, *, code="CSCI 170"):
-    """A real note on disk, indexed, with `_save`'s reindex stubbed out.
-
-    `set_hours` reads the frontmatter off the file and the *path* out of
-    index.db, so both have to exist for the write path to be exercised at
-    all."""
+    """A real note on disk and in index.db (`set_hours` reads frontmatter from the file, the path from the index); `_save`'s reindex stubbed."""
     rel = f"02-Areas/usc/fall-2026/{code.replace(' ', '-')}.md"
     path = tmp_path / rel
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -246,8 +229,7 @@ def _hours_on(path):
 
 
 def test_a_second_block_for_one_person_adds_rather_than_overwrites(monkeypatch, tmp_path):
-    """One TA's four blocks written one call at a time must not each amend
-    the entry the last call wrote, leaving three of them gone."""
+    """A TA's blocks written one call at a time add, not each amend the last."""
     path = _note(monkeypatch, tmp_path, [])
     for when, where in [("Mon, Wed 16:00-18:00", "GCS SB9"),
                         ("Tue 09:00-12:00", "https://usc.zoom.us/j/99180444912"),
@@ -308,9 +290,7 @@ def test_a_slot_addresses_one_block_and_a_wrong_one_is_an_error(monkeypatch, tmp
 
 
 def test_posted_hours_do_not_clobber_a_block_that_cannot_be_placed(monkeypatch, tmp_path):
-    """'TBA' has no weekdays to compare, so posted hours are added, not
-    written over it — but the reply has to say the placeholder is still
-    there, or the card carries both and nobody knows why."""
+    """Posted hours are added beside a 'TBA' block (no weekdays to compare), and the reply says the placeholder remains."""
     path = _note(monkeypatch, tmp_path, [
         {"who": "Ludwika Twardecka", "when": "TBA"},
     ])
@@ -324,8 +304,7 @@ def test_posted_hours_do_not_clobber_a_block_that_cannot_be_placed(monkeypatch, 
 
 
 def test_an_unparseable_when_amends_the_block_it_cannot_compare(monkeypatch, tmp_path):
-    """The other direction: writing 'TBA' over posted hours is a rewrite of
-    that block, not a second row saying two things at once."""
+    """Writing 'TBA' over posted hours rewrites that block, not a second row."""
     path = _note(monkeypatch, tmp_path, [
         {"who": "Ludwika Twardecka", "when": "Wed 14:00-16:00"},
     ])
@@ -346,8 +325,7 @@ def test_a_different_person_is_always_a_new_block(monkeypatch, tmp_path):
 
 
 def test_a_dated_override_picks_the_block_that_meets_that_day(monkeypatch, tmp_path):
-    """A TA with Mon and Thu blocks, a mailed "Thursday next week on Zoom" —
-    ambiguous by name, not by date, so no 409."""
+    """A dated override picks the block that meets that day (Mon/Thu TA, "Thursday on Zoom"): no 409."""
     path = _note(monkeypatch, tmp_path, [
         {"who": "Martin Lindqvist", "when": "Mon 13:00-14:00"},
         {"who": "Martin Lindqvist", "when": "Thu 08:00-10:00"},
@@ -364,8 +342,7 @@ def test_a_dated_override_picks_the_block_that_meets_that_day(monkeypatch, tmp_p
 
 
 def test_a_middle_name_still_finds_the_person(monkeypatch, tmp_path):
-    """Mail signed "Martin Paul Halvorsen", the note says "Martin Halvorsen":
-    approving the moved hours must not 409."""
+    """"Martin Paul Halvorsen" finds the note's "Martin Halvorsen" (no 409)."""
     path = _note(monkeypatch, tmp_path, [
         {"who": "Martin Halvorsen", "when": "Tue 13:00-15:00", "where": "GCS Lower Level 1"},
         {"who": "Devon", "when": "Thu 12:00-14:00"},

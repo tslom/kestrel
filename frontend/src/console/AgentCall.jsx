@@ -4,22 +4,13 @@ import { useVisiblePoll } from "../lib/poll.js";
 import { toolLabel } from "../plan/StatusBar.jsx";
 import Icon from "../ui/icons.jsx";
 
-// An Agent call in the log, with what its subagent did (#77). The Agent tool
-// runs subagents in the background: the call returns "launched" at once and
-// the subagent's own calls never reach this tab's stream, so the log had one
-// "Agent" line and nothing under it, and the strip under the log forgot it at
-// your next message. The backend reads the subagent's own transcript instead
-// (sessions.subagent_run, by this call's id), so the same card works live and
-// on a resumed session.
-//
-// Collapsed: what it was sent to do, how many calls, and while it runs the
-// call it's on. Open: every call, then its report once it's done.
-//
-// `running`: the strip (console_agents) has this call's subagent at work.
+// An Agent call with what its subagent did (#77). Subagents run in the background and their calls
+// never reach this tab's stream, so the backend reads the subagent's transcript (sessions.subagent_run,
+// by call id), which also works on a resumed session. Collapsed: task, call count, current call;
+// open: every call, then the report. `running`: the strip (console_agents) has it at work.
 
 const POLL_MS = 2500;
-// Asks that found nothing before giving up: the transcript lands a moment
-// after the call, but an old session's may simply not exist.
+// Empty asks before giving up (the transcript lands a moment after the call; an old session's may not exist).
 const MAX_MISSES = 6;
 const IDLE_S = 30;
 
@@ -31,9 +22,7 @@ export default function AgentCall({ t, sessionId, projectQ, running }) {
   let input = {};
   try { input = JSON.parse(t.raw || "{}") || {}; } catch { /* clipped */ }
   const description = input.description || t.desc || run?.description || t.detail || "subagent";
-  // Asked until it's finished, or until the strip no longer has it running
-  // and one read after that is in: a subagent that died with its session
-  // stays "unfinished" on disk forever, and polling that would never stop.
+  // Ask until finished, or one read after the strip drops it (a subagent that died stays "unfinished" on disk forever).
   const done = settled || misses >= MAX_MISSES || !sessionId || !t.id;
   useVisiblePoll(() => {
     if (done) return;
@@ -42,8 +31,7 @@ export default function AgentCall({ t, sessionId, projectQ, running }) {
       .then((r) => {
         if (!r?.run) { setMisses((n) => n + 1); return; }
         setRun(r.run);
-        // Not `!running` alone: the strip can hear of a subagent a beat
-        // after its transcript appears, so a quiet file is the other half.
+        // Not `!running` alone: the strip can lag the transcript, so a quiet file counts too.
         if (r.run.finished || (!running && (r.run.idle_s ?? 0) > IDLE_S)) setSettled(true);
       })
       .catch(() => setMisses((n) => n + 1));

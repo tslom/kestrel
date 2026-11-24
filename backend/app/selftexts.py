@@ -1,38 +1,9 @@
-"""Texts to yourself, routed to wherever they were meant to go.
+"""Texts to yourself, routed by the model into a task, event, food, watch, list_item, note or keep.
 
-A text to your own number used to become a task, verbatim, every time — and
-half of those were dropped unread: a flyer photo is an event, a lunch photo
-is a food entry, "There will be blood add to watchlist" is a watchlist row,
-and "(photo)" as a task title means nothing. Now each one is read (photos and
-PDFs too, through providers/attachments.py) and filed by the model as one of:
-
-  task       something to do
-  event      something with a date you might go to — on your own calendar,
-             never with attendees
-  food       what you ate, estimated like a dining-hall dish (food_estimate)
-  watch      a film or show
-  list_item  something to buy or pack, on one of your lists
-  note       worth keeping, not an action — a 06-Generated note
-  keep       unclear: nothing is written, the text stays on the card
-
-It applies, it doesn't ask: every write is an `activity` row with an Undo, and
-"Redo as…" re-files the same texts as a kind you choose. The card is where
-you check its work, after the fact.
-
-Texts are grouped into bursts first — "photo" then "for the party friday"
-two minutes later is one thing, not two. A burst closes once BURST_GAP passes
-with nothing new, or QUIET passes since its last text (the poller only
-looks every five minutes anyway). Runs as a poller step, after the messages
-provider has synced.
-
-Only texts from the first run onward are routed: the history before that was
-already captured as tasks by the old rule, and routing it again would
-duplicate every one of them.
-
-Untrusted input, handled the attachments way: the texts are the user's own,
-but a pasted announcement or a flyer's text is someone else's, so attachment
-text is fenced, the model has no tools, and its answer can only ever name one
-of the kinds above.
+Applies without asking; every write is an `activity` row with an Undo ("Redo as..." re-files).
+Texts group into bursts (BURST_GAP / QUIET); only texts after SINCE_KEY are routed (older
+history was already captured as tasks). Attachment text is untrusted: fenced, no tools, closed kinds.
+Design: DESIGN.md → Unattended writes.
 """
 
 import asyncio
@@ -120,11 +91,9 @@ def _ts(s: str) -> datetime:
 
 
 def collect(now: datetime | None = None) -> int:
-    """Group not-yet-routed self-texts into bursts. Returns bursts opened.
+    """Group not-yet-routed self-texts into bursts; returns bursts opened.
 
-    The newest group is left alone until QUIET has passed since its last
-    text, so a caption sent a minute after its photo lands in the same
-    burst."""
+    The newest group waits until QUIET since its last text (caption after photo)."""
     handles = _handles()
     if not handles:
         return 0
@@ -166,10 +135,7 @@ def _messages(con, burst_id: int, extract: bool = False) -> list[dict]:
     attachments.decorate(con, msgs)
     for m in msgs:
         for f in m["attachments"]:
-            # A failed read is retried, not trusted: extract() caches "error"
-            # forever, and the usual cause is the vision call dropping (API
-            # unreachable), so one bad minute would make a photo unreadable
-            # for good.
+            # extract() caches "error" forever (usually the vision call dropping), so retry it.
             if extract and f["status"] in ("not-extracted", *RETRY_STATUSES):
                 try:
                     attachments.extract(f["id"], force=f["status"] != "not-extracted")
@@ -305,17 +271,14 @@ def _apply_food(a: dict, msgs: list[dict]) -> tuple[str, dict]:
     meal = a.get("meal") if a.get("meal") in food.MEALS else \
         food.default_meal(_ts(msgs[0]["ts"]).replace(tzinfo=None))
     day = db.day_key(_ts(msgs[0]["ts"]).replace(tzinfo=None))
-    # Best source first, per item: a barcode or a readable label is exact; a
-    # food already known by that name (corrected, published, or eaten
-    # before) is what it was last time; only the rest are estimated.
+    # Best source first: barcode/label (exact), then a food known by that name, then an estimate.
     entries, todo = [], []
     for n, i in enumerate(items):
         e = _food_exact(food, i, meal, day)
         if e is None:
             known = food.match_known(i["item"], _venue_slug(i.get("where")))
             if known is not None and not i.get("amount"):
-                # Nothing says otherwise, so it's the usual amount (and if
-                # the usual was itself a guess, log() carries that over).
+                # No amount given: the usual amount (log() carries over a guess).
                 e = food.log(known["id"], meal=meal, day=day, source="selftext")
         if e is not None:
             entries.append(e)
@@ -333,8 +296,7 @@ def _apply_food(a: dict, msgs: list[dict]) -> tuple[str, dict]:
         known = food.match_known(i["item"], _venue_slug(i.get("where")))
         guessed = not i.get("amount_seen")
         if known is not None:
-            # The estimate only sized the portion; the numbers are the known
-            # food's, scaled by grams when both sides have them.
+            # The estimate only sized the portion; numbers are the known food's.
             sv = (r["serving_g"] / known["serving_g"]
                   if r.get("serving_g") and known.get("serving_g") else None)
             e = food.log(known["id"], servings=sv, meal=meal, day=day,
@@ -460,9 +422,7 @@ _APPLY = {"task": _apply_task, "event": _apply_event, "food": _apply_food,
 
 
 def _file(burst_id: int, action: dict, msgs: list[dict]) -> int:
-    """Apply one action and log it. A failed write is logged too, as a keep
-    saying why, so the texts stay on the card for a Redo instead of
-    vanishing."""
+    """Apply one action and log it; a failed write logs as a keep saying why (Redo stays possible)."""
     kind = action["kind"]
     try:
         summary, ref = _APPLY[kind](action, msgs)
@@ -486,10 +446,7 @@ def process(burst: dict) -> list[int]:
     with db.session() as con:
         msgs = _messages(con, burst["id"], extract=True)
         earlier = _earlier(con, burst)
-    # A photo that didn't read is usually the whole point of the text, so
-    # filing the caption without it (or a "(photo)" as keep) is a wrong
-    # answer, not a partial one. Wait for the next poll instead; on the last
-    # attempt, route with what there is.
+    # An unread photo is usually the point of the text: wait for the next poll, route on the last attempt.
     if (unread := _unread(msgs)) and burst["attempts"] + 1 < MAX_ATTEMPTS:
         retry_later("couldn't read " + ", ".join(unread))
         return []
@@ -506,8 +463,7 @@ def process(burst: dict) -> list[int]:
                                         f"Kept — couldn't sort this out: {e}",
                                         origin=str(burst["id"]))]
             return []
-    # Marked done before anything is written: a crash halfway through must
-    # not route the burst again and write the first half twice.
+    # Marked done first: a crash mid-write must not route the burst again.
     with db.session() as con, con:
         con.execute("UPDATE selftext_bursts SET status='done', processed_at=?, error=NULL"
                     " WHERE id=?", (datetime.now().isoformat(timespec="seconds"),

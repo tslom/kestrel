@@ -8,13 +8,8 @@ import WidgetError from "../ui/WidgetError.jsx";
 import Icon from "../ui/icons.jsx";
 import { dragPin } from "../lib/drag.js";
 
-// The food tracker (FOOD_PLAN.md). The card answers three things at a glance —
-// where today stands against a lean bulk's targets, what to eat next on
-// campus, and whether the day is closed — and takes a log in one field. The
-// sheet owns everything else (menus, the week, setup).
-//
-// Writes go out on the "food" topic, and closing a day on "habits" too, since
-// that check-in is the Log food habit.
+// The food card: today against lean-bulk targets, what to eat next on campus, day closed?, one-field
+// log. The sheet owns the rest. Writes go on the "food" topic; closing a day also on "habits" (Log food).
 export const foodChanged = () => broadcastRefresh("food");
 
 export const fmtN = (v) => Math.round(v || 0).toLocaleString();
@@ -56,8 +51,7 @@ export function closeDay(day, reopen) {
 // A bar for one nutrient. `kind` decides the color: a cap that's over goes
 // red, a minimum that's met goes green, everything else is plain data.
 export function NutrientBar({ label, value, target, unit, kind = "min", missing }) {
-  // A day with nothing logged has no totals at all, and `NaN%` is a width the
-  // browser drops — the fill would stretch to the whole track.
+  // An empty day has no totals; `NaN%` is dropped and the fill would span the track.
   const frac = target && value ? value / target : 0;
   const tone = kind === "max" ? (frac > 1 ? "over" : "")
     : frac >= (kind === "range" ? 0.92 : 1) ? (kind === "range" && frac > 1.12 ? "over" : "met") : "";

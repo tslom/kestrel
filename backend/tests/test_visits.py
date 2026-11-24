@@ -1,15 +1,8 @@
 """Which place each visit was, and what the signature learner may claim.
 
-The premise is a correction to the place suggester's: a cluster is not a place. The hub
-cluster in this vault spans 168m and holds Leavey Library, McCarthy Quad,
-Everybody's Kitchen, Birnkrant and SSCI, and coordinates cannot separate them
-(p50 17m / p90 47m of error against ~15m of separation), nor can time alone,
-nor can the calendar (8 of 71 overlaps spatially usable). So the label is
-yours, and what is learned is the shape of your visits.
-
-The tests that matter most are the ones bounding what the learner is allowed
-to say: it stays silent under three examples, it never learns from a
-single-fix sighting, and it never writes a label you did not click.
+A cluster is not a place: the label is the user's, the learner only knows visit shape.
+Most important: it is silent under three examples, never learns from a one-fix sighting, never writes a label.
+Design: DESIGN.md → `app/visits.py`: which place, on which visit.
 """
 
 from datetime import timedelta
@@ -61,8 +54,7 @@ def _examples(rows):
 
 
 def test_silent_below_the_evidence_floor(dbfile):
-    """Two labels can only say 'one of the two things you have named'. A
-    confident-looking guess off two examples is worse than an empty field."""
+    """Two labelled examples are too few to guess from."""
     ex = _examples([("2026-09-01", 19, 90, "Leavey Library"),
                     ("2026-09-02", 12, 20, "Everybody's Kitchen")])
     assert visits.predict(_stay("2026-09-03", 19, 80), ex) is None
@@ -90,11 +82,7 @@ def test_evening_and_long_separates_from_midday_and_short(dbfile):
 
 
 def test_a_visit_unlike_everything_gets_no_answer(dbfile):
-    """03:00 for four minutes resembles nothing labelled here, and the vote
-    share cannot see that: it is relative, so it would hand this to
-    "Everybody's Kitchen" at ~90% for no better reason than that lunch is also
-    short. `support` is the absolute number that catches it — 0.0001 here
-    against 0.91 for a genuine match."""
+    """An unlike visit gets None: vote share is relative, `support` is absolute (0.0001 here vs 0.91 for a match)."""
     ex = _examples([
         ("2026-09-01", 19, 90, "Leavey Library"),
         ("2026-09-02", 20, 120, "Leavey Library"),
@@ -108,15 +96,13 @@ def test_a_visit_unlike_everything_gets_no_answer(dbfile):
 
 
 def test_midnight_is_close_to_one_am(dbfile):
-    """Hour distance is circular. A 23:40 visit is an hour from 00:40, not
-    twenty-three — the hub's visits really do run past midnight."""
+    """Hour distance is circular (23:40 is an hour from 00:40)."""
     assert visits._hour_gap(23.5, 0.5) == pytest.approx(1.0)
     assert visits._hour_gap(1.0, 23.0) == pytest.approx(2.0)
 
 
 def test_duration_compares_as_a_ratio(dbfile):
-    """20m against 40m is the same gap as 40m against 80m — a lecture is not a
-    coffee, but two lectures of different lengths are both lectures."""
+    """20m vs 40m is the same gap as 40m vs 80m."""
     a = visits._signature(_stay("2026-09-01", 19, 20))
     b = visits._signature(_stay("2026-09-01", 19, 40))
     c = visits._signature(_stay("2026-09-01", 19, 80))
@@ -124,9 +110,7 @@ def test_duration_compares_as_a_ratio(dbfile):
 
 
 def test_sightings_are_shown_marked_and_never_learned_from(dbfile, monkeypatch):
-    """25 of the hub's 60 real visits are one fix and then MAX_GAP_MIN of
-    booked silence. Hiding them would be its own lie; learning from them would
-    teach the signature that a 20-minute phantom is what a visit looks like."""
+    """One-fix sightings are listed, marked, and never learned from."""
     _seed_fixes()
     solo = _stay("2026-09-06", 19, 20, fixes=1)
     real = [_stay("2026-09-01", 19, 90), _stay("2026-09-02", 20, 120),
@@ -148,7 +132,7 @@ def test_sightings_are_shown_marked_and_never_learned_from(dbfile, monkeypatch):
 
 
 def test_a_prediction_is_never_stored(dbfile, monkeypatch):
-    """Nothing is true here because the learner thought so."""
+    """A prediction is never written."""
     _seed_fixes()
     real = [_stay("2026-09-01", 19, 90), _stay("2026-09-02", 20, 120),
             _stay("2026-09-03", 21, 75)]
@@ -167,9 +151,7 @@ def test_a_prediction_is_never_stored(dbfile, monkeypatch):
 
 
 def test_label_survives_a_stay_split_by_the_range_edge(dbfile, monkeypatch):
-    """Stay boundaries come from the fixes in the range asked for, so a range
-    that starts mid-stay yields a stay beginning later than the labelled
-    instant. The label matches on containment so it isn't orphaned."""
+    """A label matches by containment, so a range starting mid-stay doesn't orphan it."""
     _seed_fixes()
     whole = _stay("2026-09-05", 19, 60)
     visits.label(whole["first"].isoformat(), *HUB, "Leavey Library")
@@ -184,8 +166,7 @@ def test_label_survives_a_stay_split_by_the_range_edge(dbfile, monkeypatch):
 
 
 def test_names_used_here_are_offered_back(dbfile, monkeypatch):
-    """The picker's chips are the names you have already used at this cluster
-    — the second visit to the library should be one click, not typing."""
+    """Names already used at this cluster are offered back."""
     _seed_fixes()
     monkeypatch.setattr(location, "cluster_at", lambda *a: {
         "lat": HUB[0], "lon": HUB[1], "name": None, "span_m": 168.0,
@@ -198,10 +179,8 @@ def test_names_used_here_are_offered_back(dbfile, monkeypatch):
 
 
 def test_same_recurring_event_pulls_two_visits_together(dbfile):
-    """The calendar's one safe use here: identity, never position. Two visits
-    that coincided with the same lecture are alike, whichever place that is."""
-    # Deliberately unlike each other on the clock — 19:00 for 90m against
-    # 09:00 for 25m — which is exactly the case the event is there to rescue.
+    """The calendar is used for identity only: visits sharing a recurring event are alike."""
+    # Unlike on the clock (19:00/90m vs 09:00/25m) on purpose.
     a = visits._signature(_stay("2026-09-01", 19, 90), "CSCI 103")
     b = visits._signature(_stay("2026-09-08", 9, 25), "CSCI 103")
     plain_a = visits._signature(_stay("2026-09-01", 19, 90))
@@ -210,20 +189,17 @@ def test_same_recurring_event_pulls_two_visits_together(dbfile):
     bare = visits._similarity(plain_a, plain_b)
     assert bare < 0.05, "on clock and duration alone these look unrelated"
     assert visits._similarity(a, b) > bare
-    # Pulled halfway to certainty, never past it.
     assert visits._similarity(a, b) == pytest.approx(
         bare + (1 - bare) * visits.EVENT_AGREEMENT)
     assert visits._similarity(a, b) <= 1.0
 
-    # And it cannot manufacture more than certainty where there was already
-    # certainty: two identical visits stay at 1.0.
+    # Identical visits stay at 1.0.
     same = visits._signature(_stay("2026-09-01", 19, 90), "CSCI 103")
     assert visits._similarity(same, same) == pytest.approx(1.0)
 
 
 def test_different_events_say_nothing(dbfile):
-    """One building holds many lectures, so a disagreement is not evidence
-    against — it must leave the similarity exactly where it was."""
+    """Different events leave similarity unchanged: a building holds many lectures."""
     a = visits._signature(_stay("2026-09-01", 19, 90), "CSCI 103")
     b = visits._signature(_stay("2026-09-08", 19, 90), "MATH 229")
     plain = visits._similarity(visits._signature(_stay("2026-09-01", 19, 90)),
@@ -239,9 +215,7 @@ def test_series_identity_ignores_instance_noise(dbfile):
 
 
 def test_a_one_off_that_ran_long_is_not_identity(dbfile, monkeypatch):
-    """"Bid Day" spanned three hub visits. Gluing them together on that would
-    be reading a coincidence of the clock as a fact about a place, so a series
-    has to recur EVENT_MIN_RECURRENCE times at the cluster to count."""
+    """A one-off event spanning visits is not identity: it must recur EVENT_MIN_RECURRENCE times."""
     _seed_fixes()
     stays = [_stay("2026-09-01", 19, 90), _stay("2026-09-02", 12, 20)]
     monkeypatch.setattr(location, "cluster_at", lambda *a: {

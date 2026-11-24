@@ -1,9 +1,8 @@
-"""Vault views and the generated-notes inbox.
+"""Vault views: generated tasks.md, the generated-notes inbox, note open/search.
 
-tasks.md is now a GENERATED, read-only rendering of the tasks DB — kept in the
-vault so Obsidian search/wikilinks still see your tasks, regenerated after
-every task mutation. Edits made to the file by hand are overwritten; capture
-happens in the UI or console instead.
+tasks.md is a GENERATED, read-only render of the tasks DB (hand edits are
+overwritten). Notes search reads index.db, which is derived.
+Design: DESIGN.md → Vault views.
 """
 
 import json
@@ -50,8 +49,7 @@ def regenerate_tasks_view() -> str:
     by_project: dict[str, list] = {}
     for t in tasks:
         by_project.setdefault(t["project"] or "Unsorted", []).append(t)
-    # Count and render from the same traversal, so the header total always
-    # matches the task lines actually emitted below (including open subtasks).
+    # Count and render in one traversal so the header total matches the lines.
     body: list[str] = []
     count = 0
     for project in sorted(by_project):
@@ -67,10 +65,8 @@ def regenerate_tasks_view() -> str:
     lines = [HEADER, f"# Tasks ({count} open)", "", *body]
     lines.append(f"*Regenerated {datetime.now().isoformat(timespec='seconds')}*\n")
     path = VAULT_PATH / TASKS_VIEW_FILE
-    # Writes now arrive from any thread (a provider sync opening a task races
-    # a UI click), so serialize them and swap the file in whole: Obsidian and
-    # the indexer never see half a view. The dot-name keeps the temp file out
-    # of Obsidian and the watcher.
+    # Any thread can write: serialize, and swap the file in whole. The dot-name
+    # keeps the temp file from Obsidian and the watcher.
     tmp = path.with_name(f".{path.name}.tmp")
     with _regen_lock:
         tmp.write_text("\n".join(lines), encoding="utf-8")
@@ -82,12 +78,8 @@ _regen_lock = threading.Lock()
 
 
 def _on_task_write() -> None:
-    """db's task-write hook: every committed task write, from any writer.
-
-    Refuses one combination — an app.db that isn't the configured one (a test
-    redirected db.APP_DB) rendered into the configured vault. That view would
-    overwrite the real tasks.md with a fixture's tasks. A test that wants the
-    regeneration points VAULT_PATH here somewhere disposable too."""
+    """db's task-write hook. Skips a redirected app.db (test) paired with the
+    real vault, which would overwrite the real tasks.md with fixtures."""
     if db.APP_DB != _config.APP_DB and VAULT_PATH == _config.VAULT_PATH:
         return
     regenerate_tasks_view()
@@ -140,22 +132,15 @@ def promote_generated(rel_path: str, dest_dir: str | None = None,
 
 # ---------- opening a note in Obsidian ----------
 
-# What the console writes about a note is a path or a wikilink, not a URL, so
-# the dashboard has to turn that text back into a file before it can hand it
-# to Obsidian. Resolution is deliberately generous about the *form* and strict
-# about the *result*: anything that doesn't land on a real file inside the
-# vault is a miss, so a `README.md` mentioned while talking about the repo
-# never opens some unrelated note.
+# Generous about the form of the link, strict about the result: anything that
+# isn't a real file inside the vault is a miss (a repo `README.md` mention
+# must never open an unrelated note).
 
 _LINK_SUFFIX = re.compile(r"[#|^].*$")      # #heading, |alias, ^block-id
 
 
 def note_anchor(target: str) -> str:
-    """The `#heading` / `^block` a wikilink asked for, or "" for neither.
-
-    Read off the *link*, not the resolved path — the alias half (`|…`) is
-    display text and names no position in the note.
-    """
+    """The `#heading` / `^block` a wikilink asked for, or "" (the `|alias` half names no position)."""
     text = (target or "").strip()
     if text.startswith("[[") and text.endswith("]]"):
         text = text[2:-2]
@@ -192,14 +177,8 @@ def resolve_note(target: str) -> str:
         if resolved.is_file() and VAULT_PATH in resolved.parents:
             return str(resolved.relative_to(VAULT_PATH))
 
-    # Obsidian's own rule for a bare `[[name]]`: match on the file name, from
-    # anywhere in the vault. The index already knows every note, so this costs
-    # nothing and covers the shape the console writes most often.
-    #
-    # Only when the name is *unique*, though. The vault holds several
-    # `README.md`, and a name that names three notes names none of them —
-    # picking whichever the index listed first would open the wrong one and
-    # look like the link was simply wrong rather than ambiguous.
+    # Obsidian's rule for a bare `[[name]]`: match the file name anywhere, but
+    # only when unique (several `README.md`); a first-listed guess opens the wrong note.
     stem = Path(text).name.removesuffix(".md").casefold()
     con = indexer.connect()
     try:
@@ -216,17 +195,8 @@ def resolve_note(target: str) -> str:
 
 
 def obsidian_uri(rel_path: str, anchor: str = "") -> str:
-    """`obsidian://open` URI for a vault-relative path.
-
-    Addressed by vault *name* (the vault folder's basename, which is what
-    Obsidian names a vault by default) plus the relative file, rather than by
-    absolute path: the name survives the vault living behind a symlink, and it
-    is the form Obsidian documents.
-
-    `anchor` is the `#heading` or `^block` half of a wikilink, kept because a
-    link that says `#Costs` and lands at the top of the note is a link that
-    lied about where it goes.
-    """
+    """`obsidian://open` URI by vault *name* + relative file (survives a symlinked vault).
+    `anchor` is the wikilink's `#heading` / `^block`."""
     uri = ("obsidian://open?vault=" + quote(VAULT_PATH.name, safe="")
            + "&file=" + quote(rel_path, safe=""))
     if anchor.startswith("#"):
@@ -237,12 +207,7 @@ def obsidian_uri(rel_path: str, anchor: str = "") -> str:
 
 
 def open_in_obsidian(target: str) -> dict:
-    """Resolve `target` and hand its URI to the OS. macOS-only, by design.
-
-    `open -g` so the click doesn't yank focus out of the dashboard when
-    Obsidian is already showing the note on another space; Obsidian still
-    raises its own window when it has to launch.
-    """
+    """Resolve `target` and hand its URI to the OS (macOS-only). `open -g` keeps focus in the dashboard."""
     rel = resolve_note(target)
     uri = obsidian_uri(rel, note_anchor(target))
     if sys.platform != "darwin":
@@ -253,13 +218,11 @@ def open_in_obsidian(target: str) -> dict:
 
 # ---------- notes search, one note, pinned (plan view: ⌘K + Vault notes) ----------
 #
-# All of it reads index.db, which stays derived: a note edited in Obsidian
-# shows up here after the watcher's next rebuild, and nothing here writes.
+# Reads index.db only: Obsidian edits show after the watcher's next rebuild.
 
 GENERATED_DIR = "06-Generated/"
 
-# Where a term matched, best first. Summed over every term of the query, so a
-# note whose title holds both words outranks one holding them in its body.
+# Where a term matched, best first; summed over the query's terms.
 _FIELD_WEIGHT = {"title": 0, "path": 1, "body": 3}
 
 
@@ -274,12 +237,8 @@ def _snippet(body: str, term: str, width: int = 120) -> str:
 
 
 def search_notes(q: str, limit: int = 20) -> list[dict]:
-    """Notes whose title, path or text hold every word of `q`.
-
-    Ranked by where the words matched (title, then path, then text), then by
-    most recently edited. Under two characters there is nothing to rank —
-    every note holds "a" — so the answer is empty rather than the whole vault.
-    """
+    """Notes holding every word of `q`, ranked by match field then recency.
+    Under two characters returns [] rather than the whole vault."""
     terms = [t for t in q.casefold().split() if t]
     if len("".join(terms)) < 2:
         return []
@@ -310,9 +269,7 @@ def search_notes(q: str, limit: int = 20) -> list[dict]:
 
 
 def recent_notes(folder: str = "", limit: int = 30) -> list[dict]:
-    """Notes under `folder` (a vault-relative prefix; "" = the whole vault),
-    most recently edited first — the Vault notes view's "Written by the
-    console" list is `06-Generated/`."""
+    """Notes under `folder` (vault-relative prefix; "" = all), newest edit first."""
     prefix = folder.strip("/") + "/" if folder.strip("/") else ""
     with indexer.session() as con:
         rows = con.execute(

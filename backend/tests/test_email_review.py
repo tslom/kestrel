@@ -1,12 +1,9 @@
 """Review files every message so it can be found again.
 
-Three things have to hold for that to be worth doing. The label set stays
-closed — a model that invents a label is how free-form bins forked into
-near-duplicates. Every action files, keep included, and undo takes the label
-back off with everything else. And search finds a message by what was pulled
-out of its body (an order number) as well as by its subject, ranked, across
-the whole cache — with the index rebuilding itself when the cache moves
-rather than depending on every writer to remember it.
+Holds: the label set stays closed (invented labels forked free-form bins into
+near-duplicates); every action files, keep included, and undo removes the label;
+search finds by body-extracted terms (an order number) as well as subject, ranked,
+and the index rebuilds itself when the cache moves.
 """
 
 import http.client
@@ -56,8 +53,7 @@ def test_parse_keeps_the_label_set_closed():
     assert b["label"] == "Filed/Receipts" and b["terms"] == "one"
     # A retired action is dropped, not trusted.
     assert b["action"] is None
-    # An invented label is refused, and terms are still a string: NULL is
-    # what marks a message as owed another pass.
+    # An invented label is refused; terms stays a string (NULL marks a message owed another pass).
     assert c["label"] is None and c["terms"] == ""
 
 
@@ -228,8 +224,7 @@ def test_a_lost_network_is_a_502_with_a_reason_not_a_bare_500(monkeypatch):
 
 
 def test_one_click_falls_back_to_mailto_when_refused(con, gmail, monkeypatch):
-    """Consensus via loops.so: Cloudflare 403s the POST. The header carries a
-    mailto too, and a refused POST reaches nobody, so that's next."""
+    """A refused one-click POST (Cloudflare 403 via loops.so) falls back to the header's mailto."""
     def refused(url):
         raise email_routes.HTTPException(502, "unsubscribe endpoint returned 403")
     mailed = []
@@ -244,7 +239,7 @@ def test_one_click_falls_back_to_mailto_when_refused(con, gmail, monkeypatch):
     out = email_routes.post_action("m5", email_routes.ActionIn(action="unsubscribe"))
     assert out["performed"] == "mailto"
     assert mailed == ["mailto:u@unsub.test?subject=unsubscribe"]
-    # No mailto to fall back on: the failure is the answer, and nothing filed.
+    # No mailto: the failure is the answer; nothing filed.
     with pytest.raises(email_routes.HTTPException):
         email_routes.post_action("m6", email_routes.ActionIn(action="unsubscribe"))
     assert con.execute("SELECT in_inbox FROM emails WHERE msg_id='m6'").fetchone()[0] == 1
@@ -300,8 +295,7 @@ def test_search_finds_a_message_by_what_its_body_said(con):
     # A term that exists only in what was pulled out of the body.
     hits = email_search.local(con, "124057035")
     assert [h["id"] for h in hits] == ["r1"]
-    # Ranked, not just matched: a subject hit outranks a summary mention even
-    # though the summary one is newer.
+    # Ranked: a subject hit outranks a newer summary mention.
     assert [h["id"] for h in email_search.local(con, "receipt")] == ["r1", "r2"]
     # A half-typed last word already matches.
     assert [h["id"] for h in email_search.local(con, "dini")] == ["r1"]

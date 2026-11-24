@@ -1,11 +1,8 @@
 """Package identity in providers/email_extract.py.
 
-The spec here is one real order. Campus Ready's confirmation carried merchant + order id and created `Campus Ready:41415`. Its reply two
-days later gave the pickup date — "Orders will be available for pick-up at the
-USC bookstone patio on August 18th" — and named neither an order number nor a
-tracking number, only the sending domain. The extractor parsed it correctly
-and then dropped it on the floor, so the deliveries card showed no ETA while
-the right date sat in the `email_extract` cache.
+The spec is one real order: a confirmation creating `Campus Ready:41415`, then a reply
+with only a pickup date and the sending domain (no order or tracking number).
+Design: DESIGN.md → §15 packages / §16 travel (extraction).
 """
 
 import json
@@ -55,8 +52,7 @@ def test_merchant_key_survives_how_the_email_spells_it(spelling):
 
 
 def test_merchant_key_keeps_a_display_name_with_a_dot_intact():
-    """A dot inside a name with spaces is punctuation, not a domain — cutting
-    at it would collapse 'J. Crew' and 'J. Peterman' onto the same key."""
+    """A dot in a name with spaces isn't a domain: cutting there would merge 'J. Crew' and 'J. Peterman'."""
     assert ex._merchant_key("J. Crew") == "jcrew"
     assert ex._merchant_key("J. Peterman") == "jpeterman"
 
@@ -79,10 +75,7 @@ def test_pickup_date_lands_on_the_open_order(dbfile):
 
 
 def test_the_reply_does_not_overwrite_what_the_order_is(dbfile):
-    """The card reads both of these. A follow-up describes the order in
-    passing — 'campusready.com', 'Linen order' — while the confirmation that
-    opened the row named it properly. Trust the follow-up for what changed,
-    not for what the thing is."""
+    """Merchant and item_desc keep the confirmation's values; a follow-up only updates what changed."""
     _upsert(CONFIRMATION)
     _upsert(PICKUP_REPLY, msg_id="m2")
     row = _packages()[0]
@@ -91,8 +84,7 @@ def test_the_reply_does_not_overwrite_what_the_order_is(dbfile):
 
 
 def test_a_follow_up_abstains_when_the_merchant_has_two_open_orders(dbfile):
-    """Guessing which of two orders a bare date belongs to is worse than
-    leaving the card blank."""
+    """Ambiguous follow-up: leave the card blank rather than guess."""
     _upsert(CONFIRMATION)
     _upsert({**CONFIRMATION, "order_id": "41416"}, msg_id="m2")
     _upsert(PICKUP_REPLY, msg_id="m3")
@@ -102,8 +94,7 @@ def test_a_follow_up_abstains_when_the_merchant_has_two_open_orders(dbfile):
 
 
 def test_a_follow_up_with_no_open_order_is_still_dropped(dbfile):
-    """Nothing to attach to — and it carries no id, so it can't open a row of
-    its own either."""
+    """No open order to attach to and no id to open a row."""
     _upsert(PICKUP_REPLY)
     assert _packages() == []
 
@@ -116,8 +107,7 @@ def test_a_delivered_order_does_not_absorb_a_later_follow_up(dbfile):
 
 
 def test_the_follow_up_cannot_walk_status_backward(dbfile):
-    """The reply says 'ordered' because that's all it knows; the shipping
-    notice that came before it knows better."""
+    """A follow-up's 'ordered' doesn't undo an earlier 'shipped'."""
     _upsert({**CONFIRMATION, "status": "shipped"})
     _upsert(PICKUP_REPLY, msg_id="m2")
     assert _packages()[0]["status"] == "shipped"
@@ -126,8 +116,7 @@ def test_the_follow_up_cannot_walk_status_backward(dbfile):
 # ---------- update_package (the console's write path) ----------
 
 def test_update_package_may_move_status_backward(dbfile):
-    """Forward-only guards against out-of-order email, not against the person
-    looking at the package and telling you it isn't here yet."""
+    """Forward-only guards against out-of-order email, not against the user's correction."""
     _upsert({**CONFIRMATION, "status": "delivered"})
     row = ex.update_package("Campus Ready:41415", status="shipped")
     assert row["status"] == "shipped"
@@ -170,11 +159,7 @@ def test_delete_package_leaves_the_other_orders_alone(dbfile):
 
 
 def test_a_later_email_re_opens_a_deleted_order(dbfile):
-    """Delete clears the card; it is not a blacklist. The `email_extract`
-    cache is keyed by msg_id and a package by order, so there is no honest
-    set of cache rows to drop alongside the package — which means a genuinely
-    new email about that order builds the row again. Pinned because it's the
-    surprising half of the contract, not because it's desirable."""
+    """Delete is not a blacklist: a new email about the order rebuilds the row (pinned, not desirable)."""
     _upsert(CONFIRMATION)
     ex.delete_package("Campus Ready:41415")
     _upsert({**CONFIRMATION, "status": "shipped"}, msg_id="m2")
@@ -212,8 +197,7 @@ def test_delete_route_404s_for_an_unknown_key(pkg_client):
 
 
 def test_the_card_still_shows_a_hand_delivered_package(pkg_client):
-    """Marking delivered is not removing: the row keeps its three-day return
-    window on the card, which is the whole reason delete exists separately."""
+    """Marking delivered keeps the row on the card for its three-day return window."""
     _upsert(CONFIRMATION)
     pkg_client.post("/api/packages/Campus%20Ready%3A41415/delivered")
     body = pkg_client.get("/api/packages").json()
@@ -222,10 +206,7 @@ def test_the_card_still_shows_a_hand_delivered_package(pkg_client):
 
 # ---------- create_package (deliveries no email will ever mention) ----------
 #
-# Live case: a backpack and a shoe spray ordered on a parent's Amazon account.
-# Nothing lands in this mailbox, so no candidate, no extraction, no row — the
-# console put them on the shopping list marked bought and the arrival dates
-# survived only as prose in an item note.
+# Parcels ordered on someone else's account never reach this mailbox.
 
 def test_create_package_opens_a_row_from_nothing_but_what_the_user_says(dbfile):
     row = ex.create_package("Amazon", item_desc="Fjällräven Raven 20",
@@ -238,8 +219,7 @@ def test_create_package_opens_a_row_from_nothing_but_what_the_user_says(dbfile):
 
 
 def test_create_package_numbers_each_manual_row_for_a_merchant(dbfile):
-    """Two parcels from one merchant are two cards, not one overwritten one —
-    the same account orders a backpack and a spray in the same week."""
+    """Two parcels from one merchant are two cards."""
     first = ex.create_package("Amazon", item_desc="Fjällräven Raven 20")
     second = ex.create_package("Amazon", item_desc="Crep Protect spray")
     assert [first["order_key"], second["order_key"]] == ["Amazon:manual-1",
@@ -247,8 +227,7 @@ def test_create_package_numbers_each_manual_row_for_a_merchant(dbfile):
 
 
 def test_create_package_keys_on_a_tracking_number_when_given(dbfile):
-    """Same rule the email path uses, so the carrier's own notification later
-    lands on this row instead of forking a second card."""
+    """Same key rule as the email path, so the carrier's later notification lands on this row."""
     row = ex.create_package("Amazon", tracking_no="1Z999", carrier="ups")
     assert row["order_key"] == "1Z999"
     _upsert({"merchant": "UPS", "tracking_no": "1Z999", "order_id": None,
@@ -261,8 +240,7 @@ def test_create_package_keys_on_a_tracking_number_when_given(dbfile):
 
 
 def test_a_later_email_does_not_blank_the_link_to_an_earlier_one(dbfile):
-    """last_msg_id COALESCEs. A hand-amended row keeps the email that opened
-    it — without that, create_package's msg_id=None would erase the pointer."""
+    """last_msg_id COALESCEs: a hand amendment (msg_id=None) keeps the opening email."""
     _upsert(CONFIRMATION)
     ex.create_package("Campus Ready", order_id="41415", eta_day="2026-08-18")
     row = _packages()[0]
@@ -307,9 +285,7 @@ def _seed_cache(dbfile, msg_id, item, received_at):
 
 
 def test_backfill_replays_the_cache_through_the_fixed_rules(dbfile):
-    """The cache is keyed by msg_id and the upsert only runs at extraction
-    time, so fixing the matching rules reaches nothing already parsed. The
-    pickup date sat correctly parsed in `email_extract` for two days."""
+    """Upsert runs only at extraction, so a rule fix reaches cached rows only via backfill."""
     _seed_cache(dbfile, "m1", CONFIRMATION, "2026-08-02T19:28:32")
     _seed_cache(dbfile, "m2", PICKUP_REPLY, "2026-08-04T17:04:48")
     assert _packages() == []                       # nothing upserted yet
@@ -326,8 +302,7 @@ def test_backfill_skips_irrelevant_cached_rows(dbfile):
 
 
 def test_backfill_does_not_shove_an_old_delivery_into_the_return_window(dbfile):
-    """updated_at drives the card's three-day 'recently delivered' window, so
-    replaying with now() would resurrect a package delivered weeks ago."""
+    """Replay stamps updated_at from the email (it drives the 3-day delivered window), not now()."""
     _seed_cache(dbfile, "m1", {"merchant": "Vuori", "order_id": "27901251",
                                "status": "delivered"}, "2026-07-14T18:52:14")
     ex.backfill_packages()
@@ -355,16 +330,13 @@ def test_a_package_moving_forward_queues_a_banner(dbfile):
 
 
 def test_a_newly_discovered_package_says_nothing(dbfile):
-    """On a transition, never on discovery. A first sighting that already reads
-    'delivered' can't be told apart from one that just happened, and the honest
-    reading of it is the second one."""
+    """Banners fire on a transition, never on first sighting."""
     _upsert({**CONFIRMATION, "status": "delivered"})
     assert _queued() == []
 
 
 def test_the_same_status_re_observed_queues_nothing(dbfile):
-    """The poll cycle re-reads every open order — this is the case that would
-    have made the channel unusable."""
+    """The poll re-reads every open order; re-observing a status must stay silent."""
     _upsert(CONFIRMATION)
     _upsert({**CONFIRMATION, "status": "shipped"}, msg_id="m2")
     _upsert({**CONFIRMATION, "status": "shipped"}, msg_id="m3")
@@ -372,15 +344,14 @@ def test_the_same_status_re_observed_queues_nothing(dbfile):
 
 
 def test_a_backwards_status_queues_nothing(dbfile):
-    """Status only moves forward (_PACKAGE_RANK), so the row doesn't change and
-    there is nothing to announce."""
+    """Status only moves forward (_PACKAGE_RANK): nothing changed, nothing to announce."""
     _upsert({**CONFIRMATION, "status": "delivered"})
     _upsert({**CONFIRMATION, "status": "shipped"}, msg_id="m2")
     assert _queued() == []
 
 
 def test_the_order_confirmation_itself_says_nothing(dbfile):
-    """You pressed the button thirty seconds ago."""
+    """An 'ordered' confirmation never announces (the user just placed the order)."""
     _upsert({"merchant": "Amazon", "order_id": "1", "status": "shipped"})
     con = db.connect()
     with con:
@@ -392,8 +363,7 @@ def test_the_order_confirmation_itself_says_nothing(dbfile):
 
 
 def test_a_rolled_back_extraction_leaves_no_promise_to_announce(dbfile):
-    """The queue write shares the caller's transaction on purpose: a fact that
-    didn't land must not be announced."""
+    """The queue write shares the caller's transaction: an unlanded fact isn't announced."""
     _upsert(CONFIRMATION)
     con = db.connect()
     try:
@@ -409,12 +379,7 @@ def test_a_rolled_back_extraction_leaves_no_promise_to_announce(dbfile):
 
 
 def test_a_gate_change_queues_a_banner_through_the_shared_channel(dbfile):
-    """The channel used to live in this module with one caller, below
-    AEROAPI_KEY's early return, and had never fired.
-
-    The row opens with a gate already known (C10), not NULL: a gate learned for
-    the first time is not a gate change and is deliberately silent, so a NULL
-    here would leave the ' — gate C12' half of the body untested."""
+    """A gate change banners via the shared channel; the row opens with gate C10 because a first-learned gate is silent."""
     con = db.connect()
     with con:
         con.execute(
@@ -449,10 +414,7 @@ def test_an_unchanged_flight_status_queues_nothing(dbfile):
 
 # ---------- create_trip (flights no email will ever mention) ----------
 #
-# Live case: the RDU->LAX move flight, AA 2299 on PNR FLZUNL. It sat on the
-# calendar and in no other store, so /api/trips left it out and the travel
-# card's count meant only the other trips. The booking predates the mail
-# sync's own history, so there is no message to extract and never will be.
+# Bookings that predate the mail sync have no message to extract.
 
 def _trips():
     con = db.connect()
@@ -475,15 +437,13 @@ def test_create_trip_opens_a_row_from_nothing_but_what_the_user_says(dbfile):
 
 
 def test_create_trip_splits_a_carrier_prefixed_flight_number(dbfile):
-    """The card renders `{carrier}{flight_no}`, so an unsplit "AA2299" prints
-    correctly with an empty carrier while keying the row wrong."""
+    """An unsplit "AA2299" would render right but key the row wrong (empty carrier)."""
     row = ex.create_trip("AA2299", "2026-08-17T15:00:00")
     assert (row["carrier"], row["flight_no"]) == ("AA", "2299")
 
 
 def test_create_trip_keys_on_the_pnr_so_a_later_email_lands_on_this_row(dbfile):
-    """The same job tracking_no does for packages: an airline schedule-change
-    mail for this leg must amend this row, not fork a second card."""
+    """Like tracking_no for packages: a schedule-change mail amends this row."""
     ex.create_trip("2299", "2026-08-17T15:00:00", pnr="FLZUNL", carrier="AA")
     con = db.connect()
     try:
@@ -501,8 +461,7 @@ def test_create_trip_keys_on_the_pnr_so_a_later_email_lands_on_this_row(dbfile):
 
 
 def test_a_later_email_does_not_blank_the_link_on_a_hand_written_trip(dbfile):
-    """last_msg_id COALESCEs, as the packages one does — re-filing a flight by
-    hand must not erase the email that opened the row."""
+    """last_msg_id COALESCEs, as for packages."""
     con = db.connect()
     try:
         with con:
@@ -541,9 +500,7 @@ def test_create_trip_rejects_a_non_iata_airport(dbfile):
 
 # ---------- live status: which of an ident's flights, and from which zone ----------
 #
-# Payloads below are trimmed from real AeroAPI responses for AA2299 (the move
-# flight's own ident). Two facts they encode and no unit test can rediscover: the API returns
-# an ident's operations *newest first*, and some rows carry no schedule at all.
+# Payloads are trimmed real AeroAPI responses: operations come *newest first*, and some rows have no schedule.
 
 def _op(sched_out, *, zone="America/New_York", gate=None, status="Scheduled",
         cancelled=False):
@@ -553,8 +510,7 @@ def _op(sched_out, *, zone="America/New_York", gate=None, status="Scheduled",
 
 
 def test_match_flight_ignores_the_ident_s_other_days(dbfile):
-    """A window wide enough to hold the local day holds the neighbouring
-    operations too, so flights[0] is the most recent one, not ours."""
+    """The window holds neighbouring days too, so flights[0] isn't ours."""
     flights = [_op("2026-08-13T22:00:00Z", gate="C9"),
                _op("2026-08-12T22:00:00Z", gate="C15"),
                _op("2026-08-11T22:00:00Z", gate="C21")]
@@ -562,8 +518,7 @@ def test_match_flight_ignores_the_ident_s_other_days(dbfile):
 
 
 def test_match_flight_skips_a_row_with_no_schedule(dbfile):
-    """AeroAPI mixes in 'result unknown' rows carrying scheduled_out=None.
-    One sorted to the front would otherwise be published as the status."""
+    """'result unknown' rows (scheduled_out=None) are skipped, not published."""
     flights = [{"ident": "AAL2299", "scheduled_out": None,
                 "status": "result unknown", "origin": {}},
                _op("2026-08-12T22:00:00Z", gate="C15")]
@@ -571,9 +526,7 @@ def test_match_flight_skips_a_row_with_no_schedule(dbfile):
 
 
 def test_match_flight_reads_the_departure_in_the_origin_s_zone(dbfile):
-    """The regression the whole change exists for: a 21:00 departure from LAX
-    is 04:00Z the *next* day. Matched in UTC it belongs to 08-18 and the row
-    for 08-17 comes back empty — a flight recorded as checked and never read."""
+    """A 21:00 LAX departure is 04:00Z the next day: match in the origin's zone, not UTC."""
     flights = [_op("2026-08-18T04:00:00Z", zone="America/Los_Angeles",
                    gate="46B")]
     assert ex._match_flight(flights, "2026-08-17")["gate_origin"] == "46B"
@@ -581,9 +534,7 @@ def test_match_flight_reads_the_departure_in_the_origin_s_zone(dbfile):
 
 
 def test_fetch_flight_status_reads_the_day_it_was_asked_for(dbfile, monkeypatch):
-    """End to end over a real-shaped payload, because the tests above call
-    _match_flight directly and so pass just as well with the caller still
-    taking flights[0] — the wiring is where the original bug lived."""
+    """End to end: the caller must use _match_flight, not flights[0]."""
     payload = {"flights": [_op("2026-08-18T22:00:00Z", gate="C9",
                                status="Scheduled / On Time"),
                            _op("2026-08-17T22:00:00Z", gate="C15",
@@ -606,8 +557,7 @@ def test_fetch_flight_status_reads_the_day_it_was_asked_for(dbfile, monkeypatch)
 
 
 def test_fetch_window_brackets_the_local_day(dbfile, monkeypatch):
-    """Start a day back and end two on: only the start bound is capped at 2
-    days out, and it must stay inside that cap for a flight at the horizon."""
+    """Start a day back, end two on: the start bound is capped at 2 days out."""
     seen = {}
 
     def fake(req, timeout=None):
@@ -622,9 +572,7 @@ def test_fetch_window_brackets_the_local_day(dbfile, monkeypatch):
 
 
 def test_a_bad_request_does_not_mark_the_source_degraded(dbfile, monkeypatch):
-    """400 is the window being wrong, not FlightAware being down. A status
-    panel that reports an outage for a structural limit gets ignored — but a
-    dead credential has to show, or it stays dead for a week."""
+    """400 (a structural window limit) isn't an outage; 401 (dead credential) must show as degraded."""
     logged = []
     monkeypatch.setattr(ex.heartbeat, "log_event",
                         lambda *a: logged.append(a))
@@ -646,14 +594,10 @@ def test_a_bad_request_does_not_mark_the_source_degraded(dbfile, monkeypatch):
 
 # ---------- the poll loop itself, which nothing covered ----------
 #
-# Everything above tests one lookup. These test which rows get looked up at all
-# — the horizon SQL, the re-check interval, and what gets written back. A test
-# that only asserts it returns 0 with the key unset exercises none of the loop.
+# Which rows get looked up (horizon SQL, re-check interval) and what is written back.
 
 def _banners():
-    """What the at-desk channel was told, oldest first. Ordered by rowid rather
-    than queued_at: the stamp is second-resolution, so two banners raised inside
-    one test tie and come back in whatever order SQLite likes."""
+    """Banners queued, oldest first; rowid, since queued_at is second-resolution and ties."""
     con = db.connect()
     try:
         return [(r["title"], r["body"]) for r in con.execute(
@@ -664,10 +608,7 @@ def _banners():
 
 @pytest.fixture
 def polling(monkeypatch):
-    """The poller with its one outside edge stubbed: the network. The
-    notification edge needs no stub — notify.send() only
-    queues a row, and it is _post(), reached from flush(), that shells out to
-    osascript. So the assertions below read the queue via _banners()."""
+    """The poller with the network stubbed; notify.send() only queues a row, so read it via _banners()."""
     monkeypatch.setattr(ex, "AEROAPI_KEY", "k")
     calls = []
 
@@ -691,8 +632,7 @@ def _trip_row(con, flight_no="2299"):
 
 
 def test_poll_ignores_flights_beyond_the_horizon(dbfile, polling):
-    """48h is the API's ceiling as much as a cost choice — a start bound past
-    2 days is a 400, so a further-out flight must not even be attempted."""
+    """48h is the API's ceiling (a later start bound is a 400)."""
     _trip_in(24, flight_no="2299")
     _trip_in(24 * 5, flight_no="2308")
     con = db.connect()
@@ -716,8 +656,7 @@ def test_poll_writes_status_gate_and_the_check_stamp(dbfile, polling):
 
 
 def test_poll_respects_the_recheck_interval_until_close_in(dbfile, polling):
-    """Cost control: a row checked minutes ago is skipped while it's far out,
-    and re-checked every cycle once inside FLIGHT_POLL_CLOSE_HOURS."""
+    """Far-out rows are skipped if checked recently; inside FLIGHT_POLL_CLOSE_HOURS, every cycle."""
     _trip_in(30, flight_no="2299")
     _trip_in(3, flight_no="2308")
     just_now = datetime.now().isoformat(timespec="seconds")
@@ -733,10 +672,7 @@ def test_poll_respects_the_recheck_interval_until_close_in(dbfile, polling):
 
 def test_the_first_poll_is_silent_even_though_it_changes_both_fields(
         dbfile, polling):
-    """Rows open as status='confirmed' with gate NULL, so the first poll always
-    changes both — which is why neither arm can trigger on change alone. The
-    status arm always guarded this (is_delay); the gate arm did not, so every
-    flight buzzed once at T-48h to announce a gate nobody had been told."""
+    """Rows open as 'confirmed' with gate NULL, so the first poll changes both: neither arm may fire on change alone."""
     _trip_in(24)
     con = db.connect()
     try:
@@ -767,9 +703,7 @@ def test_poll_notifies_on_a_real_gate_change_and_on_a_delay(
 
 def test_a_lookup_that_finds_nothing_still_stamps_the_row(dbfile, polling,
                                                           monkeypatch):
-    """Deliberate and worth pinning: a miss records the attempt, so the row
-    isn't retried every cycle. It is also why the UTC-window bug was invisible
-    — a flight never actually read still reads as checked."""
+    """A miss records the attempt so the row isn't retried every cycle (a never-read flight still reads as checked)."""
     _trip_in(24)
     monkeypatch.setattr(ex, "_fetch_flight_status", lambda c, f, d: None)
     con = db.connect()
@@ -784,8 +718,7 @@ def test_a_lookup_that_finds_nothing_still_stamps_the_row(dbfile, polling,
 # ---------- check-in tasks, which never needed an API key ----------
 
 def test_checkin_task_is_created_without_an_aeroapi_key(dbfile, monkeypatch):
-    """The whole point of the hoist: poll_flight_status() returns 0 before its
-    loop when the key is unset, so this task had never once been created."""
+    """poll_flight_status() returns early without a key, so check-in tasks must not depend on it."""
     monkeypatch.setattr(ex, "AEROAPI_KEY", None)
     soon = (datetime.now() + timedelta(hours=6)).isoformat(timespec="seconds")
     ex.create_trip("2299", soon, pnr="FLZUNL", carrier="AA")
@@ -811,8 +744,7 @@ def test_checkin_task_is_not_created_twice(dbfile):
 
 
 def test_no_checkin_task_for_a_flight_beyond_the_lead_window(dbfile):
-    """Thanksgiving is months out; the card should not carry a check-in task
-    for it in August."""
+    """A flight months out gets no check-in task yet."""
     ex.create_trip("2308", "2026-11-25T09:15:00", pnr="FLZUNL", carrier="AA")
     con = db.connect()
     try:
@@ -825,9 +757,7 @@ def test_no_checkin_task_for_a_flight_beyond_the_lead_window(dbfile):
 
 def test_extraction_runs_on_with_an_empty_excerpt_when_a_fetch_fails(
         dbfile, monkeypatch):
-    """fetch_body raises now (so the reader can say why); the extractor goes
-    through body_excerpt, which still turns a failure into "" — the other
-    message in the batch is extracted and the failed one is still recorded."""
+    """body_excerpt turns a fetch_body failure into "": the rest of the batch is extracted, the failed one still recorded."""
     from app.providers import email as email_provider
 
     def gmail(url, token, *a, **k):

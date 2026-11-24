@@ -3,10 +3,8 @@ import { fetchJSON } from "../lib/api";
 import Icon from "../ui/icons.jsx";
 import { dragPin } from "../lib/drag.js";
 
-// Cross-source correlations view (lives inside TrendsExpand). Reads
-// /api/trends/correlations — significant Pearson pairs across the passive
-// feature matrix. Deliberately honest: the sample size and a "tentative" flag
-// ride alongside every r so a coincidence over 29 days never reads as a law.
+// Correlations view inside TrendsExpand (/api/trends/correlations: significant Pearson pairs).
+// Sample size and a "tentative" flag ride with every r so 29 days of coincidence never reads as a law.
 
 const LABELS = {
   listen_min: "listening", novelty: "music discovery",

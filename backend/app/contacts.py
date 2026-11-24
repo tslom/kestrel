@@ -1,36 +1,8 @@
-"""Creating Contacts cards — the one direction the AddressBook read path can't go.
-
-providers/messages.py reads the AddressBook sqlite files directly to resolve
-`contact_name` and cluster identities. Those files are the sync engine's
-private store: writing into them behind CardDAV's back is how you get clobbered
-records or a wedged sync. So the write takes the long way round —
-osascript -> Contacts.app -> CardDAV -> iCloud -> phone. Slower and
-permission-gated, and the only route that ends anywhere but this machine.
-
-Shaped after reminders.py (arguments never interpolation, one `_run`, a probe
-for the permission) but importing nothing from it, so a contact write never
-depends on the alarm reconciler.
-
-Three things checked against the real dictionary
-(/System/Applications/Contacts.app/Contents/Resources/Contacts.sdef) rather
-than remembered:
-
-  * **There is no `account` class.** `make new person` lands in whichever
-    account Contacts.app has set as default and AppleScript cannot name one.
-    This machine has five sources — three CardDAV, two Exchange — so "did it
-    land somewhere that reaches the phone?" is a real question. `locate()`
-    answers it after the fact instead of guessing before.
-  * **`id` is read-only**, inherited from `entry`, formatted `UUID:ABPerson` —
-    byte-identical to ZABCDRECORD.ZUNIQUEID, which is what lets locate() be a
-    plain lookup rather than a name match.
-  * **`save` is required.** Without it the card lives only in Contacts.app's
-    memory and disappears when it quits. Every mutating script here ends with
-    one.
-
-Dedupe reuses providers/messages.py's `normalize_handle` and record grouping
-rather than reimplementing either. A card created here has to unify with the
-CRM's existing people on the same rules the CRM already uses, or it shows up
-as a second copy of someone you've been texting for years.
+"""Create/edit/delete Contacts cards via osascript -> Contacts.app (reads stay
+in providers/messages.py). Never write the AddressBook sqlite files: that
+clobbers records behind CardDAV. Traps: AppleScript can't pick the account,
+so `locate()` reports where a card landed; every mutating script must `save`.
+Design: DESIGN.md → `app/contacts.py`.
 """
 
 from __future__ import annotations
@@ -44,23 +16,19 @@ from . import macos
 from .config import ADDRESSBOOK_GLOB
 from .providers.messages import addressbook_records, normalize_handle
 
-_TIMEOUT = 30       # Contacts is slow on first launch, same as Reminders
+_TIMEOUT = 30       # Contacts is slow on first launch
 
-# Contacts accepts these bare words and maps them onto its internal
-# "_$!<Mobile>!$_" label constants; anything else becomes a custom label.
+# Bare words map onto Contacts' internal label constants; anything else is a custom label.
 _DEFAULT_PHONE_LABEL = "mobile"
 _DEFAULT_EMAIL_LABEL = "home"
 
 
 class ContactError(RuntimeError):
-    """osascript failed, or Contacts refused the write. Callers surface this —
-    unlike an alarm delivery there is no retry loop to swallow it."""
+    """osascript failed, or Contacts refused the write. No retry loop; callers surface it."""
 
 
 class DuplicateContact(ContactError):
-    """An existing card already holds one of these identifiers. Carries the
-    matches so the caller can show what it collided with instead of just
-    refusing."""
+    """An existing card already holds one of these identifiers; `matches` says which."""
 
     def __init__(self, matches: list[dict]):
         self.matches = matches
@@ -72,9 +40,7 @@ def _run(script: str, *args: str) -> str:
     return macos.osascript(script, *args, timeout=_TIMEOUT, error=ContactError)
 
 
-# `repeat while i < n` walks (kind, label, value) triples: the last one starts
-# at n-2, and i advances by exactly 3, so it lands on the end rather than past
-# it. Python always emits whole triples, so a partial tail can't happen.
+# Walks (kind, label, value) triples; Python always emits whole triples.
 _CREATE = """
 on run argv
   set theFirst to item 1 of argv
@@ -106,10 +72,8 @@ on run argv
 end run
 """
 
-# Same triple walk as _CREATE, offset by the id in item 1. Every op takes two
-# slots even when it only needs one, so a mis-sized op can't shift everything
-# after it — the failure mode being avoided is a phone number landing in a
-# label field on a card that then syncs to the phone.
+# Triple walk offset by the id in item 1. Every op takes two slots even if it
+# needs one, so a mis-sized op can't shift the rest (a number landing in a label field).
 _UPDATE = """
 on run argv
   set targetId to item 1 of argv
@@ -169,9 +133,7 @@ end run
 
 
 def available() -> bool:
-    """Can we talk to Contacts at all? False on a non-Mac, on a headless
-    session, or — the usual one — when the Automation permission was never
-    granted to whichever binary launched uvicorn."""
+    """Can we talk to Contacts? False off-Mac, headless, or without Automation permission."""
     if sys.platform != "darwin":
         return False
     try:
@@ -181,8 +143,7 @@ def available() -> bool:
 
 
 def _pairs(values, default_label: str) -> list[tuple[str, str]]:
-    """Accept "555-1234" or ("work", "555-1234") interchangeably — the CLI
-    passes bare strings, callers with real label data pass tuples."""
+    """Accept "555-1234" or ("work", "555-1234") interchangeably."""
     out = []
     for v in values or ():
         if isinstance(v, (tuple, list)):
@@ -198,14 +159,9 @@ def _pairs(values, default_label: str) -> list[tuple[str, str]]:
 def matches_for(phones=(), emails=(), exclude_id: str | None = None) -> list[dict]:
     """Existing cards sharing any of these identifiers.
 
-    Same normalization and the same per-card record grouping the CRM unifies
-    people by, so a "no match" here means the same thing it means there.
-    Best-effort by inheritance: an unreadable AddressBook yields nothing,
-    which degrades to letting the write through rather than blocking it.
-
-    `exclude_id` drops one card from consideration — update() passes the card
-    being edited, since a number already on it would otherwise register as a
-    duplicate of itself and block its own re-labelling.
+    Same normalization and card grouping as the CRM. An unreadable AddressBook
+    yields nothing (the write goes through). `exclude_id` is the card being
+    edited, so its own numbers don't count as duplicates.
     """
     wanted = {normalize_handle(v) for _, v in
               _pairs(phones, "") + _pairs(emails, "")} - {""}
@@ -223,10 +179,7 @@ def matches_for(phones=(), emails=(), exclude_id: str | None = None) -> list[dic
 
 def find(query: str) -> list[dict]:
     """Cards whose name or any identifier contains `query` (case-insensitive).
-
-    Reads the AddressBook files, not Contacts.app — a substring search over
-    2000-odd cards is a sqlite scan, and paying an app launch plus an
-    Automation prompt for a read the process can already do would be silly.
+    Reads the AddressBook files, not Contacts.app (no launch or permission prompt).
     """
     q = (query or "").strip().lower()
     if not q:
@@ -247,14 +200,8 @@ def _card(contact_id: str) -> dict | None:
 
 
 def _raw_identifiers(contact_id: str) -> list[dict]:
-    """The card's phone/email values **as stored** — "(202) 555-1111", not the
-    normalized "2025551111".
-
-    Removal needs these: AppleScript matches `every phone whose value is …` on
-    the literal string, and it can't normalize. addressbook_records
-    deliberately yields only normalized identifiers (its job is identity, not
-    presentation), so this asks the raw question directly rather than
-    weakening that one.
+    """The card's phone/email values **as stored** ("(202) 555-1111"). Removal needs
+    them: AppleScript matches the literal string, and addressbook_records yields only normalized ones.
     """
     out: list[dict] = []
     for path in glob.glob(ADDRESSBOOK_GLOB):
@@ -280,11 +227,7 @@ def _raw_identifiers(contact_id: str) -> list[dict]:
 
 
 def locate(contact_id: str) -> str | None:
-    """Which AddressBook source the card landed in, as the source directory's
-    UUID — the observable answer to the account-routing question AppleScript
-    won't answer up front. None means no source file admits to holding it,
-    which for a just-created card means Contacts hasn't flushed yet.
-    """
+    """The source directory UUID holding the card; None (just created) means Contacts hasn't flushed."""
     for path in glob.glob(ADDRESSBOOK_GLOB):
         try:
             con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)

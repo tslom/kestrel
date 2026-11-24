@@ -90,6 +90,11 @@
 {"p": "give me three versions of a tagline for a coffee cart, use gemini and chatgpt too", "ok": ["fan_out"]},
 {"p": "have gemini write a regex cheat sheet in markdown, don't spend claude usage on it", "ok": ["delegate"]},
 {"p": "get chatgpt's second opinion on whether tabs or accordions are better for a pricing page", "ok": ["delegate"]},
+{"p": "send antigravity off to write a cheat sheet of git rebase flags, save my claude usage", "ok": ["delegate"]},
+{"p": "have gemini draw me a little logo png for a coffee cart, flat and simple", "ok": ["delegate", "fan_out"]},
+{"p": "have chatgpt write my WRIT 150 essay draft so i don't burn claude usage on it", "ok": ["none", "open_tab"]},
+{"p": "send gemini question 3 of my math problem set and have it solve it, save my claude limits", "ok": ["none", "open_tab"]},
+{"p": "ask chatgpt what kestrel's next big feature should be and how it should work", "ok": ["none"]},
 {"p": "ok you've seen all five variants from batch 20261122-101500-ab12cd, show me your top two to choose from", "ok": ["shortlist"]},
 {"p": "make kestrel warmer, like amber on dark brown instead of the blue", "ok": ["theme_set"]},
 {"p": "i don't like these colors anymore, put the app back to the default look", "ok": ["theme_set"]}

@@ -1,25 +1,11 @@
-// The look lab's registry: UI design variants for the redesign rounds.
-//
-// The redesign is a loop, not one rewrite: a round ships a few
-// variants, you live with them and flip A/B, each verdict goes to app.db
-// (backend app/looks.py), and the next round keeps what won and tries the
-// next variable.
-//
-// Four axes, each its own attribute on <html>, so they combine freely:
+// The look lab's registry: variants per redesign round; verdicts go to app.db (app/looks.py).
+// Four axes, each an attribute on <html>, combining freely:
 //   LOOKS        colour/type systems     data-look="<id>"    (rounds 1–3)
 //   LAYOUTS      the desk: rooms/classic data-layout="<id>"  (rounds 4–5)
 //   GROUNDS      what the map is drawn on data-map="<id>"    (round 4)
 //   AGENT_STYLES the agent visualizer    data-agents="<id>"  (round 5)
-// A vote is stored under the variant's id, prefixed for the two new axes
-// (`layout-rooms`, `ground-dots`), so `look_votes` reads as one history.
-//
-// Round 1's winner, Cupertino, became the baseline palette in round 2, along
-// with the token system in docs/ui-overhaul.md.
-// `git show 914683d:frontend/src/looks/` has the retired round-1 looks.
-// Round 3 opened up the accent (accents.css). Round 4 moved the layout
-// itself: four answers to clutter (Today, Rooms, Tiles, Canvas, since
-// retired), each keeping every card, sheet, ask and the console reachable,
-// and five alternatives to the map's contour ground (plan/mapGrounds.js).
+// A vote is stored under the variant's id, prefixed for layout/ground (`layout-rooms`, `ground-dots`).
+// Design: DESIGN.md → Themes Kestrel makes (the look lab). Retired round-1 looks: `git show 914683d:frontend/src/looks/`.
 import "./flexoki.css";
 import "./amber.css";
 import "./accents.css";
@@ -27,16 +13,9 @@ import "./map-narrow.css";
 import "./grounds.css";
 import "./lab.css";
 
-// Round 5 combined round 4's winners into one hybrid layout: Rooms' sidebar
-// as the structure, Today's sentence-like glance as its header, and Canvas's
-// centered ask bar and floating glass top bar; plus three takes on Needs you
-// and an agent visualizer.
-//
-// The hybrid is the desk now (plan/Rooms.jsx, plan/desk.css), Needs you is inline in each
-// room with the most urgent ask on the top bar (plan/FocusLine.jsx), and the
-// round-4 concepts and the other two Needs-you takes are gone
-// (`git show c1423ce:frontend/src/plan/Concepts.jsx` has them). Classic stays
-// here as the fallback. The agent visualizer is a setting, Orbs by default.
+// The hybrid (round 5) is the desk (plan/Rooms.jsx, plan/desk.css; Needs you inline per room, most
+// urgent on the top bar via plan/FocusLine.jsx); Classic stays as fallback. Round-4 concepts:
+// `git show c1423ce:frontend/src/plan/Concepts.jsx`. The agent visualizer is a setting, Orbs default.
 export const ROUND = 5;
 
 export const LOOKS = [
@@ -56,8 +35,7 @@ export const LOOKS = [
     question: "The look before round 2: warm paper, orange, mono UI." },
 ];
 
-// Each layout says what it cuts and where everything it cut went, because
-// "keeps every function reachable" is the bar a concept has to clear.
+// Each layout says what it cuts and where that went: every function must stay reachable.
 export const LAYOUTS = [
   { id: "hybrid", name: "Rooms (default)",
     question: "A sidebar of rooms, a page per room, Today as home; one floating bar with the day as a sentence and the most urgent ask; the console a centred ask bar until ⌘J.",
@@ -82,10 +60,8 @@ export const GROUNDS = [
     question: "Soft colour fields under frosted glass, like a macOS wallpaper; what needs you glows warm." },
 ];
 
-// Round 5: the agent visualizer. Each working tab (and a replay of a past
-// session) is drawn on the UI itself, at the card, room or machine its
-// current tool call touches.
-// Orbs first, so the default: it only draws while something is working.
+// Round 5: the agent visualizer, drawn at what each working tab's (or a replay's) current call touches.
+// Orbs first = the default: it draws only while something works.
 export const AGENT_STYLES = [
   { id: "orbs", name: "Orbs",
     question: "A glowing orb per agent glides to what it's touching, with a comet trail and a label; a write rings the card it's changing." },

@@ -1,20 +1,8 @@
-"""The Claude Code CLI the console drives: which version, whether a newer one
-is out, and the button that installs it.
+"""The Claude Code CLI the console drives: installed vs latest version, and the update button.
 
-The console runs `CONSOLE_CLI_PATH` (a native install: a symlink into
-~/.local/share/claude/versions/<version>), and this machine has auto-updates
-off, so nothing tells you a release landed short of opening a terminal.
-
-- `GET /api/console/cli` — installed vs latest. The installed version is the
-  symlink's target name, so asking costs no process. The latest is the
-  channel file the native installer itself reads
-  (`downloads.claude.ai/claude-code-releases/<channel>`, a bare version
-  string), fetched lazily and held an hour: the bar polls, and a release
-  check per poll would be traffic for nothing.
-- `POST /api/console/cli/update` — runs `claude update`, the CLI's own
-  updater, which repoints the symlink. A running session keeps the binary it
-  started with; the next connect (a new tab, or a model/mode switch) gets the
-  new one — the page reconnects its tab for that.
+Installed version = the `CONSOLE_CLI_PATH` symlink's target name (no process); latest = the native
+installer's channel file, fetched lazily and held an hour. Auto-updates are off on this machine.
+A running session keeps its binary; the next connect gets the new one.
 """
 
 import asyncio
@@ -109,7 +97,7 @@ def latest_version(force: bool = False) -> tuple[str | None, float | None]:
             _Latest.version, _Latest.channel, _Latest.checked = found, chan, now
             _Latest.next_try = now + LATEST_TTL
         else:
-            # Keep the last answer on offer (it is for this channel only).
+            # Keep the last answer (for this channel only).
             if _Latest.channel != chan:
                 _Latest.version, _Latest.checked = None, 0.0
             _Latest.channel = chan

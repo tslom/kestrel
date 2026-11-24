@@ -1,8 +1,7 @@
 """Scheduled send (app/email_schedule.py, the console's email_schedule tool).
 
-The draft lives in Gmail and the time lives here; what's worth testing is the
-handoff at send_at — that it sends exactly once, that a draft deleted by hand
-reads as a cancellation rather than a retry loop, and that nothing goes early.
+The draft lives in Gmail, the time here. Holds at send_at: sends exactly once, a
+hand-deleted draft is a cancellation (not a retry loop), nothing goes early.
 """
 
 from datetime import datetime, timedelta

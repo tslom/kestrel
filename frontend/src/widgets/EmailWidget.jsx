@@ -11,9 +11,7 @@ import { dragPin } from "../lib/drag.js";
 // The queue is worked in EmailReview.jsx ("Review N"); the pane's Full view is
 // the generic range expansion over GET /api/email.
 export function useEmailCard() {
-  // Topic "email": the review queue broadcasts it after every action, so the
-  // count here follows along as mail is sorted instead of waiting for a sync.
-  // Cheap to answer — /api/email/queue is a read of app.db, no Gmail round-trip.
+  // Topic "email": the review queue broadcasts after every action. /api/email/queue is an app.db read.
   const { data: queue, error, reload, busy: refreshing } =
     useWidgetData("/api/email/queue", "email");
 
@@ -22,9 +20,7 @@ export function useEmailCard() {
   const summary = !queue?.count ? "inbox reviewed"
     : `${queue.count} to review${queue.unread ? ` · ${queue.unread} unread` : ""}`;
 
-  // One row for the whole queue: it's worked through in the review sheet, and
-  // seventeen rows of mail would bury everything else in the list. The reason
-  // line names the oldest, since that's the one that has waited longest.
+  // One row for the whole queue (seventeen would bury the list); the reason names the oldest.
   const oldest = queue?.cards.reduce(
     (o, c) => (!o || c.received < o.received ? c : o), null);
   const asks = queue?.count ? [{

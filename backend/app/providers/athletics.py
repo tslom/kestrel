@@ -1,21 +1,9 @@
-"""Athletics provider — USC's game schedule for every sport, from Sidearm's
-public iCal feed (ATHLETICS_ICS_URL). No key.
+"""Athletics provider: USC's game schedule from Sidearm's public iCal feed (ATHLETICS_ICS_URL), keyless.
 
-Why it exists: over two months the console spent ~15 web searches on kickoff
-times and once gave up on a water polo game the feed had all along.
-Search results for a schedule are a week stale or a different season; the
-athletics department's own calendar is the source those pages copy.
-
-The feed is truth; `athletics_events` is a derived cache, safe to drop. A read
-refetches when the cache is older than the feed's own X-PUBLISHED-TTL (2h) —
-lazily, on the read, inside offline.best_effort so a dead network serves the
-last copy marked stale. The feed is a rolling window (roughly a month back
-through the end of the academic year), so a full refetch replaces the table.
-
-Times: Sidearm writes DTSTART in UTC; a game is shown on its Pacific date and
-clock, because that's where the user watches it from. A game with a date but
-no time yet (football kickoffs are set ~12 days out) arrives as
-DTSTART;VALUE=DATE and is stored with start = null — "TBA", never midnight.
+`athletics_events` is a droppable cache, fully replaced on a refetch past TTL (2h, the feed's
+X-PUBLISHED-TTL), read lazily under offline.best_effort. Games show on their Pacific date and
+clock; a date with no time yet is start = null ("TBA"), never midnight.
+Design: DESIGN.md → `app/providers/athletics.py` and `coursework.py`: iCal feeds.
 
     python -m app.providers athletics --range this-week --query polo --format brief
 """
@@ -44,12 +32,8 @@ def _fetch() -> str:
 
 
 def parse_summary(summary: str, location: str | None = None) -> dict:
-    """'[W] USC Trojans Men's Water Polo vs UCLA - Senior Day' ->
-    sport, opponent, side, note. Sidearm writes "at" for an away game and
-    "vs" for both home and neutral-site ones — the first live read had a cross
-    country meet in Riverside and a swim meet in Illinois down as "home" — so
-    a "vs" is home only when it's in Los Angeles, else neutral. A tournament
-    has neither."""
+    """'[W] USC Trojans Men's Water Polo vs UCLA - Senior Day' -> sport, opponent, side, note.
+    Sidearm writes "vs" for home and neutral alike, so "vs" is home only in Los Angeles; a tournament has neither."""
     s = _PREFIX.sub("", summary).strip()
     s = re.sub(r"^USC Trojans\s+", "", s)
     vs_side = ("home" if location and "los angeles" in location.lower()
@@ -60,8 +44,7 @@ def parse_summary(summary: str, location: str | None = None) -> dict:
             opp, _, note = rest.partition(" - ")
             return {"sport": sport.strip(), "opponent": opp.strip() or None,
                     "side": side, "note": note.strip() or None}
-    # A tournament: "Men's Golf  Vuori Invitational" — Sidearm leaves a double
-    # space where the vs/at and opponent would go.
+    # Tournament: "Men's Golf  Vuori Invitational" (double space where vs/at goes).
     sport, _, event = s.partition("  ")
     return {"sport": sport.strip(), "opponent": None, "side": None,
             "note": event.strip() or None}

@@ -1,12 +1,6 @@
-// Files a reply names: is it real (batched to /api/files/resolve), and what
-// clicking it does. The rules about what's real live backend-side
-// (app/files.py); this only asks, caches, and hands out the answer.
-//
-// A store read through useSyncExternalStore rather than an effect per link:
-// a long reply names a dozen paths, and they should cost one request, not
-// twelve, and not twelve effects either. The ask is made during render,
-// which is safe because it's idempotent — the first render of a key queues
-// it, every later one finds it already queued.
+// Files a reply names: is it real (batched to /api/files/resolve; the rules are backend-side, app/files.py), and
+// what clicking it does. A store read via useSyncExternalStore: a dozen paths cost one request, not twelve effects;
+// the ask is made during render, which is idempotent (the first render of a key queues it).
 import { createContext, useContext, useSyncExternalStore } from "react";
 import { postJSON } from "./api";
 import { lineless } from "./paths";
@@ -32,14 +26,13 @@ function flush() {
     const paths = [...set];
     postJSON("/api/files/resolve", { paths, bases })
       .then((r) => { for (const p of paths) answers.set(keyOf(p, bases), r.files?.[p] ?? null); })
-      // A failed ask (backend restarting) leaves them unasked, so the next
-      // render of the same reply tries again.
+      // A failed ask (backend restarting) stays unasked: the next render retries.
       .catch(() => { for (const p of paths) pending.delete(keyOf(p, bases)); })
       .finally(() => listeners.forEach((f) => f()));
   }
 }
 
-// Every path a render pass names, in one request.
+// Batches every path a render pass names into one request.
 const flushSoon = batch(flush, 30);
 
 function ask(path, bases) {

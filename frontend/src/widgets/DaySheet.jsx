@@ -5,26 +5,10 @@ import { Bars, SeriesRow, Stat, useChartWidth } from "../ui/charts.jsx";
 import { fetchJSON } from "../lib/api";
 import { fmtAgo, fmtDay, fmtHM } from "../lib/time";
 
-// One day, at the resolution the daily rows throw away.
-//
-// Every other health surface in the app answers "how have I been" — a week of
-// bars, a 28-day baseline. This one answers "what happened on Tuesday", which
-// the desk could not answer at all: `health_days` kept per-night stage totals
-// and `health_hours` kept only heart rate, so a night was a stack of four
-// numbers and a day was one.
-//
-// It opens by clicking a bar on the Health sheet, and it is deliberately one
-// sheet rather than two. A night is keyed by the morning it ended on, so the
-// night and the day share a key and read as one thing: the sleep you started
-// the day with, then the day itself.
-//
-// Both halves fill from the API on demand the first time a day is opened and
-// cache after — see providers/health.py, which is also where the reason a cold
-// day's heart rate can be missing lives (the rollUp endpoint caps heart-rate
-// spans at a fortnight; steps have no such cap).
+// One day (night + hourly steps/HR), opened from a bar on the Health sheet. Both halves fill on
+// demand and cache (providers/health.py). Design: DESIGN.md → `frontend/src/widgets/DaySheet.jsx`.
 
-// Top → bottom, the conventional hypnogram order: awake rides above the sleep
-// it interrupts, and depth increases downward.
+// Hypnogram order: awake above the sleep it interrupts, depth increasing downward.
 const LANES = [
   { key: "awake", label: "Awake" },
   { key: "rem", label: "REM" },
@@ -34,9 +18,7 @@ const LANES = [
 
 const fmtDur = fmtHM;
 
-// The clock in the room, read straight off the stored offset. Re-deriving it
-// through the browser's zone is the one thing this data is stored with an
-// offset to avoid.
+// Read off the stored offset, never through the browser's zone.
 const clock = (ts) => (ts ? ts.slice(11, 16) : "—");
 
 const ms = (ts) => new Date(ts).getTime();
@@ -48,10 +30,7 @@ const offsetMinutes = (ts) => {
   return (m[1] === "-" ? -1 : 1) * (+m[2] * 60 + +m[3]);
 };
 
-// A night drawn against its own clock: one lane per stage, each segment a bar
-// in its lane, the whole thing spanning lights-out to wake-up. Hour ticks are
-// laid on real elapsed time rather than per-segment, so a long light stretch
-// looks long.
+// A night against its own clock: one lane per stage, lights-out to wake-up.
 function Hypnogram({ segments }) {
   const [box, W] = useChartWidth();
   if (!segments.length) return <p className="widget-empty">No stages recorded for this night.</p>;
@@ -64,11 +43,7 @@ function Hypnogram({ segments }) {
   const x = (t) => padL + ((t - t0) / span) * plotW;
   const laneY = (stage) => padTop + LANES.findIndex((l) => l.key === stage) * laneH;
 
-  // Ticks on real hour boundaries, not on whichever segment happened to start
-  // a new hour — segment starts are unevenly spaced and collide into
-  // "02:0003:00". The hour is read through the night's own stored offset
-  // rather than through the browser's zone, which is the whole reason the
-  // offset is stored.
+  // Ticks on real hour boundaries (segment starts collide into "02:0003:00"), via the stored offset.
   const offMin = offsetMinutes(segments[0].start);
   const HOUR = 3600000;
   const wallHour = (t) =>
@@ -112,9 +87,7 @@ export default function DaySheet({ day, onPin }) {
   const [detail, setDetail] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
-  // Bumped by the head's refresh button; the effect below is the only loader,
-  // so a reload is just asking it to run again. Another day is another
-  // sheet (views.jsx keys it), so it starts loading.
+  // Bumped by the refresh button; the effect below is the only loader. views.jsx keys the sheet by day.
   const [nonce, setNonce] = useState(0);
   const reload = () => {
     setLoading(true);
@@ -129,8 +102,7 @@ export default function DaySheet({ day, onPin }) {
       fetchJSON(`/api/health/day/${day}`).catch((e) => ({ error: e.message })),
     ]).then(([n, d]) => {
       if (!live) return;
-      // Both read the same provider, so when both fail they failed for one
-      // reason — the same rule useSheetData settled for the range sheets.
+      // Both read one provider: both failing is one failure (as in useSheetData).
       setError(n.error && d.error ? n.error : null);
       setNight(n.error ? null : n);
       setDetail(d.error ? null : d);
@@ -143,17 +115,11 @@ export default function DaySheet({ day, onPin }) {
   const hours = detail?.hours || [];
   const stepHours = hours.filter((h) => h.steps != null);
   const hrRows = hours.map((h) => ({ day: `${h.hour}:00`, value: h.hr ?? null }));
-  // All 24 slots, because a day has 24 hours and an axis that skips the ones
-  // the watch missed would quietly restate the day as shorter. An hour with
-  // no reading draws like an hour with no steps, so the count of missing ones
-  // is said out loud in the band note rather than left to the eye.
+  // All 24 slots (a skipped axis restates the day as shorter); missing hours are counted in the band note.
   const stepItems = hours.map((h) => ({
     key: String(h.hour), label: `${h.hour}`, v: h.steps || 0,
   }));
-  // Gaps are counted only up to the last hour anything was recorded in. On a
-  // day still in progress the hours after now aren't gaps in the data, they're
-  // hours that haven't happened — counting them called a normal Monday
-  // afternoon "16h unmeasured".
+  // Gaps count only up to the last recorded hour; later hours of a live day haven't happened.
   const lastSeen = hours.reduce(
     (last, h) => (h.steps != null || h.hr != null ? h.hour : last), -1);
   const unmeasured = hours
@@ -178,10 +144,7 @@ export default function DaySheet({ day, onPin }) {
           <Band title="Night"
             note={night?.start ? `${clock(night.start)} → ${clock(night.end)}` : ""}
             pin={[`night · ${day}`, night]}>
-            {/* Asleep and in bed, side by side. They were never shown apart
-                before — `sleep_hours` is time asleep, so a night spent half
-                awake in bed rendered as a short night with no sign of the
-                difference. */}
+            {/* Asleep and in bed apart: `sleep_hours` is asleep only, hiding a night spent awake in bed. */}
             <div className="hero-row">
               <Stat value={fmtDur(night?.asleep_min || 0)} label="Asleep" />
               <Stat value={fmtDur(night?.in_bed_min || 0)} label="In bed"
@@ -194,10 +157,7 @@ export default function DaySheet({ day, onPin }) {
 
           <Band title="Steps by hour" note={stepsNote}
             pin={[`steps · ${day}`, stepHours]}>
-            {/* No average line: the question a step curve answers is *when*
-                you walked, and a mean hour over a day that includes the eight
-                you slept through — or, before evening, the hours that haven't
-                happened yet — is a reference line to nothing. */}
+            {/* No average line: a mean over sleeping or not-yet-happened hours is a line to nothing. */}
             <Bars items={stepItems} avgLine={false}
               series={[{ key: "v", label: "steps", cls: "seg-steps" }]}
               fmt={(v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : Math.round(v))}

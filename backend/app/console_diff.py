@@ -1,21 +1,8 @@
-"""What a dev tab's turn changed in its repo, as a diff.
+"""What a dev tab's turn changed in its repo, as a diff, read off git (Bash writes too).
 
-The change ledger (console_changes) lists the tool calls that wrote; this is
-the other half a code review needs — the lines. It is read off git rather
-than rebuilt from Edit/Write inputs, because a turn also writes through Bash
-(a formatter, `npm install`, a codegen script) and those leave no input to
-rebuild from. Git sees the tree, whoever touched it.
-
-Per turn, not per repo: `snapshot()` at the start of a user turn records the
-working tree as a commit (`git stash create` — it writes a dangling commit
-object and touches neither the files, the index nor the stash list), plus the
-untracked files and their contents. `turn_diff()` at the end diffs the tree
-against that. So work you had uncommitted before the turn isn't charged to
-it. `worktree_diff()` is the plain "everything uncommitted" view, and
-`commit_diff()` the committed one a tab's branch review reads
-(console_worktree.review).
-
-Never raises: a diff that can't be read costs the pane, not the turn.
+`snapshot()` at turn start records the tree as a `git stash create` commit plus
+untracked files' contents; `turn_diff()` diffs against it. Never raises: an
+unreadable diff costs the pane, not the turn. Design: DESIGN.md → Console (Per-turn diff).
 """
 
 import difflib
@@ -24,12 +11,10 @@ import subprocess
 from pathlib import Path
 
 GIT_TIMEOUT_S = 10
-# Per file and per turn, so one regenerated lockfile can't bury the change you
-# came to read — the file still lists, with its counts, and says it's cut.
+# Per file and per turn, so a regenerated lockfile can't bury the change; it still lists, marked cut.
 MAX_FILE_LINES = 600
 MAX_TOTAL_LINES = 4000
-# An untracked file bigger than this isn't kept at snapshot time: a change to
-# it shows as "changed", without lines.
+# Larger untracked files aren't kept at snapshot: a change shows as "changed", no lines.
 MAX_KEEP_BYTES = 256 * 1024
 MAX_UNTRACKED = 400
 
@@ -62,8 +47,7 @@ def _read(path: Path) -> str | None:
 
 
 def snapshot(cwd: Path) -> dict | None:
-    """The tree as the turn found it, or None when there's nothing to diff
-    against (not a repo, or a repo with no commit yet)."""
+    """The tree as the turn found it; None if not a repo or it has no commit."""
     if not is_repo(cwd):
         return None
     base = (_git(cwd, "stash", "create") or "").strip()
@@ -85,9 +69,8 @@ def _split(patch: str) -> list[dict]:
         lines = text.split("\n")
         path, old = None, None
         status = "modified"
-        # Everything from the first hunk header on is hunk content — matched by
-        # position, not prefix, or a deleted `-- comment` line reads as a
-        # `--- ` file header and vanishes.
+        # Hunk content starts at the first `@@`, by position not prefix: a deleted
+        # `-- comment` line reads as a `--- ` header.
         first = next((i for i, ln in enumerate(lines) if ln.startswith("@@")), len(lines))
         for ln in lines[:first]:
             if ln.startswith("+++ ") and ln[4:] != "/dev/null":
@@ -185,13 +168,12 @@ def turn_diff(cwd: Path, snap: dict | None) -> list[dict]:
                 if f:
                     files.append(f)
         return _cap(files)
-    except Exception:   # see module docstring
+    except Exception:   # never raises (module docstring)
         return []
 
 
 def worktree_diff(cwd: Path) -> list[dict]:
-    """Everything uncommitted: tracked changes against HEAD, plus untracked
-    files as added."""
+    """Everything uncommitted: tracked changes against HEAD, untracked as added."""
     try:
         if not is_repo(cwd):
             return []
@@ -204,15 +186,13 @@ def worktree_diff(cwd: Path) -> list[dict]:
         return []
 
 
-# A revision the browser may name: an object id, or HEAD. Nothing that could
-# read as an option, a range or a reflog walk.
+# A revision the browser may name: an object id or HEAD; never an option, range or reflog.
 REV = re.compile(r"[0-9a-f]{7,64}|HEAD")
 BLOB_MAX_BYTES = 512 * 1024
 
 
 def commit_diff(cwd: Path, old: str, new: str = "HEAD") -> list[dict]:
-    """What the commits from `old` to `new` changed. No working tree and no
-    untracked files: a branch review shows what a merge would carry."""
+    """What the commits from `old` to `new` changed (no working tree: what a merge would carry)."""
     if not (REV.fullmatch(old or "") and REV.fullmatch(new or "")):
         return []
     try:
@@ -223,10 +203,8 @@ def commit_diff(cwd: Path, old: str, new: str = "HEAD") -> list[dict]:
 
 
 def blob(cwd: Path, rev: str, path: str) -> str | None:
-    """A file's text at `rev` (a commit or a tree), so the pane can colour a
-    hunk with the whole file in view: a docstring's middle line is only a
-    string to a reader who saw where it opened. None for binary, oversized,
-    missing, or a path that climbs out."""
+    """A file's text at `rev` (so the pane can colour a hunk with the whole file in
+    view). None for binary, oversized, missing, or a path that climbs out."""
     if not REV.fullmatch(rev or "") or not path or "\0" in path or path.startswith(("/", "-")):
         return None
     if ".." in path.split("/"):

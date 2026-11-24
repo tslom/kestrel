@@ -1,12 +1,6 @@
 """No reaching into another module's `_private` names.
 
-One of the four failure modes code review kept finding here: a helper that
-should have been made public, or reused, gets imported by its private name
-instead, and the next tab copies the import. Prose in a memory didn't stop
-it, so this does. There is no allowlist: the 45 uses that existed when this
-landed were made public, so any one now fails.
-
-Two forms count, since the second is the first with one more step:
+No allowlist: make the name public or move the helper. Two forms count:
 `from .x import _y`, and `x._y` on a module imported from app.
 """
 

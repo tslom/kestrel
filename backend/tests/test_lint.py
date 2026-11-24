@@ -1,13 +1,7 @@
-"""The lint checks, held by pytest so the commit bar ("the backend suite
-passes", CLAUDE.md) covers them too. The lint-on-edit hook catches a file as
-it's written; this catches whatever got past it (an edit made outside Claude
-Code, or a rule that changed under old code).
+"""The lint checks held by pytest so the commit bar covers what the lint-on-edit hook missed (edits outside Claude Code, changed rules).
 
-- backend: `ruff check` with backend/ruff.toml (pyflakes, the date.today ban).
-- frontend: scripts/lint-ratchet.mjs — no ESLint errors (raw fetch outside
-  lib/api.js, raw setTimeout/clearTimeout outside lib/timers.js, the hooks
-  and you-might-not-need-an-effect rules, a suppression without a reason),
-  and no more useEffect calls than lint-baseline.json allows.
+- backend: `ruff check` with backend/ruff.toml.
+- frontend: scripts/lint-ratchet.mjs (no ESLint errors; useEffect count within lint-baseline.json).
 """
 
 import shutil

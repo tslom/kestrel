@@ -1,14 +1,6 @@
-"""Place writes — naming a cluster the map drew.
-
-Here rather than in the location provider for the same reason the calendar
-writes are in routes/calendar.py: the provider reads, and `location_points` is
-a log of what the phone reported. A name is not something the phone reported.
-
-The write target is a vault note, so this endpoint is the narrow end of an
-existing path and not a new store — `app/places.py` owns the note format, this
-owns the HTTP. It creates and never overwrites: renaming a place, moving it, or
-ending it with `until` is an edit to a note you can open, which Obsidian
-already does better than a POST body would.
+"""Place writes: naming a cluster the map drew. Creates a vault note and never
+overwrites (`app/places.py` owns the note format; edits happen in Obsidian).
+Design: DESIGN.md → `routes/places.py`.
 """
 
 from fastapi import APIRouter, HTTPException
@@ -25,8 +17,7 @@ class NewPlace(BaseModel):
     lon: float
     radius_m: float = Field(default=places.DEFAULT_RADIUS_M, gt=0)
     kind: str = "place"
-    # Bounds are optional and usually absent: most places are simply true, and
-    # only a home has a history worth dating (see places.home_on).
+    # Bounds usually absent: only a home has a history worth dating (places.home_on).
     since: str | None = None
     until: str | None = None
     note: str = ""

@@ -10,36 +10,21 @@ import { capRows } from "../lib/pin.js";
 import { fmtAgo, fmtDay, fmtDur, fmtTime, shortDay } from "../lib/time";
 import { dragPin } from "../lib/drag.js";
 
-// Music sheet — a listening habit, not a metric picker.
-//
-// Spotify's six metrics are all answers to two questions: *how much* and
-// *what*. The generic panel made you pick one at a time and then read
-// `top_repeat` as a word, which is how a day of listening ended up looking
-// like a schema. Here the day's totals sit on top, the hour histogram says
-// when you actually listen, and artists and tracks are ranked against each
-// other rather than listed — the comparison is the whole point of a top ten.
-//
-// `bracket` (first and last play of the day) is deliberately not read: the
-// hour histogram already says when the listening happened, in more detail,
-// and a bracket that runs past midnight can't be drawn on a midnight-anchored
-// axis without lying about which day it belongs to.
+// Music sheet: totals, hour histogram, ranked artists/tracks. `bracket` is deliberately unread:
+// the histogram says more, and a bracket past midnight can't sit on a midnight-anchored axis.
+// Design: DESIGN.md → Sheets are written to the subject, not the provider.
 const VIEWS = ["plays", "listen_min", "novelty", "top_repeat", "shape"];
 
 const TOP_N = 8;
 
 const sum = (rows, f) => rows.reduce((s, r) => s + (f(r) || 0), 0);
 
-// Plays are stored as instants (`played_at` is UTC with a Z), unlike calendar
-// events, which the backend has already re-expressed in the zone they'll be
-// lived in. There's no zone attached to a play, so the browser's is the only
-// one available: a run of songs played in another timezone lands in the hour
-// it would have been *here*. For "when do I listen", that's the honest read.
+// `played_at` is UTC with a Z (no zone attached), so the browser's zone buckets the hours: a
+// play abroad lands in the hour it would have been here, which is the honest "when do I listen".
 const hourOf = (iso) => new Date(iso).getHours();
 const hourLabel = (h) => `${h % 12 || 12}${h < 12 ? "a" : "p"}`;
 
-// The most-played N of something, by whatever `weigh` counts. Keyed on the
-// Spotify id rather than the name so two artists with the same track title
-// don't merge into one row.
+// Top N by `weigh`; keyed on Spotify id so same-titled tracks don't merge.
 function top(plays, keyOf, labelOf, weigh) {
   const acc = new Map();
   for (const p of plays) {
@@ -54,9 +39,7 @@ function top(plays, keyOf, labelOf, weigh) {
   return { all, top: all.slice(0, TOP_N) };
 }
 
-// What the listening adds up to, from Last.fm's tags on the same plays. A share
-// of tagged plays, and a tag is a crowd's word for an artist, so the note says
-// how much of the range the tags cover.
+// Genre shares from Last.fm tags (a crowd's word for an artist); the note says how much of the range is tagged.
 function Genres({ range }) {
   const [state, setState] = useState(null);
   useEffect(() => {
@@ -82,9 +65,7 @@ function Genres({ range }) {
   );
 }
 
-// `minutes` comes from the provider's own `listen_min` rather than being
-// re-summed from these rows: it is the same arithmetic over the same plays,
-// and two derivations of one number are two chances to print a different one.
+// `minutes` is the provider's `listen_min`, not re-summed here (two derivations can disagree).
 function PlayDays({ plays, minutes }) {
   if (plays.length === 0) return <p className="widget-empty">No plays in this range.</p>;
   const byDay = new Map();
@@ -121,9 +102,7 @@ export default function MusicSheet({ onPin }) {
   const totalMin = sum(minutes, (r) => r.value);
   const minPerDay = new Map(minutes.map((r) => [r.day, r.value]));
 
-  // Novelty is a share of *that day's* plays, so the range's figure is the
-  // plays-weighted mean, not the mean of the daily shares — a two-song day
-  // with one new artist would otherwise count as much as a two-hour one.
+  // Plays-weighted mean, not the mean of daily shares (a two-song day would weigh as much as a two-hour one).
   const playsPerDay = new Map();
   for (const p of plays) playsPerDay.set(p.day, (playsPerDay.get(p.day) || 0) + 1);
   const novRows = rows("novelty").filter((r) => r.value != null && playsPerDay.has(r.day));
@@ -137,9 +116,7 @@ export default function MusicSheet({ onPin }) {
 
   const longest = shape.length ? Math.max(...shape.map((r) => r.longest_listen_min)) : null;
 
-  // One bucket per hour, always all 24 — the empty hours are the shape of the
-  // day as much as the full ones, and dropping them would slide 2am next to
-  // 9am and call it a habit.
+  // Always all 24 hours: dropping empty ones would put 2am beside 9am.
   const byHour = Array.from({ length: 24 }, (_, h) => ({ key: h, label: hourLabel(h), v: 0 }));
   for (const p of plays) byHour[hourOf(p.played_at)].v += 1;
   const peak = byHour.reduce((a, b) => (b.v > a.v ? b : a), byHour[0]);

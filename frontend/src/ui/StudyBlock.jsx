@@ -1,16 +1,6 @@
-// A quiz or a deck of flashcards the console wrote, made something to do.
-//
-// The model writes a ```quiz or ```cards fence holding JSON (the format is in
-// console_prompt.py). JSON rather than prose because the answer key has to be
-// in the reply and out of sight: a quiz written as a list gives its answers
-// away before the first one is attempted.
-//
-// Results go back the way a debt nudge does — drafted into the composer, not
-// sent — so the user can add "I guessed on 3" before the console sees them,
-// and the console logs the real misses with course_review_add.
-//
-// A fence still streaming is a placeholder, not a parse error: half a JSON
-// object is the normal state of this block for a few seconds.
+// A ```quiz / ```cards fence of JSON (format in console_prompt.py) made interactive.
+// Results are drafted into the composer, not sent; a fence still streaming is a placeholder, not a parse error.
+// Design: DESIGN.md → Citations — what a sentence was read off (Quizzes and flashcards).
 import { useMemo, useState } from "react";
 import Cite from "./Cite.jsx";
 import DocPage from "./DocPage.jsx";
@@ -18,10 +8,8 @@ import MathInput from "./MathInput.jsx";
 import { draftConsole } from "../lib/turn.js";
 import { postJSON } from "../lib/api.js";
 
-// The durable copy of what was answered (study_attempts, read back by the
-// console's study_coverage). Keyed by a hash of the block's source, so
-// sending a block's results twice replaces rather than doubles. Fire and
-// forget: the drafted message is what the user is waiting on.
+// Durable copy of the answers (study_attempts → study_coverage), keyed by a hash of the block's
+// source so a second send replaces. Fire and forget.
 function hashOf(s) {
   let h = 2166136261;
   for (const ch of str(s)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
@@ -42,10 +30,7 @@ function SourceCite({ cite, quote }) {
   return <Cite refId={m[1]} page={Number(m[2])} quote={quote || undefined} />;
 }
 
-// The page an item is worked from, drawn beside it — `slide`, as opposed to
-// `cite` (where the answer is, shown only once answered). Drawn per item
-// because the first walk-through put three slides above a six-question quiz
-// and every slide had scrolled away by the time its question came up.
+// `slide`: the page an item is worked from, drawn beside it (`cite` is where the answer is, shown once answered).
 function Slide({ slide }) {
   const m = DOC_SLIDE.exec(String(slide || "").trim().toLowerCase());
   if (!m) return null;
@@ -55,10 +40,8 @@ const hasSlide = (item) => DOC_SLIDE.test(String(item?.slide || "").trim().toLow
 
 const str = (v) => (typeof v === "string" ? v : v == null ? "" : String(v));
 
-// The model puts the right answer in the same slot far more often than
-// chance — the first live quiz had all three at B — so the choices are
-// reordered here. Seeded by the question's text, so a re-render (every
-// streamed token re-renders the reply) keeps the order the user is reading.
+// The model favours one slot (first live quiz: all three at B), so choices are reordered,
+// seeded by the question text so a streaming re-render keeps the order.
 function shuffled(q) {
   let h = 2166136261;
   for (const ch of str(q.q)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
@@ -71,23 +54,16 @@ function shuffled(q) {
   return { ...q, choices: order.map((i) => q.choices[i]), answer: order.indexOf(q.answer) };
 }
 
-// Free response: no `choices`, and `answer` is the model answer as text.
-// `accept` (optional) lists short exact answers that check themselves — a
-// number, a term, what a line prints; anything else is revealed and the user
-// grades themselves, with what they wrote sent back so the console can
-// regrade it. `long` asks for a textarea (explain, compare, derive).
+// Free response: no `choices`; `answer` is text. `accept` lists short exact answers that self-check,
+// else the user self-grades (their text goes back for regrading). `long` = textarea.
 const isFree = (q) => !Array.isArray(q.choices);
 const isChoice = (q) => Array.isArray(q.choices) && q.choices.length >= 2
   && Number.isInteger(q.answer) && q.answer >= 0 && q.answer < q.choices.length;
 const norm = (s) => str(s).toLowerCase().replace(/[\s`'"“”‘’.,;:!?$\\]+/g, " ").trim();
 
-// How sure (study.CONFIDENCE holds the same values). Right/wrong alone can't
-// tell a slip from a misconception: wrong and sure is the misconception, right
-// and guessed is a pass that won't hold. "don't know" is its own button because
-// it is also an answer — the honest alternative to a guess, which would
-// otherwise score as one in four. Asked before the answer is seen; if that was
-// skipped it can still be given after, marked as such (`late`) because a rating
-// made with the verdict on screen can be fitted to it.
+// How sure (same values as study.CONFIDENCE): wrong+sure is a misconception, right+guessed won't hold.
+// "don't know" is its own answer (a guess would score as one in four). Asked before the answer;
+// given after, it is marked `late` (a rating made with the verdict on screen can be fitted to it).
 const RATED = [["guess", "guess"], ["unsure", "unsure"], ["sure", "sure"]];
 const SAID = { guess: "guessing", unsure: "unsure", sure: "sure" };
 const DONT_KNOW = -1;   // `picked` value for a choice question answered "don't know"
@@ -182,16 +158,14 @@ function Quiz({ data, inline }) {
       && (sure[i] === "guess" || sure[i] === "unsure"));
     if (shaky.length)
       lines.push("Right but not sure: " + shaky.map((i) => `Q${i + 1} (${SAID[sure[i]]}${lateNote(i)})`).join(", "));
-    // Self-graded "right"s go back too: the console is the better judge of
-    // whether "it's the derivative" covered what the answer actually asked.
+    // Self-graded "right"s go back too: the console judges whether they covered the answer.
     const selfRight = qs.map((q, i) => [q, i]).filter(([q, i]) => q.free && graded[i]?.ok && !graded[i].auto);
     if (selfRight.length) {
       lines.push("Self-graded right (check me):");
       for (const [q, i] of selfRight)
         lines.push(`- Q${i + 1}: ${str(q.q)} — I wrote "${str(typed[i]).trim()}"${sureNote(i)}`);
     }
-    // Last, and with the question restated: a note is as likely to be on one
-    // they got right, which nothing above would have named.
+    // Last, question restated: a note may be on a right answer, which nothing above names.
     if (noted.length) {
       lines.push("My notes on specific questions:");
       for (const i of noted) {
@@ -232,10 +206,7 @@ function Quiz({ data, inline }) {
     );
   }
 
-  // Under an answered question, right or wrong: the rating if it wasn't given
-  // up front, and a note that rides along with the results. A rating given
-  // before the answer stays as it was — that's the one worth trusting, so it
-  // isn't offered for revision once the verdict is showing.
+  // After an answer: the rating if not given up front (one given first is locked) and a note for the results.
   function afterAnswer(q, i) {
     const open = noting[i] || str(notes[i]);
     return (
@@ -262,8 +233,7 @@ function Quiz({ data, inline }) {
     );
   }
 
-  // Hints open one at a time, only while the question is still open — once
-  // it's answered the `why` says everything they would have.
+  // Hints open one at a time while the question is open; once answered `why` covers them.
   function hints(q, i, open) {
     if (!q.hints.length) return null;
     const n = hinted[i] || 0;
@@ -290,10 +260,7 @@ function Quiz({ data, inline }) {
         <span className="study-kind">quiz</span>
         {data.title && <span className="study-title">{inline(data.title, "qt")}</span>}
       </div>
-      {/* One group per run of questions on the same slide: the slide drawn
-          once beside all of them (the first live quiz drew slide 5 three
-          times in a row), pinned while its questions scroll past. Numbered
-          by hand — a grid item loses its list marker. */}
+      {/* One group per run on the same slide, drawn once and pinned. Numbered by hand: a grid item loses its marker. */}
       <div className="study-qs">
         {groupBySlide(qs).map((g) => (
           <div key={g.items[0]} className={`study-q${g.slide ? " with-slide" : ""}`}>
@@ -325,9 +292,7 @@ function Quiz({ data, inline }) {
               </div>
               {hints(q, i, !done)}
               {!done && confidence(q, i, true)}
-              {/* A choice can be crossed out while the question is open — the
-                  ✕ at its end, or a right-click on it. Crossed out isn't
-                  ruled out: it can still be picked, as on paper. */}
+              {/* Crossing out (✕ or right-click) doesn't rule a choice out: it can still be picked. */}
               <div className="study-choices">
                 {q.choices.map((c, j) => {
                   const state = !done ? "" : j === q.answer ? " right" : j === pick ? " wrong" : " dim";
@@ -363,8 +328,7 @@ function Quiz({ data, inline }) {
           );
   }
 
-  // Type, check, then either it matched an `accept` or the model answer is
-  // shown beside yours and you call it. Locked once graded, like a choice.
+  // Type, check; an `accept` match grades itself, else you call it. Locked once graded.
   function freeQuestion(q, i) {
     const g = graded[i];
     const open = !g && !shown[i];
@@ -448,9 +412,7 @@ function Quiz({ data, inline }) {
   }
 }
 
-// Consecutive questions that share a slide, as [{ slide, items: [index…] }].
-// Only consecutive: a quiz that returns to slide 5 after slide 6 is asking
-// about it again, and that should be drawn where it's asked.
+// Consecutive questions sharing a slide, as [{ slide, items: [index…] }]; a return to slide 5 draws it again.
 function groupBySlide(qs) {
   const groups = [];
   qs.forEach((q, i) => {
@@ -501,8 +463,7 @@ function Cards({ data, inline }) {
       idx: i, kind: "card", question: str(data.cards[i].front), correct: known[i],
       self_graded: true, ref: str(data.cards[i].slide || data.cards[i].cite) })));
   }
-  // Keys only while the deck has focus, so typing in the composer never flips
-  // a card: space/enter flips, then 1 (or ←) missed, 2 (or →) got it.
+  // Keys only while the deck has focus (typing in the composer must not flip): space/enter flips, 1/← missed, 2/→ got it.
   function onKey(e) {
     if (done) return;
     if (e.key === " " || e.key === "Enter") { e.preventDefault(); setFlipped((f) => !f); }
@@ -563,14 +524,9 @@ function Cards({ data, inline }) {
   );
 }
 
-// The model sometimes escapes a newline twice inside the JSON string ("\\n"),
-// so a code question's ``` fence arrives as one line with literal `\n`s in it
-// and shows as backticks and backslashes. It can mix the two in one
-// string, a real break after the bold title and then a fence written with
-// literal `\n`s, which opens a fence that never closes and draws an empty code
-// box. So the literal ones are turned into breaks wherever they sit
-// outside math and outside code that's already well formed: `$\nabla f$`,
-// `\neq` and `\nu` are TeX, and the `\n` in a real fence's `printf("\n")` is C.
+// The model sometimes double-escapes newlines in the JSON string (literal `\n`, even mixed with real
+// breaks, which leaves an unclosed fence). Literal ones become breaks outside math (`$\nabla$`, `\neq`)
+// and outside well-formed code (`printf("\n")`).
 const KEEP_SPLIT = new RegExp(`(${[
   /\$\$[^$]*\$\$|\$[^$]*\$|\\\([\s\S]*?\\\)/.source,   // math
   /```[^\n]*\n[\s\S]*?```/.source,                     // a fence with real breaks

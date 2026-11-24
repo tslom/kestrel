@@ -1,16 +1,7 @@
-"""Turning what the console *said* about a note back into the note itself.
+"""Turning what the console said about a note (wikilink, path) back into the note.
 
-The console writes about files in four shapes — a wikilink, a wikilink with an
-alias or a heading, a vault-relative path, an absolute one — and the dashboard
-has to reach the same file from all of them before it can hand anything to
-Obsidian. These tests pin the two edges that matter more than the happy path:
-
-- a name that isn't a note in the vault must *miss*, never fall back to
-  something nearby, because a link that opens the wrong note is worse than a
-  link that says it can't find one. `README.md` is the real case — this vault
-  has several, and a bare name that fits four notes fits none of them;
-- nothing outside the vault resolves, whatever the text does with `..` or a
-  leading slash.
+Edges pinned: an ambiguous or unknown name misses, and nothing outside the vault resolves.
+Design: DESIGN.md → `app/vault_open.py`: resolving console-said note names, test-pinned.
 """
 
 import sqlite3
@@ -61,9 +52,7 @@ def vault(tmp_path, monkeypatch):
     # A full path stays a full path even when the name is shared.
     ("01-Projects/voron-build/README.md", "01-Projects/voron-build/README.md"),
     ("2026-09-01", "05-Daily/2026-09-01.md"),
-    # Obsidian opens attachments too, and the console links the PDF it just
-    # filed as readily as the note about it. Only the *index* fallback is
-    # markdown-only, because that's the only part that guesses.
+    # Attachments resolve too; only the index name fallback is markdown-only.
     ("Attachments/scan.pdf", "Attachments/scan.pdf"),
 ])
 def test_resolves(vault, target, expect):
@@ -134,8 +123,7 @@ def test_open_hands_the_uri_to_the_os(vault, monkeypatch):
     out = vault_views.open_in_obsidian("[[only-one-of-these#Costs]]")
 
     assert out["path"] == "06-Notes/only-one-of-these.md"
-    # `-g`: the click shouldn't pull focus off the dashboard when Obsidian is
-    # already up on another space.
+    # `-g`: don't pull focus off the dashboard.
     assert seen["cmd"][:2] == ["open", "-g"]
     assert seen["cmd"][2] == out["uri"]
     assert "heading=Costs" in out["uri"]

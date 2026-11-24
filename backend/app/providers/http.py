@@ -1,16 +1,7 @@
-"""The one JSON-over-HTTP call most providers make.
-
-Calendar, Gmail, Health, Weather, Spotify and Last.fm each carried their own
-copy of the same dozen lines: build a Request, urlopen it, parse the JSON,
-and turn an HTTPError into a RuntimeError that carries the response body —
-which is where Google and friends put the reason. Only the label and the
-timeout differed, so those are parameters and the rest lives here.
-
-Each provider keeps its own `_request`/`_api` as a thin wrapper over this:
-tests monkeypatch those names, and they are where a provider's quirks sit
-(Last.fm's errors-in-a-200-body, Reddit's retry, Plaid's PlaidError and
-News's redirect-following stay in their own modules because they don't fit
-this shape).
+"""The one JSON-over-HTTP call most providers make: parse JSON, turn an HTTPError into a
+RuntimeError carrying the response body. Providers keep a thin `_request`/`_api` wrapper
+(tests patch those names; Last.fm, Reddit, Plaid and News quirks stay in their modules).
+Design: DESIGN.md → `app/providers/http.py`.
 """
 
 import http.client
@@ -20,30 +11,20 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable
 
-# One retry for a transient failure on an idempotent call. Measured on the
-# health poller (2026-10): ~8% of cycles died on a single read timeout,
-# connection reset or 503 out of ~11 calls — each a blip the next attempt
-# clears. One retry turns that into a rare double blip; more would only
-# stretch a real outage (each attempt can sit out the full timeout).
+# One retry: ~8% of health-poller cycles (~11 calls) hit a single blip; more only stretches a real outage.
 RETRIES = 1
 RETRY_BACKOFF = 0.5          # seconds before the retry
-# Server-side hiccups worth asking again. 4xx (incl. 429) is an answer about
-# the request or the quota, and repeating it straight away changes nothing.
+# 4xx (incl. 429) is an answer; repeating it changes nothing.
 RETRY_STATUS = frozenset({500, 502, 503, 504})
 IDEMPOTENT_METHODS = frozenset({"GET", "HEAD"})
 
 
 def _transient(exc: BaseException) -> bool:
-    """A failure a second attempt can plausibly clear: the socket stalled or
-    was dropped mid-exchange. Not a resolver failure or an unreachable
-    network — those are "offline", the next attempt half a second later meets
-    the same dead wifi, and offline.py already serves the cache for them."""
+    """A stalled or dropped socket a retry can clear; not resolver/unreachable (offline.py's case)."""
     if isinstance(exc, urllib.error.URLError) and not isinstance(
             exc, urllib.error.HTTPError):
         exc = exc.reason if isinstance(exc.reason, BaseException) else exc
-    # A stalled TLS handshake arrives as TimeoutError('_ssl.c:…: The handshake
-    # operation timed out'); a certificate failure is an SSLError and is not
-    # retried.
+    # A stalled TLS handshake is a TimeoutError; a certificate failure is an SSLError, not retried.
     return isinstance(exc, (TimeoutError, ConnectionResetError,
                             ConnectionAbortedError, BrokenPipeError,
                             http.client.RemoteDisconnected,
@@ -56,25 +37,16 @@ def json_request(url: str, *, label: str, token: str | None = None,
                  detail_limit: int | None = None,
                  idempotent: bool | None = None,
                  reauth: Callable[[], str] | None = None) -> dict:
-    """One API call -> parsed JSON, `{}` for an empty body (a DELETE answers
-    204). `token` becomes a Bearer header; `body` is sent as JSON.
+    """One API call -> parsed JSON, `{}` for an empty body. `token` becomes a Bearer header; `body` is JSON.
 
-    An HTTPError is re-raised as `RuntimeError("{label} {code}: {body}")`,
-    the response body truncated to `detail_limit` chars when given. Network
-    failures (URLError and friends) pass through untouched — offline.py
-    tells those apart from an answer.
+    HTTPError -> `RuntimeError("{label} {code}: {body}")` (body cut to `detail_limit`); network
+    failures pass through untouched for offline.py.
 
-    `idempotent` calls get RETRIES more attempts after a transient failure
-    (read timeout, reset/dropped connection, 5xx); the last failure is what
-    raises. Defaults to True for GET/HEAD only — a POST is retried only when
-    its caller says it is a read in POST's clothing (Google Health's rollUp),
-    because re-sending a POST that did land would do it twice.
+    `idempotent` calls retry RETRIES times on a transient failure or 5xx. Default True for
+    GET/HEAD only: a POST retries only if the caller says it is a read (Health rollUp).
 
-    `reauth`, given with a `token`, is called once on a 401 for a fresh token
-    and the call is re-sent — whatever the method, since a 401 means it never
-    landed. Google rejects an access token its own expiry still vouches for
-    now and then (24 single-cycle 401s across calendar, Gmail and Health in
-    three weeks, each gone the next cycle); a forced refresh clears it."""
+    `reauth` (with `token`) is called once on a 401 and the call re-sent, any method (a 401
+    never landed). Google sometimes rejects a token its expiry still vouches for."""
     if idempotent is None:
         idempotent = method.upper() in IDEMPOTENT_METHODS
     attempts = 1 + (RETRIES if idempotent else 0)

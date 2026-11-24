@@ -6,29 +6,15 @@ import { fetchJSON, postJSON } from "../lib/api.js";
 import { stopShell } from "../lib/turn.js";
 import { renderMarkdown } from "../ui/markdown.jsx";
 
-// xterm only loads when a computer-use job needs it. As with KaTeX
-// (ui/markdown.jsx), the load must not reject: lazy() rethrows a rejection on
-// every render, and a chunk deleted by a rebuild would blank the page.
+// xterm loads only for a computer-use job; the load must not reject (see ui/markdown.jsx KaTeX).
 const TerminalPane = lazy(() => import("../console/TerminalPane.jsx").catch(() => ({
   default: () => <p className="vp-empty">The terminal didn’t load. Reload (⌘R) to open it.</p>,
 })));
 
-// Claude's view: the map's place in the stage, given over to what Claude is
-// looking at. Beside the conversation, at a size you can read, like a preview
-// pane in an editor. What can be there:
-//
-//   seen     the images tools handed the model this turn: a file it read, a
-//            Chrome screenshot. Newest shows unless you pick one.
-//   preview  a dev tab's running app, live. Only for a dev tab, since only
-//            that has a project to run.
-//   terminal a computer-use job's live terminal, there for as long as the job
-//            runs, and brought forward when it needs you to answer something.
-//   files    a file under the tab's folder, to read or edit: what Claude just
-//            changed, or anything you search for.
-//   plan     the plan Claude last proposed, kept on screen.
-//   tasks    `!` commands in the background and subagents at work.
-//
-// The map stays mounted behind this (PlanApp), so nothing is lost by opening it.
+// Claude's view: takes the map's place (the map stays mounted behind). Tabs:
+//   seen (images tools handed the model this turn; newest unless picked) / preview (dev tab's running app)
+//   / terminal (computer-use job, forward when it needs an answer) / files (under the tab's folder)
+//   / plan (last proposed) / tasks (`!` background commands and subagents).
 
 const LOCAL = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/;
 const saved = (project) => `preview:${project}`;
@@ -171,8 +157,7 @@ function Tasks({ background, subagents, runs }) {
   );
 }
 
-// Addresses this project was previewed at, newest first, for the address
-// bar's suggestions and the chips under it.
+// Addresses this project was previewed at, newest first (address suggestions and chips).
 const recentKey = (project) => `preview-recent:${project}`;
 const originOf = (u) => { try { return new URL(u).origin; } catch { return u; } };
 const MAX_RECENT = 8;
@@ -180,13 +165,10 @@ function readRecent(project) {
   try { return JSON.parse(localStorage.getItem(recentKey(project)) || "[]"); } catch { return []; }
 }
 
-// The running app, in a frame with a browser's controls. The frame is another
-// origin (another port), so its own history can't be read or driven from here:
-// back and forward walk the addresses gone to through this bar, and reload
-// reloads the frame. Where it opens: an ask (`ask`, the bar's preview button
-// or autoOpenPreview), else this tree's previewUrl from .kestrel/project.json
-// (its own port, so two tabs' worktrees don't show each other's server), else
-// the last address used in this tree, else the project's first listener.
+// The running app in a frame. Another origin, so its history can't be driven: back/forward walk the
+// addresses gone to through this bar. Opens at: `ask`, else this tree's previewUrl from
+// .kestrel/project.json (own port, so worktrees don't show each other's server), else the last
+// address used here, else the project's first listener.
 function Preview({ project, worktree, start, ask }) {
   const tree = worktree || project;
   const first = ask?.url || start || localStorage.getItem(saved(tree)) || "";
@@ -242,12 +224,10 @@ function Preview({ project, worktree, start, ask }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per project; go is a render-local helper and only applies the first server
   }, [project]);
 
-  // Same origin means this very app: drawn in a frame it would read this
-  // window's saved tabs and reconnect their sessions from a second place.
+  // Same origin is this very app: framed it would reconnect this window's saved sessions from a second place.
   const itself = url && new URL(url, location.href).origin === location.origin;
   const listening = new Set(servers.map((s) => s.url.replace(/\/$/, "")));
-  // One chip per address, `:3000` and `:3000/` being the same; the form
-  // last gone to (or configured) wins over a listener's bare origin.
+  // One chip per address (`:3000` = `:3000/`); the last-used form beats a listener's bare origin.
   const bare = (u) => u.replace(/\/$/, "");
   const chips = [...(start ? [start] : []), ...recent, ...servers.map((s) => s.url)]
     .filter((u, i, all) => all.findIndex((v) => bare(v) === bare(u)) === i).slice(0, 6);
@@ -313,10 +293,7 @@ function Preview({ project, worktree, start, ask }) {
 
 export default function ViewPane({ views, project, worktree, job, plan, edited, background, subagents,
   preview = null, previewUrl = null, runs = [], openOn = null, onClose }) {
-  // Forward while the job wants an answer, and back to the screenshots after.
-  // Only ever for a job: opening the pane on Files mustn't be overruled by a
-  // job that isn't there. Adjusted during render when the job's id or ask
-  // changes (react.dev: "adjusting some state when a prop changes").
+  // Forward while the job wants an answer, back to screenshots after; only for a job. Adjusted in render on id/ask change.
   const [tab, setTab] = useState(job?.show ? "terminal" : openOn || "seen");
   const jobSig = `${job?.id ?? ""}|${job?.show ? 1 : 0}`;
   const [lastJob, setLastJob] = useState({ sig: jobSig, had: !!job });

@@ -1,37 +1,22 @@
-// Child tabs: the ones a tab opened through open_tab, drawn under it and
-// left to run themselves. Plain functions over the tab list (lib/tabs.js) and
-// the turn trace (lib/turn.js), so node can test them
-// (tests/children.test.mjs, run by pytest).
-//
-// A child is in one of five states, the dot it gets in the tab bar:
-// - "queued": every working slot was taken when it was asked for; it isn't
-//   mounted, and starts by itself when one frees (nextQueued).
-// - "working": mid-turn, or about to start on its brief.
-// - "needs": it can't go on without you: a question waiting, a turn that
-//   died (an error, a dropped socket, a stop), or a finished brief that
-//   didn't land (commits not merged, a `Needs you:` line, landing()).
-// - "done": finished and landed. Closed into the parent's group, unmounted,
-//   still resumable by a click.
-// - "idle": none of those, e.g. one the user has since typed in.
+// Child tabs (opened through open_tab): plain functions over lib/tabs.js and lib/turn.js (tests/children.test.mjs).
+// States, the tab-bar dot: "queued" (no working slot free; unmounted, starts when one frees), "working",
+// "needs" (a question, a dead turn, or a finished brief that didn't land: see landing()), "done" (landed; closed
+// into its parent's group, resumable by a click), "idle" (e.g. the user typed in it).
 
-// Tabs past these wait in the queue, the rest of the queue is refused.
 export const MAX_QUEUED = 8;
-// Done children kept in their parent's group; the oldest drops off (its
-// session stays in the sessions panel).
+// Done children kept per parent group; the oldest drops (its session stays in the sessions panel).
 export const DONE_KEEP = 12;
 
 const HELD_DEAD = new Set(["error", "cut off", "stopped"]);
 
-// The tab a child hangs under: its top ancestor that's still open. A child
-// of a child (one the user unlocked by typing in it) groups with the root.
+// The top ancestor still open: a child of a child groups with the root.
 export function rootOf(tab, byId) {
   let t = tab, hops = 0;
   while (t.parent && byId.has(t.parent) && hops++ < 20) t = byId.get(t.parent);
   return t;
 }
 
-// The bar's order: each top-level tab followed by everything under it, in
-// the order they were opened. ⌥1–9 count in this order too.
+// The bar's order (⌥1-9 count in it): each top-level tab, then everything under it in open order.
 export function tabOrder(tabs) {
   const byId = new Map(tabs.map((t) => [t.id, t]));
   const kids = new Map();
@@ -44,9 +29,7 @@ export function tabOrder(tabs) {
   return top.map((t) => ({ tab: t, children: kids.get(t.id) || [] }));
 }
 
-// A tab mounted in the window: not waiting in the queue, not closed into a
-// group, not snoozed or settled (lib/tabRest.js). The one on screen is
-// mounted whatever it is.
+// Mounted: not queued, done, snoozed or settled (the one on screen is mounted regardless).
 export const isLive = (t) => !t.queued && !t.done && !t.settled && !t.snoozedUntil;
 
 export function childState(t, turn) {
@@ -59,8 +42,7 @@ export function childState(t, turn) {
 
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-// The parent's badge: "3 running · 1 needs you". Done ones count only once
-// nothing else is going on — "4 done" is the news when it's all there is.
+// The parent's badge, "3 running · 1 needs you"; done counts only when nothing else is going on.
 export function summary(children, turns) {
   const n = { working: 0, needs: 0, queued: 0, done: 0, idle: 0 };
   for (const c of children) n[childState(c, turns[c.id])] += 1;
@@ -73,15 +55,12 @@ export function summary(children, turns) {
   return { counts: n, parts, text: parts.map((p) => p.text).join(" · ") };
 }
 
-// Tabs mid-turn, plus handed-off ones about to start on their brief (their
-// turn hasn't begun yet, but it's coming, and it draws on the same window).
+// Mid-turn tabs plus handed-off ones about to start (same window).
 export function busyCount(tabs, turns) {
   return tabs.filter((t) => isLive(t) && (turns[t.id]?.running || t.brief)).length;
 }
 
-// What open_tab gets: { start } now, { queue: n } (its place), or { refuse }.
-// A queue that has anything in it takes the newcomer behind it, so briefs
-// start in the order they were asked for.
+// open_tab's answer: { start }, { queue: place }, or { refuse }. A non-empty queue takes newcomers behind it (FIFO).
 export function admit(tabs, turns, { from = null, maxWorking, maxTabs, maxQueued = MAX_QUEUED }) {
   const others = busyCount(tabs.filter((t) => t.id !== from), turns);
   const live = tabs.filter(isLive).length;
@@ -108,8 +87,7 @@ export function queuePlace(tabs, id) {
   return q.findIndex((t) => t.id === id) + 1;
 }
 
-// The child's own word that it can't land: a line `Needs you: <why>` in its
-// report (SPAWNED_APPEND asks for it), markdown dressing allowed.
+// A `Needs you: <why>` line in a child's report (SPAWNED_APPEND asks for it); markdown dressing allowed.
 export function needsLine(text) {
   const m = /^[ \t>*_-]*needs you[*_]*:[*_]*[ \t]*(.+)$/im.exec(text || "");
   return m ? m[1].replace(/[*_]+$/, "").trim() || null : null;
@@ -117,11 +95,8 @@ export function needsLine(text) {
 
 const s = (n) => (n === 1 ? "" : "s");
 
-// Whether a finished brief landed: { done } closes the child into its group,
-// else { why } is what it needs you for. `status` is its worktree's
-// (/api/console/worktree): commits beyond the base or uncommitted files mean
-// the work isn't on the base yet. null: no worktree (a general or study tab,
-// or a dev tab in the main checkout), so only its own word counts.
+// Whether a finished brief landed: { done } or { why }. `status` is its worktree's (/api/console/worktree):
+// commits ahead or dirty files mean not on base. null = no worktree, so only its own word counts.
 export function landing({ text, status = null }) {
   const said = needsLine(text);
   if (said) return { done: false, why: said };
@@ -136,10 +111,7 @@ export function landing({ text, status = null }) {
   return { done: true, why: null };
 }
 
-// A parent's follow-up to its child (message_tab): { start } — it goes as
-// the child's next brief, now or when its turn ends; { queue } — a done
-// child reopening while every working slot is taken; or { refuse } with why.
-// Only the tab's own children: the rest are the user's or another tab's.
+// message_tab: { start } (next brief, now or at turn end), { queue } (done child reopening, slots full) or { refuse }; own children only.
 export function followUp(tabs, turns, { id, from, maxWorking, maxTabs }) {
   const t = tabs.find((x) => x.id === id);
   if (!t) return { refuse: `no tab ${id}; call tabs to see the ids` };

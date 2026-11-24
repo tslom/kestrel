@@ -1,142 +1,9 @@
 """WebSocket <-> Claude Agent SDK bridge.
 
-One WebSocket connection = one Claude session against the vault, with your
-skills/commands loaded (setting_sources) and subscription auth via the CLI
-login. Sessions persist in Claude Code's own store, so resume works across
-web and terminal.
-
-Wire protocol (JSON over WS):
-  client -> server:
-    {"type": "start", "session_id": "..."|null, "model": "sonnet"|null,
-     "permission_mode": "auto"|"default"|"plan"|"bypassPermissions"|null,
-                             -- "auto" is ours, not the SDK's: no approval
-                                cards except for calls that can't be undone
-                                (console_changes.Change.guard), and a
-                                `changes` summary at the end of every turn.
-                                "bypassPermissions" ("never ask" in the
-                                picker) drops can_use_tool altogether; the
-                                summary still arrives, being built from the
-                                tool stream rather than the approval path.
-                                Any SDK mode string is still accepted, so a
-                                client pinned to "acceptEdits" keeps working
-                                — the picker just no longer offers it.
-     "voice": true|false,    -- speech out; fixes the prompt rule that goes
-                                with it, so changing it means reconnecting
-     "effort": "low"|…|"max"|null, "output_style": "Explanatory"|…|null,
-     "resume_at": uuid|null} -- start-time like the rest. resume_at rewinds
-                                the conversation: resume session_id cut just
-                                after that record, as a fork (rewind_point).
-    {"type": "mode", "permission_mode": "auto"|"default"|"plan"|"bypassPermissions"}
-        -- switch the live session's mode, mid-turn too (set_permission_mode):
-           no reconnect, so history, the turn and its cards all stay. Answered
-           with a `mode` frame (the old mode again if the switch failed).
-    {"type": "rewind", "id": uuid}   -- dev: restore files to that checkpoint
-    {"type": "mcp", "action": "status"|"reconnect"|"toggle", "name", "enabled"}
-    {"type": "user", "text": "...", "context": [{"label": "...", "data": {...}}]}
-    {"type": "permission", "request_id": "...", "allow": true|false,
-     "always": true|false, "reason": "..."|null}
-        -- always:true adds a session-scoped rule so the same tool stops
-           asking (Bash narrows to the approved command's first word); reason
-           is the "tell Claude what to do differently" text on a denial.
-    {"type": "question", "request_id": "...",
-     "answers": {"<question text>": "label"|["label", ...]}|null}
-        -- the reply to a question_request; null means dismissed unanswered.
-    {"type": "interrupt"}
-  server -> client:
-    {"type": "idle"}
-        -- the answer to an interrupt when no turn is running: the page's
-           turn died with an earlier socket, so it settles it itself.
-    {"type": "session", "id": "..."}
-    {"type": "text_delta", "text": "..."}
-    {"type": "phase", "phase": "thinking"|"tool", "name": "..."|null}
-        -- a thinking block or a tool call (name set) started streaming;
-           the live status line until text or the tool's chip arrives.
-    {"type": "speech", "text": "...", "wav": "<base64 WAV>"}
-        -- one spoken sentence, sent only when the session started with
-           voice:true. Arrives in the order it was written; a turn that gets
-           interrupted stops mid-backlog and the rest is never sent.
-    {"type": "tool_use", "id": "...", "name": "...", "detail": "...", "raw": "{...}"}
-        -- `detail` is the one-line summary the log shows (sessions.tool_detail);
-           `raw` is the full input, shown only when a run is expanded.
-    {"type": "tool_result", "id": "...", "is_error": bool, "image"?: "data:…"}
-        -- that call came back. The plan view's map lights a line per call
-           from tool_use to here, red when is_error. `image` is the picture
-           the call handed the model, when it did (result_image).
-    {"type": "refresh", "topics": ["tasks", ...]}
-        -- a call changed what these cards show (console_changes.refresh_topics),
-           so they reload now, and the needs-you list with them. Sent as each
-           call comes back clean, and once more for the whole turn just before
-           its result: what a hook or the note watcher does after the call
-           lands behind the first one.
-    {"type": "permission_answered", "request_id": "...", "allow": bool, "by": "phone"}
-        -- a card answered somewhere other than the page: the phone door
-           (app/phone.py) puts the answer on the tab's inbox and sends this
-           so the card at the desk settles too.
-    {"type": "permission_request", "request_id": "...", "tool": "...",
-     "input": {...}, "plan": "..."|null,          -- plan set for ExitPlanMode
-     "always_label": "..."|null,                  -- what "don't ask again" grants
-     "always_scope": "session"|"turn",            -- for how long (turn: Chrome)
-     "guard": "..."|null,                         -- why auto mode asked anyway
-     "inputs": [{...}, ...]}                      -- the whole burst; see below
-        -- One turn's parallel calls to the same tool arrive as one card, and
-           one answer settles all of them. `input` is the first of `inputs`, so
-           a client that only reads `input` still renders something correct.
-
-    {"type": "question_request", "request_id": "...", "questions": [
-        {"question": "...", "header": "...", "multiSelect": bool,
-         "options": [{"label": "...", "description": "..."}]}]}
-        -- AskUserQuestion, which the CLI can't prompt for in SDK mode and
-           auto-declines in seconds; see ask_questions() for the interception.
-    {"type": "changes", "items": [{"verb": "created", "scope": "task",
-                                   "detail": "...", "tool": "..."}, ...]}
-        -- what the turn changed, sent just before its `result` and only when
-           there was something. Built from the tool stream (see
-           console_changes), so it counts calls that ran and came back clean
-           — not calls the model asked for. Every mode sends it; auto mode is
-           where it stops being a nicety.
-    {"type": "result", "duration_ms": ..., "is_error": ..., "interrupted": bool,
-     "tokens_in": ...|null, "tokens_out": ...|null}   -- in includes cache reads;
-        interrupted = you pressed Stop (is_error is usually also true then)
-    {"type": "status", "text": "..."}
-    {"type": "commands", "commands": ["compact", "daily-brief", ...]}
-        -- slash commands the live session actually loaded, from the SDK init
-           message; sent once. GET /api/commands supplies descriptions.
-    {"type": "session_info", "version": "2.1.312", "commands":
-     [{"name", "description", "argument_hint", "builtin"}], "agents": [...]}
-        -- sent on connect, from the CLI's initialize answer: the commands and
-           skills *this* session loaded (a dev tab's repo skills, plugins,
-           built-ins), described, before any turn. Supersedes the scan.
-           Also `models` ([{"value", "resolved", "label", "efforts"}],
-           session_models): what the pickers offer, cached per profile.
-    {"type": "model", "model": "claude-fable-5-2"}
-        -- the model the session is running, when the stream first names it
-           and whenever that changes (a /model switch); note_model.
-    {"type": "context", "total": n, "max": n, "percentage": 0-100,
-     "categories": [{"name", "tokens"}], "autocompact_at": n|null}
-        -- the window as /context sees it; on connect and after every turn.
-    {"type": "tasks", "items": [{"id", "subject", "active_form", "status",
-                                 "blocked_by"}]}
-        -- the CLI's task list (console_tasks), on connect and after every
-           TaskCreate/TaskUpdate result.
-    {"type": "checkpoint", "id": uuid}  -- your message's uuid: the point a
-           conversation rewind cuts before (start's resume_at, via GET
-           /api/sessions/{id}/rewind) and, in a dev tab, the point
-           `{"type": "rewind", "id"}` restores files to; that one is
-           answered by {"type": "rewound", "id", "ok", "error"?}.
-    {"type": "mcp", "servers": [{"name", "status", "scope", "source",
-     "transport", "tools", "error"}], "error": ...|null}
-        -- answer to {"type": "mcp", "action": "status"|"reconnect"|"toggle",
-           "name"?, "enabled"?}.
-    {"type": "rate_limit", "rate_limit_type": "five_hour"|"seven_day"|...,
-     "status": "allowed"|"allowed_warning"|"rejected", "utilization": 0.0-1.0,
-     "resets_at": unix_ts|null, "overage_status": ...|null,
-     "overage_resets_at": unix_ts|null}
-        -- subscription /usage-limit status; the CLI emits this whenever a
-           window's status changes, not on every turn, so the client should
-           hold onto the last value per rate_limit_type rather than clear it.
-           It carries a status and a reset time but rarely a utilization, and
-           only for the window currently binding — percentages come from
-           GET /api/console/usage instead, and the bar merges the two.
+One WebSocket = one Claude session against the vault (skills loaded via
+setting_sources, CLI-login auth). Sessions live in Claude Code's own store, so
+resume works across web and terminal.
+Wire protocol and design: DESIGN.md → `app/console.py`: WebSocket wire protocol.
 """
 
 import asyncio
@@ -159,25 +26,23 @@ from uuid import uuid4
 from fastapi import (APIRouter, File, HTTPException, UploadFile, WebSocket,
                      WebSocketDisconnect)
 
-from . import (agent, claude_cli, claude_quota, console_changes, console_diff, console_preview,
+from . import (agent, claude_accounts, claude_cli, claude_quota, console_changes, console_diff, console_preview,
                console_agents, console_link, console_profiles, console_stats, console_work,
                console_tasks, console_tools,
-               console_worktree, docs, failures,
+               console_worktree, docs, failures, model_catalog,
                notify, sessions, task_notes, tz)
 from . import voice as voice_io
 from . import localguard
 from . import console_project
 from . import console_queue
 from .delegates import runs as delegate_runs
-from .config import (VAULT_PATH, PERMISSION_MODE, SETTING_SOURCES, DEFAULT_MODEL,
-                     DEV_MODEL, CONSOLE_BUILTIN_TOOLS, DEV_BUILTIN_TOOLS,
+from .config import (VAULT_PATH, PERMISSION_MODE, SETTING_SOURCES,
+                     CONSOLE_BUILTIN_TOOLS, DEV_BUILTIN_TOOLS,
                      CONSOLE_ALLOWED_TOOLS, CONSOLE_CHROME, CONSOLE_CLI_PATH, TASK_TOOLS,
                      CHROME_PROFILES, COMPUTER_JOB_LIMIT_S, COMPUTER_SETUP_LIMIT_S,
                      BACKEND_PORT, EFFORT_LEVELS, HELD_RELOAD_ENV)
-# SYSTEM_APPEND / VOICE_APPEND text and its rendering.
 from .console_prompt import render_append
-# The Bash auto-allow boundary. Lives in its own module so that "what can the
-# console run without asking?" is one file, not a region of this one.
+# The Bash auto-allow boundary: one file answers "what runs without asking?".
 from .console_policy import (BROWSER_GUARD, BROWSER_TOOL_PREFIX, COMPUTER_GUARD, is_safe_read,
                              shell_words, strip_cd_prefix, has_breakout,
                              browser_can_stand, browser_needs_card)
@@ -200,10 +65,7 @@ from claude_agent_sdk import (
     CanUseToolShadowedWarning,
 )
 
-# Every session start logged a ~1.5k-char warning that allowed_tools shadows
-# can_use_tool for the read tools. That's the design (reads don't card), and
-# the danger it guards against — a writer in that list — is what
-# test_only_reads_are_auto_approved holds. Silenced so real errors show (#62).
+# Reads shadowing can_use_tool is intended; test_only_reads_are_auto_approved holds the risk.
 warnings.filterwarnings("ignore", category=CanUseToolShadowedWarning)
 
 try:
@@ -219,26 +81,19 @@ except ImportError:
     PARTIAL = False
 
 router = APIRouter()
-# GET /api/console/usage (subscription quota) lives in claude_quota.py; it
-# rides this router so main.py wiring stays one include.
 router.include_router(claude_quota.router)
 router.include_router(claude_cli.router)
 
 PERMISSION_TIMEOUT_S = 600  # unanswered approval requests deny after 10 min
 INTERRUPT_TIMEOUT_S = 15    # a Stop the CLI hasn't acknowledged by then won't be
 
-# Every open socket's state, so the launcher can ask whether a restart would
-# cut a turn (GET /api/console/busy, read by launch_app.py's reloader).
+# Open sockets' state, for /api/console/busy (launch_app's reloader holds a restart on it).
 _live: set["SessionState"] = set()
-# Terminal tabs mid-turn (console_terminal.py): socket key -> when its transcript
-# last moved. A terminal has no turn of ours to watch and can miss the turn's
-# end, so one gone quiet stops holding the restart. It resumes either way.
+# Terminal tabs mid-turn (console_terminal.py): socket key -> last transcript movement.
+# One gone quiet stops holding the restart; it resumes either way.
 terminal_active: dict[str, float] = {}
 TERMINAL_QUIET_S = 120
-# How long a turn can go without a word from the CLI and still count as working.
-# The wedge test: longer than any one foreground command's 10 minutes, and a
-# turn that's still talking holds a restart however long it has run. A clock on
-# the turn itself kills long dev turns mid-work.
+# Silence that ends "working": longer than a 10-minute foreground command. Never clock the turn itself.
 TURN_QUIET_S = 20 * 60
 
 
@@ -252,53 +107,23 @@ def get_busy() -> dict:
             + sum(1 for at in terminal_active.values() if now - at < TERMINAL_QUIET_S)}
 
 
-# Browsers don't apply CORS to WebSockets, so without this any page open in any
-# tab can connect to a socket that runs tools. A missing Origin isn't a browser.
-# The rule itself (dev proxies included) is localguard.origin_ok.
+# Browsers don't apply CORS to WebSockets: without this any open page could drive a tool socket.
 def origin_ok(ws: WebSocket) -> bool:
     return localguard.origin_ok(ws.headers.get("origin"), ws.headers.get("host"))
 BURST_COLLECT_S = 0.15   # window for one turn's parallel calls to share a card
 BROWSER_TURN_RULE = "\x00browser-turn"   # can't collide with an _always_rule
-# One stream-json line from the CLI. The SDK's 1 MB default is smaller than a
-# single message carrying a Read of a large PDF or a screenshot, and crossing
-# it kills the SDK's reader outright — seven turns in the log died that way,
-# silently, with the UI left spinning. 32 MB is room, not a target.
+# One stream-json line from the CLI. The SDK's 1 MB default dies silently (UI spins) on a big PDF/screenshot Read.
 MAX_BUFFER_SIZE = 32 * 1024 * 1024
 
-# A fourth permission mode, ours rather than the SDK's: the turn runs without
-# approval cards, and the change summary at the end of it is the review. The
-# SDK is still handed a real mode and still calls `can_use_tool` — this is not
-# `bypassPermissions`, and the difference is the point. Two things are kept by
-# staying on the approval path: the handful of calls that can't be undone
-# (console_changes.Change.guard) still stop for a click, and every decision
-# remains ours to record.
-#
-# The mode handed down is `default`, and that is load-bearing. `acceptEdits`
-# was the obvious choice — it is what the console uses everywhere else — but
-# the CLI settles more than Edit and Write under it: a Bash command that
-# writes *inside the workspace* is auto-approved by the CLI itself, before
-# `can_use_tool` is consulted. Measured: `rm <vault>/06-Generated/x.md` runs
-# with no card and no call into this module, while the same `rm` on a path
-# outside the vault prompts normally. Under `default`
-# every call arrives here, which is the only arrangement where the guard list
-# means anything — a guard the SDK can route around is a guard in name only.
+# Ours, not the SDK's: no cards except irreversible calls (console_changes.Change.guard).
+# The SDK gets `default`, not `acceptEdits`: under acceptEdits the CLI auto-approves a Bash
+# write inside the workspace before can_use_tool runs, so the guard list would mean nothing.
 AUTO_MODE = "auto"
 
-# And below auto, the floor: the SDK's own bypassPermissions, offered in the
-# picker as "never ask". The CLI doesn't consult `can_use_tool` under it, so
-# nothing in this file is — not the guard list, not `is_safe_read` — and a
-# send or an `rm` runs the moment the model decides on it. (The callback is
-# still registered, so the session can switch back out live.)
-#
-# It is offered at all because the turn summary survives it. The ledger is
-# built from the tool stream rather than from the approval path (see
-# `_stream_messages`), which is what makes "no approvals" something other than
-# "no idea what happened": the receipt still arrives, it is just the only thing
-# standing between a mistake and finding out about it. The client warns before
-# switching in, and the status line says so on every start.
+# The SDK's own bypassPermissions ("never ask"): can_use_tool is not consulted, so no guard
+# and no is_safe_read. The turn summary (built from the tool stream) still arrives.
 BYPASS_MODE = "bypassPermissions"
-# What a live `mode` message may switch to: the picker's four, plus the SDK
-# strings a start still accepts.
+# What a live `mode` message may switch to: the picker's four plus the SDK strings start accepts.
 LIVE_MODES = frozenset({AUTO_MODE, "default", "plan", BYPASS_MODE, "acceptEdits"})
 
 
@@ -313,12 +138,7 @@ def is_auto(mode: str | None) -> bool:
 
 
 def mode_note(mode: str | None) -> str:
-    """What the start line says about a mode that doesn't stop for everything.
-
-    Both of these run tools without a click, and the one line before the first
-    message is where that gets said — "nothing will ask" is the wrong thing to
-    be assuming in either direction.
-    """
+    """The start line's note on a mode that runs tools without a click."""
     resolved = mode or PERMISSION_MODE
     if resolved == AUTO_MODE:
         return " (writes run unattended; anything that can't be undone still asks)"
@@ -327,16 +147,13 @@ def mode_note(mode: str | None) -> str:
     return ""
 
 
-# This backend's own repo — the one project a dev tab can't edit safely if
-# the server reloads on every save.
+# This backend's own repo: unsafe to edit from a dev tab if the server reloads on save.
 _REPO = Path(__file__).resolve().parents[2]
 
 
 def reload_note(cwd: str | Path | None) -> str:
-    """The start line's warning for a dev tab in this repo on a server that
-    isn't launch_app's: every save under backend/app restarts it, and the tab's
-    turn with it. A stale terminal uvicorn the .app quietly attached to is
-    the usual case, and this line is how it gets seen."""
+    """Start-line warning for a dev tab in this repo on a server launch_app didn't start
+    (usually a stale terminal uvicorn): every backend save restarts it mid-turn."""
     if cwd is None or os.environ.get(HELD_RELOAD_ENV):
         return ""
     if Path(cwd).resolve() != _REPO:
@@ -401,15 +218,8 @@ async def brain_context(input_data: dict[str, Any], tool_use_id: str | None,
 
 # ---------- calendar cache hook ----------
 
-# Connector writes mutate Google Calendar behind the derived cache's back;
-# re-pull right away so widgets/brief don't serve the pre-write event until
-# the next poller tick. (Writes made outside a session — phone, gcal web —
-# are still only healed by the poller.)
-#
-# The vault tools (`event_create` and friends) are deliberately not matched
-# here: routes/calendar.py re-pulls the days it touched as part of the write,
-# which is both narrower than refresh()'s six-week window and correct for an
-# event outside it. This hook covers the connector, which can't do that.
+# Connector writes bypass the derived cache; re-pull so widgets don't serve the pre-write event.
+# Vault tools (`event_create` etc.) are deliberately unmatched: routes/calendar.py re-pulls their days.
 CALENDAR_WRITE_TOOLS = (r"mcp__claude_ai_Google_Calendar__"
                         r"(update_event|create_event|delete_event|respond_to_event)")
 
@@ -425,10 +235,7 @@ async def refresh_calendar_cache(input_data: dict[str, Any], tool_use_id: str | 
     return {}
 
 
-# The same gap on the mail side: the queue reads the emails table, so a thread
-# trashed or relabelled through the connector stays on it until the next poll.
-# Only what moves mail in or out of the inbox; a send or a draft leaves the
-# queue as it was.
+# Same for mail: only calls that move mail in or out of the inbox (the queue reads the emails table).
 EMAIL_MOVE_TOOLS = (r"mcp__claude_ai_Gmail__"
                     r"((un)?trash_(message|thread)|(un)?mark_(message|thread)_spam"
                     r"|(un)?label_(message|thread)|update_message_labels)")
@@ -452,9 +259,7 @@ USE_COMPUTER_TOOL = f"mcp__{console_tools.SERVER_NAME}__use_computer"
 PROJECT_INFO_TOOL = f"mcp__{console_tools.SERVER_NAME}__project_info"
 WORKTREE_MERGE_TOOL = f"mcp__{console_tools.SERVER_NAME}__worktree_merge"
 RUN_SCRIPT_TOOL = f"mcp__{console_tools.SERVER_NAME}__run_script"
-# Other models on errands (app/delegates). Their results are shown in the log
-# (who answered, what was taken out of the brief), and a fan-out runs for
-# minutes inside one call.
+# Other models on errands (app/delegates); a fan-out runs for minutes inside one call.
 DELEGATE_TOOL_NAMES = [f"mcp__{console_tools.SERVER_NAME}__{t.name}"
                        for t in console_tools.DELEGATE_TOOLS]
 DELEGATE_CALL_LIMIT_S = 2 * delegate_runs.RUN_LIMIT_S + 60
@@ -465,8 +270,14 @@ OUTPUT_STYLE_RE = re.compile(r"[\w .-]{1,64}")
 
 
 def default_model(profile: str) -> str:
-    """What the picker's "default" means for a profile."""
-    return DEV_MODEL if profile == "dev" else DEFAULT_MODEL
+    """The picker's "default" for a profile: Settings → Models' choice for the mode."""
+    return model_catalog.mode_default(profile)
+
+
+def start_model(asked: str | None, profile: str) -> model_catalog.Pick:
+    """The tab's pick or the mode's default, swapped for one the active account may run."""
+    asked = (asked or "").strip()
+    return model_catalog.pick(asked if asked and asked != "default" else default_model(profile))
 
 
 def build_options(session_id: str | None, model: str | None,
@@ -480,23 +291,19 @@ def build_options(session_id: str | None, model: str | None,
                   resume_at: str | None = None,
                   gate_browser=None,
                   worktree: dict | None = None) -> "ClaudeAgentOptions":
-    """The session, as its profile (console_profiles) shapes it. A dev tab
-    is the stock CLI on its repo: the repo's settings and memory, subagents,
-    and of this app only the handoff tool — the vault prompt, the Brain and
-    the vault-write hooks are all about a cwd it doesn't have."""
+    """The session as its profile (console_profiles) shapes it. A dev tab is the stock CLI
+    on its repo plus the handoff tools; no vault prompt, Brain or vault-write hooks."""
     mode = sdk_permission_mode(permission_mode)
     append = render_append(voice, profile, spawned, worktree)
     ask_hook = HookMatcher(matcher="AskUserQuestion", hooks=[ask_questions])
-    # Never offered without its gate, for the reason Chrome isn't below.
+    # Never offered without its gate (same as Chrome below).
     computer = ([console_tools.use_computer]
                 if gate_browser is not None and profile in CHROME_PROFILES else [])
     if profile == "dev":
         kwargs: dict[str, Any] = dict(
             cwd=str(cwd),
             permission_mode=mode,
-            # "local" too: a repo's .claude/settings.local.json is where its
-            # owner keeps the allow-rules they've built up, and a dev tab
-            # that ignored them would ask for what the terminal doesn't.
+            # "local": the repo's settings.local.json holds its allow-rules.
             setting_sources=["user", "project", "local"],
             tools=DEV_BUILTIN_TOOLS,
             system_prompt={"type": "preset", "preset": "claude_code", "append": append},
@@ -504,16 +311,12 @@ def build_options(session_id: str | None, model: str | None,
                 [console_tools.project_info, console_tools.open_tab, console_tools.tabs,
                  console_tools.message_tab, *console_tools.DELEGATE_TOOLS,
                  *([console_tools.worktree_merge] if worktree else []), *computer])},
-            # The task list is the model's bookkeeping — a card per
-            # "mark step 2 done" would be the whole log.
+            # TASK_TOOLS is the model's bookkeeping; a card per step would be the whole log.
             allowed_tools=["Read", "Grep", "Glob", PROJECT_INFO_TOOL, OPEN_TAB_TOOL,
                            TABS_TOOL, MESSAGE_TAB_TOOL, WORKTREE_MERGE_TOOL]
                           + DELEGATE_TOOL_NAMES + TASK_TOOLS,
             hooks={"PreToolUse": [ask_hook]},
-            # Rewinding files (`{"type": "rewind"}`): the CLI snapshots each
-            # file before a turn edits it, keyed by the prompt's uuid (see
-            # replay-user-messages below). Checked live, across a reconnect
-            # too.
+            # File rewind: the CLI snapshots files per prompt uuid (replay-user-messages below).
             enable_file_checkpointing=True,
         )
     else:
@@ -521,20 +324,14 @@ def build_options(session_id: str | None, model: str | None,
             cwd=str(VAULT_PATH),
             permission_mode=mode,
             setting_sources=SETTING_SOURCES,
-            # The Brain replaces Claude Code's own auto-memory here: 203 console
-            # sessions left four memories in a directory nobody opened, one of
-            # them wrong. Two memories that can disagree is worse than one. Those
-            # four were read into the Brain as dated sources before this went in.
+            # The Brain replaces Claude Code's auto-memory (two memories that can disagree is worse).
             env={"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"},
             tools=CONSOLE_BUILTIN_TOOLS,
             system_prompt={"type": "preset", "preset": "claude_code", "append": append},
             mcp_servers={console_tools.SERVER_NAME: console_tools.build_server(console_tools.TOOLS + computer)},
             allowed_tools=CONSOLE_ALLOWED_TOOLS + console_tools.READ_TOOL_NAMES,
             hooks={
-                # AskUserQuestion never reaches can_use_tool — the CLI answers it
-                # from its own TUI, so under sdk-py it auto-declines in about five
-                # seconds and the model falls back to asking in prose. PreToolUse
-                # is the one place we can get in front of it.
+                # AskUserQuestion never reaches can_use_tool (auto-declines in ~5s); PreToolUse is the only way in.
                 "PreToolUse": [ask_hook],
                 "UserPromptSubmit": [HookMatcher(hooks=[brain_context])],
                 "PostToolUse": [
@@ -546,18 +343,13 @@ def build_options(session_id: str | None, model: str | None,
         )
     if CONSOLE_CLI_PATH.exists():
         kwargs["cli_path"] = str(CONSOLE_CLI_PATH)
-    # In every mode, never ask included: the mode switches live (the `mode`
-    # message), and a CLI started without the callback has nobody to ask once
-    # it leaves bypass — it would deny every call. Under bypassPermissions the
-    # CLI doesn't consult it; anything that still arrives is a call the CLI
-    # won't bypass, and a card is the right answer to that.
+    # Registered in every mode: a CLI started without it would deny every call after leaving bypass.
     kwargs["can_use_tool"] = can_use_tool
     if session_id:
         kwargs["resume"] = session_id
     if model or default_model(profile):
         kwargs["model"] = model or default_model(profile)
-    # Every user message comes back with its uuid: the point a rewind goes
-    # to — the conversation in any mode, the files too in a dev tab.
+    # Each user message comes back with its uuid: the rewind point.
     extra: dict[str, str | None] = {"replay-user-messages": None, "prompt-suggestions": None}
     # A fan-out waits on several agents inside one tool call.
     kwargs["env"] = {**kwargs.get("env", {}),
@@ -568,19 +360,15 @@ def build_options(session_id: str | None, model: str | None,
         # A job runs for minutes inside one tool call.
         kwargs["env"] = {**kwargs["env"], "MCP_TOOL_TIMEOUT": str(1000 * max(
             DELEGATE_CALL_LIMIT_S, COMPUTER_JOB_LIMIT_S + COMPUTER_SETUP_LIMIT_S + 60))}
-    # Claude in Chrome, off in study tabs (nothing there drives a browser) and
-    # never without the gate: `can_use_tool` is gone in never-ask, so the
-    # approval has to sit in a PreToolUse hook to hold in every mode. Its
-    # timeout is the card's, or the CLI would give up before the click.
+    # Chrome never runs without the gate: can_use_tool is gone in never-ask, so the approval
+    # sits in a PreToolUse hook, with the card's timeout.
     if CONSOLE_CHROME and gate_browser is not None and profile in CHROME_PROFILES:
         extra["chrome"] = None
         kwargs["hooks"]["PreToolUse"].append(HookMatcher(
             matcher=f"{BROWSER_TOOL_PREFIX}.*", hooks=[gate_browser],
             timeout=PERMISSION_TIMEOUT_S))
     if session_id and resume_at:
-        # Rewinding the conversation: resume cut at the message before the
-        # one you rewound to (sessions.rewind_point), as a fork, so the
-        # original session stays whole in the resume list.
+        # Conversation rewind: a fork cut at sessions.rewind_point; the original stays whole.
         extra["resume-session-at"] = resume_at
         kwargs["fork_session"] = True
     kwargs["extra_args"] = extra
@@ -595,18 +383,12 @@ def build_options(session_id: str | None, model: str | None,
     return ClaudeAgentOptions(**kwargs)
 
 
-# A pill carries whatever the widget was already showing, and some of those
-# slices are enormous — a month of messages serializes to ~538KB, which is more
-# than the window holds, from one click. The frontend decides what's *worth*
-# pinning (pin.js shapes and caps per source); this is the floor under it, so no
-# pill can cost the session regardless of what the client sends.
+# Floor under pin.js's per-source caps: a month of messages serializes to ~538KB, more than the window.
 PILL_LIMIT = 20_000
 
 
 def _bounded(text: str) -> str:
-    """Cap one pill's text. Truncation is announced rather than silent: a model
-    that can see it only got part of a list will say so, where one handed a
-    quietly-cut array reports a confident wrong count."""
+    """Cap one pill's text; the cut is announced, since a silently cut array gets a confident wrong count."""
     if len(text) <= PILL_LIMIT:
         return text
     return (text[:PILL_LIMIT]
@@ -616,17 +398,12 @@ def _bounded(text: str) -> str:
 
 
 def _pill_json(data: Any) -> str:
-    """One pill's JSON, bounded. Not indented: on real widgets indent=2 was
-    18-55% whitespace (the health card's 9.0k chars were 4.6k of data), paid
-    every turn the pill stays in context, and fewer pills hit PILL_LIMIT."""
+    """One pill's JSON, bounded. Unindented: indent=2 was 18-55% whitespace on real widgets."""
     return _bounded(json.dumps(data, default=str))
 
 
-# `!` in the composer: a command the user typed, so it runs without a card in
-# any mode, as the CLI's shell mode does. Like there, Claude then sees the
-# output and answers it. Ctrl+B moves one to the background, and so does
-# outliving the limit, since a held turn locks the tab: it runs on in the view
-# pane's Tasks, and Claude hears how it ended with your next message.
+# `!` in the composer: user-typed, so no card in any mode. Ctrl+B or outliving the limit
+# backgrounds it (a held turn locks the tab); Claude hears how it ended with the next message.
 SHELL_TIMEOUT_S = 120
 SHELL_CAP_CHARS = 30_000
 SHELL_TAIL_CHARS = 4_000        # what Tasks shows of a background command
@@ -634,22 +411,18 @@ SHELL_REPORT_S = 1.0            # how often a background command reports output
 _background: set[asyncio.Task] = set()
 
 
-# A `!` command runs on a pty, so anything that asks (a y/n, a password, vim)
-# can be answered: the page opens a terminal on it (/ws/console/shell) once
-# it's run long enough not to be an instant `ls`. Claude still gets text: the
-# same bytes with the terminal's escape codes taken out (New Features #58).
+# `!` runs on a pty so prompts can be answered from a terminal (/ws/console/shell);
+# Claude gets the same bytes with escape codes stripped.
 SHELL_ROWS, SHELL_COLS = 24, 100
 SHELL_BACKLOG_BYTES = 64_000    # what a terminal attaching late is replayed
-# A pager in a block that's turned back into text when the command ends is
-# just a wait for a "q": the output lands in the transcript either way.
+# A pager would just wait for "q"; the output lands in the transcript either way.
 SHELL_ENV = {"PAGER": "cat", "GIT_PAGER": "cat"}
 _ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[()][0-9A-Za-z]|\x1b[=>78DEHMc]")
 _tty_shells: dict[str, "Shell"] = {}   # running `!` commands a terminal can attach to
 
 
 def _plain(text: str) -> str:
-    """Terminal output as text: escape codes out, CRLF to LF. A bare \\r (a
-    progress bar redrawing its line) stays; the page draws only what's after it."""
+    """Terminal output as text: escape codes out, CRLF to LF. A bare \\r stays (the page draws what follows it)."""
     return _ANSI.sub("", text).replace("\r\n", "\n")
 
 
@@ -697,8 +470,7 @@ async def _pump_shell(shell: Shell, state: "SessionState", send) -> None:
         chunks.put_nowait(data or None)
 
     loop.add_reader(shell.master, readable)
-    # Split UTF-8 and escape codes across reads: decode incrementally, and
-    # hold back an unfinished escape until the next chunk completes it.
+    # UTF-8 and escape codes split across reads: decode incrementally, hold back a partial escape.
     decoder = codecs.getincrementaldecoder("utf-8")("replace")
     pending = ""
     try:
@@ -729,8 +501,7 @@ async def _pump_shell(shell: Shell, state: "SessionState", send) -> None:
                 await send({"type": "shell_output", "text": tail})
         shell.code = await asyncio.to_thread(shell.proc.wait)
     finally:
-        # Cleared before the close, so a terminal's keystroke can't land in
-        # whatever file reuses the number next (shell_ws checks it).
+        # Cleared before close so a keystroke can't hit a reused fd (shell_ws checks it).
         fd, shell.master = shell.master, -1
         try:
             loop.remove_reader(fd)
@@ -760,21 +531,19 @@ async def run_shell(command: str, state: "SessionState", send) -> tuple[str, int
     proc, master = console_terminal.spawn(
         ["/bin/zsh", "-c", command], Path(state.cwd or VAULT_PATH),
         SHELL_ROWS, SHELL_COLS, env_extra=SHELL_ENV)
-    # Non-blocking: a keystroke into a full pty buffer is dropped rather than
-    # stalling the event loop (shell_ws writes from it directly).
+    # Non-blocking: shell_ws writes from the event loop; a full buffer drops the keystroke.
     os.set_blocking(master, False)
     shell = state.shell = Shell(command, proc, master)
     state.shells[shell.id] = shell
     _tty_shells[shell.id] = shell
-    # Before any output: the page needs the id to open a terminal on it.
+    # Before any output: the page needs the id to open a terminal.
     await send({"type": "shell_tty", "id": shell.id})
     pump = asyncio.create_task(_pump_shell(shell, state, send))
     _background.add(pump)
     pump.add_done_callback(_background.discard)
     moved = asyncio.create_task(shell.moved.wait())
     try:
-        # Outliving the limit moves it to the background — unless a terminal
-        # is open on it: someone typing in vim isn't a command left running.
+        # Over the limit it backgrounds, unless a terminal is open on it (someone in vim).
         while True:
             await asyncio.wait({pump, moved}, timeout=SHELL_TIMEOUT_S,
                                return_when=asyncio.FIRST_COMPLETED)
@@ -836,10 +605,8 @@ def shell_prompt(command: str, output: str, code: int | None) -> str:
             f"<bash-stdout>{output}</bash-stdout>\n<bash-exit-code>{code}</bash-exit-code>")
 
 
-# Images dropped on the console, from upload to send. In memory and bounded:
-# the pill only carries an id, and the session's own history is what keeps an
-# image once it's sent. A backend restart in between loses it, and the pill's
-# marker then says so rather than the model guessing at a missing picture.
+# Dropped images, upload to send: in memory, bounded; the pill carries an id.
+# A restart in between loses it and the marker says so.
 HELD_IMAGES_MAX = 24
 _held_images: "OrderedDict[str, dict]" = OrderedDict()
 
@@ -865,10 +632,8 @@ def _image_marker(pill: dict, label: str) -> str:
 
 def turn_input(payload: dict, state: "SessionState | None" = None,
                uuid: str | None = None) -> Any:
-    """What `client.query` gets: the prompt, as a one-message stream when it
-    carries images, because a plain string can't hold an image block, or a
-    uuid — a queued message's, which the CLI's replay hands back when the
-    message is actually taken in, and which `cancel_async_message` names."""
+    """What `client.query` gets: a string, or a one-message stream when it carries images or
+    a queued message's uuid (replayed when taken in; `cancel_async_message` names it)."""
     text = build_prompt(payload, state)
     held = [_held_images[key] for pill in (payload.get("context") or [])
             if (key := str(pill.get("image") or "")) in _held_images]
@@ -891,12 +656,9 @@ QUEUE_ID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a
 
 async def cancel_queued(client: "ClaudeSDKClient", state: "SessionState",
                         ids: list[str]) -> list[str]:
-    """Take queued messages back before the CLI reads them; the ones it
-    hadn't read yet come back. Without this a Stop doesn't stop: the CLI runs
-    whatever is still queued as a fresh turn the moment the interrupt lands
-    (tested). `cancel_async_message` has no SDK wrapper, hence the
-    private call; a CLI without it answers with an error, which counts as
-    "already read" — the replay is then what settles it."""
+    """Take queued messages back before the CLI reads them; returns the ids cancelled.
+    Without it Stop doesn't stop (the CLI runs the queue as a fresh turn). No SDK wrapper,
+    hence the private call; an error answer counts as "already read"."""
     send = getattr(getattr(client, "_query", None), "_send_control_request", None)
     taken: list[str] = []
     for qid in ids:
@@ -905,7 +667,7 @@ async def cancel_queued(client: "ClaudeSDKClient", state: "SessionState",
         try:
             answer = await asyncio.wait_for(
                 send({"subtype": "cancel_async_message", "message_uuid": qid}), 5)
-        except Exception:  # see the docstring
+        except Exception:  # error answer: treated as already read
             continue
         if isinstance(answer, dict) and answer.get("cancelled"):
             state.queued.discard(qid)
@@ -914,20 +676,13 @@ async def cancel_queued(client: "ClaudeSDKClient", state: "SessionState",
 
 
 def build_prompt(payload: dict, state: "SessionState | None" = None) -> str:
-    """One user turn: pinned widget data, then their text.
-
-    The system prompt names today's day-key, but it's fixed when the session
-    opens and a dashboard tab stays open for days — every "what's on today?"
-    after the first rollover was answered against the day the console booted.
-    The correction rides on the first message of each new day only, so the
-    common case still costs nothing."""
+    """One user turn: pinned widget data, then their text. The system prompt's day-key is
+    fixed at session start, so the first message of each new day carries a correction."""
     parts = []
     if state is not None:
         today = day_key()
         if today != state.day:
-            # A rollover can also be a move: 8/16→8/17 is the RDU→LAX flight,
-            # so the zone baked into the instructions goes stale on exactly
-            # the day getting it wrong costs three hours.
+            # A rollover can also be a timezone move (a flight day).
             moved = tz.zone_on(today) != tz.zone_on(state.day)
             state.day = today
             parts.append(f"<system_note>The day rolled over — today's day-key "
@@ -940,20 +695,14 @@ def build_prompt(payload: dict, state: "SessionState | None" = None) -> str:
         parts.append("<attached_context>")
         for pill in pills:
             label = str(pill.get("label", "widget"))
-            # A dropped file is the one pill whose contents the user didn't
-            # assemble — it's a PDF someone mailed or a photo of a poster — so
-            # it goes in the same fence extracted attachments already use
-            # rather than in a <widget>, which the model reads as our own data.
+            # A dropped file is untrusted content: fenced like attachments, not a <widget> (our own data).
             if pill.get("kind") == "file":
                 if pill.get("image"):
                     parts.append(_image_marker(pill, label))
                     continue
                 text = attachments.fenced(_bounded(str(pill.get("data") or "")), label)
                 note = str(pill.get("note") or "")
-                # A kept PDF's ref goes OUTSIDE the fence: it's ours, not the
-                # file's, and a document can't mint itself a ref by printing
-                # one in its text. The page markers inside are the file's
-                # own text, cut by us, and are only ever page numbers.
+                # The ref goes OUTSIDE the fence: a document can't mint itself a ref by printing one.
                 doc = pill.get("doc") if isinstance(pill.get("doc"), dict) else {}
                 ref = str(doc.get("ref") or "")
                 if text and docs.DOC_REF_RE.fullmatch(ref):
@@ -963,10 +712,7 @@ def build_prompt(payload: dict, state: "SessionState | None" = None) -> str:
                     continue
                 parts.append(text or f'<file name="{label}">unreadable: {note}</file>')
             elif pill.get("kind") == "session":
-                # Another tab, or a past session, @-mentioned or dragged in
-                # (#94): its digest (app/session_digest.py), not the
-                # transcript. Its own tag, since it quotes a conversation
-                # that may itself have quoted mail or pages.
+                # A digest (app/session_digest.py), in its own tag: it may quote mail or pages.
                 body = _bounded(str(pill.get("data") or "")).replace("</past_session", "</ past_session")
                 parts.append(f'<past_session name={label!r}>\nA digest of an earlier session the '
                              "user pointed at: what they asked, the files it changed, its last "
@@ -976,24 +722,20 @@ def build_prompt(payload: dict, state: "SessionState | None" = None) -> str:
                 parts.append(f'<widget name="{label}">\n'
                              f'{_pill_json(pill.get("data"))}\n</widget>')
         parts.append("</attached_context>\n")
-    # What a tab this one handed off to came back with (Console.jsx holds
-    # them until the next send). Model-written, but by a tab the user can
-    # see, so it reads as a colleague's note rather than as data.
+    # Reports from tabs this one handed off to (Console.jsx holds them until the next send).
     for rep in (payload.get("reports") or [])[:6]:
         if not isinstance(rep, dict):
             continue
         source = re.sub(r'[^\w .·/-]', "", str(rep.get("from") or "another tab"))[:80]
         body = _bounded(str(rep.get("text") or "")).replace("</handoff_report", "</ handoff_report")
         parts.append(f'<handoff_report from="{source}">\n{body}\n</handoff_report>\n')
-    # What the PR this tab watches did since the last poll (console_pr.py).
-    # Review and comment bodies are other people's words, quoted inside it.
+    # PR watch events (console_pr.py); comment bodies are other people's words.
     notes = [str(n)[:600] for n in (payload.get("pr_notes") or [])[:12] if str(n).strip()]
     if notes:
         body = _bounded("\n".join(f"- {n}" for n in notes)).replace("</pr_watch", "</ pr_watch")
         parts.append(f"<pr_watch>\n{body}\n</pr_watch>\n")
     if state is not None and getattr(state, "rewound", False):
-        # The files moved under the conversation: without this the model
-        # carries on as if the edits it remembers making are still there.
+        # Otherwise the model assumes its remembered edits still exist.
         state.rewound = False
         parts.append("<rewind>The user rewound the repo's files to a checkpoint "
                      "before one of their earlier messages; edits made after it "
@@ -1002,8 +744,7 @@ def build_prompt(payload: dict, state: "SessionState | None" = None) -> str:
     if state is not None and getattr(state, "shell_notes", None):
         parts.extend(state.shell_notes)
         state.shell_notes.clear()
-    # The Preview's auto-verify, on for this message. Passes through a regex
-    # because the page sent it and it lands in the prompt.
+    # Preview auto-verify; regex-checked because the page sent it and it lands in the prompt.
     verify = str(payload.get("verify_url") or "")
     if re.fullmatch(r"http://(localhost|127\.0\.0\.1):\d{2,5}/?", verify):
         parts.append(f"<auto_verify>If this turn changes anything the running app at "
@@ -1016,15 +757,9 @@ def build_prompt(payload: dict, state: "SessionState | None" = None) -> str:
 
 
 def _shape_questions(questions: Any) -> list[dict]:
-    """Trim one AskUserQuestion payload down to what the card renders.
-
-    Field by field rather than through _safe(), which collapses anything
-    oversized into a {"truncated": …} dict — and a card handed a dict where it
-    expects a list draws nothing at all. That failure isn't a missing card, it
-    is a ten-minute hang: the turn is still blocked on an answer that no longer
-    has anywhere to be given. The shaped list is also what gets matched against
-    on the way back, so a truncated question still finds its answer.
-    """
+    """Trim an AskUserQuestion payload to what the card renders, field by field: _safe()
+    would turn an oversized list into a dict, the card draws nothing, and the turn hangs
+    10 minutes. This shaped list is also what answers are matched against."""
     if not isinstance(questions, list):
         return []
     out = []
@@ -1033,8 +768,7 @@ def _shape_questions(questions: Any) -> list[dict]:
             continue
         opts = [{"label": str(o.get("label", ""))[:200],
                  "description": str(o.get("description", ""))[:300]}
-                # eight, so the free-text row after them is still reachable by
-                # a digit — the card's number keys stop at 9.
+                # eight: the free-text row after them stays reachable (number keys stop at 9).
                 for o in (q.get("options") or [])[:8] if isinstance(o, dict)]
         if not opts:
             continue
@@ -1046,15 +780,9 @@ def _shape_questions(questions: Any) -> list[dict]:
 
 
 def _format_answers(questions: list[dict], answers: dict[str, Any]) -> str:
-    """Render the picked options the way the CLI's own tool result reads.
-
-    Wording carries more weight here than it looks like it should. What the
-    model actually receives is a *denial* reason (that is the only channel a
-    PreToolUse hook has back into the turn), so handed a bare "the user picked
-    blue" it decides the tool returned a malformed result and says so out loud
-    instead of using the answer. Phrased like the real thing, it just reads the
-    answer and carries on — verified against a live turn before this shipped.
-    """
+    """Render the picked options the way the CLI's own tool result reads. The model gets
+    this as a denial reason (a PreToolUse hook's only channel); a bare "picked blue" makes
+    it call the result malformed, so keep this wording."""
     parts = []
     for q in questions:
         text = str(q.get("question", ""))
@@ -1072,31 +800,11 @@ def _format_answers(questions: list[dict], answers: dict[str, Any]) -> str:
 
 
 def _always_rule(tool_name: str, input_data: Any) -> tuple[str | None, str | None]:
-    """(rule key, human label) for "don't ask again", or (None, None) when this
-    call may not earn a standing yes at all.
-
-    Tool-wide for everything except Bash, where blanket approval earned by one
-    `git status` would also cover `rm -rf` for the rest of the session — so
-    Bash narrows to the approved command's own program name.
-
-    Which means the name has to be the one that will actually run, and reading
-    the first word is not how you find it: `cd backend && npm test` starts with
-    `cd`, and a rule keyed on that hands `cd / && rm -rf ~` the same standing
-    yes — the exact outcome the narrowing exists to prevent, on the command
-    shape this repo uses everywhere. So this parses the command the way
-    is_safe_read does. strip_cd_prefix looks past the one cd form the console
-    actually issues, and has_breakout then refuses anything that could still
-    start a second command behind the name we keyed on.
-
-    Anything unparseable earns nothing. It used to fall through to the bare
-    "Bash" key, which is the blanket grant this function exists to withhold —
-    one unbalanced quote and a single click covered every command for the rest
-    of the session.
-
-    ExitPlanMode earns nothing either: it approves one specific plan, so a
-    standing yes would cover plans nobody has read. Deciding that here keeps it
-    in one place instead of repeated at each call site.
-    """
+    """(rule key, human label) for "don't ask again", or (None, None) when the call earns no
+    standing yes. Tool-wide except Bash, which narrows to the program that will actually run:
+    parsed like is_safe_read (strip_cd_prefix, then has_breakout), because keying on the
+    first word `cd` would grant `cd / && rm -rf ~`. Unparseable earns nothing (never the bare
+    "Bash" key). ExitPlanMode earns nothing: it approves one plan."""
     if tool_name == "ExitPlanMode":
         return None, None
     if tool_name != "Bash":
@@ -1109,9 +817,7 @@ def _always_rule(tool_name: str, input_data: Any) -> tuple[str | None, str | Non
     words = strip_cd_prefix(words)
     if not words or has_breakout(words):
         return None, None
-    # A leading `VAR=value` is an assignment, not the program. It also survives
-    # the rsplit below as a path fragment, which named the rule after a word
-    # the command never ran (`VAULT_PATH=/abs uvicorn …` -> "abs").
+    # `VAR=value` is an assignment, not the program (rsplit would name the rule "abs").
     head = words[0]
     if "=" in head:
         return None, None
@@ -1132,20 +838,13 @@ def _safe(obj: Any, limit: int = 4000) -> Any:
     return json.loads(s)
 
 
-# Present tense, to finish "this will …" on a card. Only the two verbs that
-# can't be undone are here: a card that warned about every write would be a
-# card nobody reads the warning on.
+# Finishes "this will …" on a card; only the two irreversible verbs, or every card would warn.
 _COSTS = {"deleted": "delete", "sent": "send"}
 
 
 def _danger(change: "console_changes.Change | None") -> str | None:
-    """What saying yes to this call costs, or None if it can be walked back.
-
-    The guard sentence, where the change table has one — it was written to
-    finish exactly this clause, for auto mode's benefit, and is the better
-    wording wherever it exists. Otherwise the verb and the scope, which is
-    thinner but still says the word that matters.
-    """
+    """What saying yes costs, or None if it can be walked back: the change's guard sentence
+    where it has one, else verb and scope."""
     if change is None:
         return None
     if change.guard:
@@ -1154,9 +853,7 @@ def _danger(change: "console_changes.Change | None") -> str | None:
     return f"{verb} a {change.scope}" if verb else None
 
 
-# A card's reason is the last thing the model said, not the whole turn: a run
-# of tool calls after a long preamble would otherwise attach the preamble to
-# the last one. The tail is enough to carry "I'll drop the duplicate 9am".
+# A card's reason is the tail of what the model last said, not the whole preamble.
 NARRATION_CHARS = 500
 
 
@@ -1173,119 +870,80 @@ class SessionState:
     def __init__(self):
         self.announced_id: str | None = None
         self.sent_commands = False
-        # The turn's speed (TTFT, tok/s), for the footer's stats for nerds.
+        # Turn speed (TTFT, tok/s) for the footer.
         self.stats = console_stats.TurnStats()
-        # The model id the stream last named (note_model), and the CLI's
-        # model list (session_models), which open_tab checks a pick against.
+        # Model the stream last named (note_model); the CLI's model list (session_models).
         self.model: str | None = None
         self.models: list[dict] = []
+        # What start_model chose; a refused turn names it when proposing a retry.
+        self.asked_model: str | None = None
         # The day baked into this session's system prompt; build_prompt
         # corrects the model when the wall clock leaves it behind.
         self.day: str | None = None
-        # Speech out, fixed at session start along with the prompt rule that
-        # goes with it (VOICE_APPEND) — the client reconnects to change it.
+        # Fixed at start with its prompt rule (VOICE_APPEND); changing it reconnects.
         self.voice = False
-        # The pump for the turn in flight, so an interrupt can shut the mouth
-        # from the reader loop — see the interrupt branch below.
+        # Pump for the turn in flight, so an interrupt can silence it.
         self.speech: "SpeechPump | None" = None
-        # The mode in force, as the wire names it, and whether it is auto
-        # (cards suppressed, summary at the end of the turn). Both change live
-        # on a `mode` message, mid-turn included: can_use_tool reads them per
-        # call, so a switch lands on the next tool call.
+        # Mode in force, and whether it is auto. Both change live on a `mode` message;
+        # can_use_tool reads them per call.
         self.mode: str | None = None
         self.auto = False
-        # The turn's ledger. A call is *claimed* when the model asks for it
-        # and *kept* when its result comes back clean, so a denied or failed
-        # call never reaches the summary: claimed by tool_use_id here, moved
-        # to `changes` by the matching tool_result. See _stream_messages.
+        # The turn's ledger: claimed by tool_use_id when asked, moved to `changes` when the
+        # result is clean, so denied or failed calls never reach the summary.
         self.claimed: dict[str, "console_changes.Change"] = {}
         self.changes: list["console_changes.Change"] = []
-        # What the model has said since the last approval card — the sentence
-        # that goes on the next one as its reason. Filled by _stream_messages
-        # from the same text the browser is rendering, and *emptied* when a
-        # card takes it: a second call with nothing written between them then
-        # shows no reason, rather than repeating the first card's sentence
-        # under a different delete. Stale justification is worse than none.
+        # What the model said since the last card: the next card's reason. Emptied when a card
+        # takes it, so a stale justification never sits under a different call.
         self.narration: list[str] = []
-        # Set when Stop lands on a live turn; cleared before every new query.
-        # The CLI ends an interrupted turn with is_error and subtype
-        # error_during_execution — the same shape as a turn that broke — so
-        # without this every Stop press was filed in the failure log and
-        # footed "error". It is the only thing that tells the two apart.
+        # Set when Stop lands, cleared before each query: the CLI ends an interrupted turn with
+        # the same is_error shape as a broken one, and this is the only way to tell them apart.
         self.interrupted = False
-        # "Yes, and don't ask again until this turn ends" on a Claude in Chrome
-        # card: one web task, one card. Cleared at every turn start.
+        # "Don't ask again until this turn ends" on a Chrome card; cleared at turn start.
         self.browser_turn_ok = False
-        # A turn is in flight: set by a user query, or by the reader when the
-        # CLI starts one unprompted (a background command finishing), and
-        # cleared once the turn's result is sent and its speech is done.
-        # "Still working" and Stop both read it — see read_session.
+        # Turn in flight: set by a user query or by the reader when the CLI starts one
+        # unprompted; cleared after the result and speech are done. Stop reads it too.
         self.moved_at = time.monotonic()   # the turn's last sign of life
         self.in_turn = False
-        # The last turn ended neither stopped nor in error: only then do the
-        # held messages go (console_queue).
+        # Last turn ended neither stopped nor in error: only then do held messages go.
         self.turn_clean = False
-        # The summary of the last background task to finish, which is what an
-        # unprompted turn is about. Taken by the turn_start that announces it.
+        # Summary of the last finished background task, taken by the turn_start it woke.
         self.woke_by: str | None = None
-        # Background tasks whose notification already has its row in the log
-        # (task_notes), and whether the turn about to open was woken by one.
+        # Background tasks already noted in the log (task_notes); whether this turn was woken by one.
         self.noted_tasks: set[str] = set()
         self.woke_noted = False
-        # The tab's profile (console_profiles) and, for dev, its repo — fixed
-        # at start like the mode.
+        # Tab profile (console_profiles) and, for dev, its repo; fixed at start.
         self.profile = "general"
         self.cwd: Path | None = None
-        # A dev tab's repo (its main checkout) and, when it has one, its own
-        # worktree (console_worktree) — which is then `cwd`.
+        # A dev tab's main checkout and, if it has one, its worktree (console_worktree), which is `cwd`.
         self.project: Path | None = None
         self.worktree: dict | None = None
         # How console_tools.use_computer reaches its job.
         self.use_computer = None
-        # `!`: the one holding the turn, everything still running, and how the
-        # finished background ones reach Claude (with the next message).
+        # `!`: the one holding the turn, all running, and finished background ones' notes for the next message.
         self.shell: Shell | None = None
         self.shells: dict[str, Shell] = {}
         self.shell_notes: list[str] = []
-        # How console_tools.open_tab reaches the browser: set at start to a
-        # coroutine that asks the page for a tab and waits for its answer;
-        # None in a tab another tab opened, which doesn't hand off again.
+        # open_tab/tabs/message_tab: coroutines asking the page, set at start; None in a
+        # tab another tab opened (it doesn't hand off again).
         self.open_tab = None
-        # console_tools.tabs, the same way: list the window's tabs and close
-        # the ones named. Locked and unlocked together with open_tab.
         self.tabs = None
-        # console_tools.message_tab, the same way: a follow-up to a child.
         self.message_tab = None
-        # A dev turn's starting tree (console_diff.snapshot), taken when the
-        # user's message goes out and diffed against when its result lands.
+        # A dev turn's starting tree (console_diff.snapshot), diffed when its result lands.
         self.diff_snap: dict | None = None
-        # TaskCreate/TaskUpdate calls in flight; their result re-reads the
-        # list (console_tasks) for the panel.
+        # TaskCreate/TaskUpdate calls in flight; their result re-reads the list (console_tasks).
         self.task_calls: set[str] = set()
         # Subagents and other CLI tasks, task_id -> row (console_agents).
         self.agents: dict[str, dict] = {}
         # A rewind landed since the last message; build_prompt says so once.
         self.rewound = False
-        # Messages sent mid-turn that the CLI hasn't taken in yet, by the
-        # uuid its replay will carry. It reads them at the next tool boundary
-        # (the same turn) or, if the turn was already writing its last reply,
-        # as a turn of its own right after.
+        # Mid-turn messages the CLI hasn't taken in, by replay uuid. It reads them at the next
+        # tool boundary, or as a turn of their own if the reply was already finishing.
         self.queued: set[str] = set()
 
 
 class SpeechPump:
-    """The reply, read aloud, one sentence at a time.
-
-    Synthesis hangs off the *delta* stream rather than the finished turn:
-    tokens are already streaming, so speaking each sentence as it completes
-    puts the first words in the air about a second in, instead of after the
-    whole answer lands. A four-second tool call is dead air either way — the
-    client's earcon covers that end.
-
-    A worker does the synthesizing so `say` never stalls the delta loop, and
-    it is deliberately serial: one at a time is what keeps the sentences in
-    the order they were written.
-    """
+    """The reply read aloud a sentence at a time, synthesized off the delta stream (first
+    words about 1s in). One serial worker keeps sentences in order and `say` off the delta loop."""
 
     def __init__(self, ws: WebSocket):
         self.ws = ws
@@ -1299,14 +957,8 @@ class SpeechPump:
         self._enqueue(chunks)
 
     async def flush(self) -> None:
-        """End of turn: speak what's left, then wait for the backlog.
-
-        The turn is over for the model well before it's over in the room — a
-        long answer finishes generating with a dozen sentences still queued.
-        So this waits on the worker rather than on the queue draining, because
-        an interrupt arriving in that window has to be able to stop the mouth:
-        close() cancels the worker and this returns.
-        """
+        """End of turn: speak what's left. Waits on the worker, not the queue, so an
+        interrupt can still stop the mouth (close() cancels the worker; this returns)."""
         chunks, self.buf = voice_io.take_sentences(self.buf, flush=True)
         self._enqueue(chunks)
         self.queue.put_nowait(None)      # ...and the worker stops when it reaches it
@@ -1336,25 +988,15 @@ class SpeechPump:
                 pass        # a mute console is a degraded one, not a broken one
 
     def close(self) -> None:
-        """Stop talking. Cancelling the worker mid-backlog is the point: when
-        the turn was interrupted, the sentences still queued were never heard
-        and must never be sent — the client stops playback at the same moment,
-        and the model is told only what was actually said."""
+        """Stop talking: queued sentences of an interrupted turn are never sent."""
         self.worker.cancel()
 
 
 async def read_session(client: "ClaudeSDKClient", ws: WebSocket,
                        state: SessionState) -> None:
-    """The socket's one reader: every turn, asked for or not, until the CLI goes.
-
-    Reading per query (`receive_response()` from each send to its result) lost
-    every turn the CLI starts on its own. A Bash call that outlives its
-    timeout is moved to the background, the model ends its turn with "I'll
-    tell you when it finishes", and when it does the CLI runs a second turn
-    nobody was reading. That reply sat in the SDK's queue until the next
-    question, whose read then stopped at the *stale* result: from there every
-    answer showed up one turn late. Reading continuously gives that turn the same path as any other.
-    """
+    """The socket's one reader: every turn, asked for or not, until the CLI goes. Per-query
+    reads lose CLI-started turns (a finished background Bash), which then leave a stale
+    result in the queue and every later answer shows one turn late."""
     messages = _with_suggestions(client, ws)
     while await stream_response(messages, ws, state):
         state.in_turn = False
@@ -1374,10 +1016,8 @@ async def send_held(ws: Any) -> None:
 
 
 def hold_next(ws: Any, state: SessionState) -> None:
-    """A clean turn just ended: if this tab holds messages (console_queue),
-    ask the session loop to send the oldest, through the inbox, so it starts
-    the way a typed message does. Not while the CLI still has a steered one,
-    which it runs next by itself; this comes round again when that ends."""
+    """After a clean turn, ask the session loop (via the inbox, like a typed message) to
+    send the tab's oldest held message. Skipped while the CLI has a steered one queued."""
     key = getattr(ws, "key", None)
     if not key or not state.turn_clean or state.queued:
         return
@@ -1389,21 +1029,31 @@ def hold_next(ws: Any, state: SessionState) -> None:
 
 
 async def note_model(ws: WebSocket, state: "SessionState", model) -> None:
-    """The model the session is running, as the stream names it (the init
-    message, then every top-level reply), sent when it changes: the bar
-    shows what "default" became, and follows a /model switch mid-session.
-    The CLI's own error turns say "<synthetic>", which is no model."""
+    """Send the model the stream names when it changes (shows what "default" became; follows /model).
+    "<synthetic>" from the CLI's error turns is no model."""
     if not isinstance(model, str) or not model or model.startswith("<") or model == state.model:
         return
     state.model = model
     await ws.send_json({"type": "model", "model": model})
 
 
+async def note_refusal(ws: WebSocket, state: "SessionState", msg) -> None:
+    """The CLI's error turn saying this account may not run the model: remember it, and send
+    `model_refused` so the page retries on the fallback as a fork."""
+    if getattr(msg, "model", None) != "<synthetic>":
+        return
+    text = " ".join(getattr(b, "text", "") or "" for b in msg.content)
+    if not model_catalog.refusal_in(text):
+        return
+    asked = state.model or state.asked_model
+    alt = await asyncio.to_thread(model_catalog.learn_refusal, asked, text)
+    await ws.send_json({"type": "model_refused", "model": asked,
+                        "fallback": model_catalog.family_of(alt) if alt else None,
+                        "text": text.split(". ")[0]})
+
+
 def session_models(info: dict) -> list[dict]:
-    """The pickers' list, as the CLI reports it: each alias ("fable") or
-    pinned id ("claude-opus-4-8"), what it resolves to, its display name
-    ("Fable 5.2") and the effort levels it takes. The client caches it per
-    profile, so a model the CLI adds shows up with no change here."""
+    """The pickers' models as the CLI reports them (alias or id, resolved, label, efforts); no list kept here."""
     return [{"value": m.get("value"), "resolved": m.get("resolvedModel"),
              "label": m.get("displayName"),
              "efforts": (m.get("supportedEffortLevels") or []
@@ -1413,11 +1063,8 @@ def session_models(info: dict) -> list[dict]:
 
 async def send_session_info(client: "ClaudeSDKClient", ws: WebSocket,
                             state: "SessionState | None" = None) -> None:
-    """What the CLI said it loaded, at connect. The init message's
-    `slash_commands` carries names only and arrives with the first turn; the
-    initialize answer already has every command and skill described — the
-    repo's own in a dev tab, which the vault-side scan can't see. The model
-    list also goes on `state`, which is what open_tab checks a model against."""
+    """What the CLI loaded, described, at connect (the init message has names only, later;
+    a dev tab's repo skills only show here). Models also go on `state` for open_tab."""
     try:
         info = await client.get_server_info() or {}
     except Exception:
@@ -1475,9 +1122,7 @@ _BACKGROUND: set[asyncio.Task] = set()
 
 
 async def send_context(client: "ClaudeSDKClient", ws: WebSocket) -> None:
-    """The context window as `/context` reports it. Asked of the CLI rather
-    than summed from turn usage: it knows the system prompt, tools, memory
-    files and the autocompact buffer, which a token count can't separate."""
+    """The context window as `/context` reports it (the CLI knows categories and the autocompact buffer; turn usage doesn't)."""
     try:
         u = await asyncio.wait_for(client.get_context_usage(), CONTEXT_TIMEOUT)
     except Exception:
@@ -1502,9 +1147,7 @@ async def stream_response(messages: AsyncIterator[Any], ws: WebSocket,
     """One turn off the session's stream. False when the stream is done."""
     speech = SpeechPump(ws) if state.voice else None
     state.speech = speech
-    # Whatever the last turn left unsaid belongs to the last turn. A card in
-    # this one must not quote it as the reason for a call the user hasn't
-    # asked about yet.
+    # Leftover narration belongs to the last turn; a card must not quote it.
     state.narration.clear()
     try:
         more = await _stream_messages(messages, ws, state, speech)
@@ -1512,10 +1155,7 @@ async def stream_response(messages: AsyncIterator[Any], ws: WebSocket,
             await speech.flush()
         return more
     except Exception as e:  # reported, not swallowed
-        # Nothing awaits this task, so an exception here used to end as an
-        # asyncio "never retrieved" line in stderr and a turn the UI waited
-        # on forever. The SDK's reader is dead after one of these, so the
-        # session is too: say so, and close the turn so the UI unlocks.
+        # Nothing awaits this task, and the SDK's reader is dead after one of these: say so and close the turn.
         failures.record("console", "turn", "stream",
                         detail=f"{type(e).__name__}: {e}")
         try:
@@ -1533,16 +1173,8 @@ async def stream_response(messages: AsyncIterator[Any], ws: WebSocket,
             speech.close()
 
 
-# A turn stopped by a quota is not a turn that broke. The SDK reports it with
-# is_error set and subtype "success", so recording the subtype verbatim filed
-# it in the failure log under the label *success* — a row whose name argues
-# against its own table. It still belongs in the log ("how often am I cut
-# off" is a real question), under a name that answers it.
-#
-# The window's name is the CLI's to change, and it does ("session limit"
-# became "5-hour limit" and "weekly limit"), which sends every stop back
-# under `success`. A lost login arrives the same way, so it gets a
-# name too, and `success` is never used even for wording nobody has seen yet.
+# A quota stop (or lost login) arrives is_error with subtype "success"; label by text, never "success".
+# The CLI renames its windows ("session limit" -> "5-hour limit"), so match the family.
 _LIMIT_RE = re.compile(r"\b(session|usage|rate|quota|weekly|daily|\d+-hour) limit\b",
                        re.IGNORECASE)
 _AUTH_RE = re.compile(r"\bfailed to authenticate\b", re.IGNORECASE)
@@ -1558,24 +1190,14 @@ def _fault_label(msg, text: str) -> str:
 
 
 def _fault_key(label: str, detail: str) -> str | None:
-    """The log's fingerprint for this fault, when `detail` alone would split
-    it. "· resets 6pm" and "· resets 1am" are the same stop, and each reset
-    time was its own row: seven rows of one answer to "how often am I cut off"."""
+    """Fingerprint for limit faults: "· resets 6pm" vs "1am" is the same stop, not two rows."""
     return detail.split("·")[0].strip() if label == "limit" else None
 
 
 def _turn_fault(msg, last_tool: str | None,
                 last_tool_error: str | None) -> tuple[str, str]:
-    """(label, detail) for a turn that came back is_error.
-
-    The detail matters more than it looks. This table exists to answer "how
-    often does a turn fail, and on what", and `msg.result` — the only thing
-    that was ever recorded — came back empty for three of the first four
-    failures logged, leaving three rows that named a subtype and said nothing
-    else. `error_during_execution` with no detail is the question, not the
-    answer. So when the CLI has no result text, the turn's own last moments
-    stand in: what it was running, and what that came back with.
-    """
+    """(label, detail) for an is_error turn. `msg.result` is often empty (3 of the first 4
+    failures), so the last tool and its error stand in as the detail."""
     text = str(getattr(msg, "result", "") or "").strip()
     label = _fault_label(msg, text)
     if text:
@@ -1598,9 +1220,7 @@ def _result_text(block: "ToolResultBlock") -> str:
     return ""
 
 
-# What the status bar will draw as what Claude is looking at. Raster formats
-# only, since this lands in an <img src>, and the cap is on the base64 itself:
-# one frame shouldn't be able to stall the socket a turn is running on.
+# Lands in an <img src>: raster only; the cap is on the base64 so one frame can't stall the socket.
 RESULT_IMAGE_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 RESULT_IMAGE_MAX_CHARS = 4_000_000
 
@@ -1624,11 +1244,8 @@ def result_image(block: "ToolResultBlock") -> str | None:
 
 
 async def _with_suggestions(client: Any, ws: WebSocket) -> AsyncIterator[Any]:
-    """The session's messages, with `--prompt-suggestions` taken off them.
-
-    The SDK's parser silently drops that message type, so it has to be caught
-    before the parser. That leans on `_query`, private to the SDK: a client
-    without it just gets no suggestions, which is all that's lost if it moves."""
+    """The session's messages with prompt suggestions peeled off: the SDK parser drops them,
+    so this uses its private `_query`; if that moves, only suggestions are lost."""
     query = getattr(client, "_query", None)
     if query is None:
         async for message in client.receive_messages():
@@ -1648,17 +1265,12 @@ async def _stream_messages(messages: AsyncIterator[Any], ws: WebSocket,
                            state: SessionState,
                            speech: "SpeechPump | None") -> bool:
     """Relay one turn, through its ResultMessage. False if the stream ran dry.
-
-    `messages` is the session's shared stream, so returning mid-iteration
-    leaves the rest of it for the next turn.
-    """
+    `messages` is shared, so returning mid-iteration leaves the rest for the next turn."""
     streamed_any_delta = False
-    # What the turn was doing when it stopped — only read if it stopped badly
-    # and the CLI gave no reason. Locals, so they reset with the turn.
+    # Only read if the turn stopped badly with no reason from the CLI.
     last_tool: str | None = None
     last_tool_error: str | None = None
-    # Calls in flight whose result text is shown in the log: run_script's
-    # under its script (console_code), and the delegates' on their row.
+    # In-flight calls whose result text is shown (run_script, delegates).
     script_calls: set[str] = set()
     async for msg in messages:
         state.moved_at = time.monotonic()
@@ -1667,13 +1279,8 @@ async def _stream_messages(messages: AsyncIterator[Any], ws: WebSocket,
             state.announced_id = sid
             await ws.send_json({"type": "session", "id": sid})
 
-        # Content with no query of ours behind it: the CLI started this turn
-        # itself. Say so first, or the UI renders it as a reply to nothing
-        # with the input unlocked under it. System and rate-limit messages
-        # also arrive between turns, so only content opens one.
-        # The CLI telling the model a background agent or shell finished,
-        # failed or was cut off: shown as its own row (task_notes), which also
-        # says what woke the turn, so turn_start doesn't say it twice.
+        # Background-task notices shown as their own row (task_notes), which also says what
+        # woke the turn, so turn_start stays quiet about it.
         notes = (task_notes.parse(task_notes.text_of(msg.content))[0]
                  if isinstance(msg, UserMessage)
                  and not getattr(msg, "parent_tool_use_id", None) else [])
@@ -1681,12 +1288,13 @@ async def _stream_messages(messages: AsyncIterator[Any], ws: WebSocket,
                  if not (set(n["task_ids"]) & state.noted_tasks)]
         for n in notes:
             state.noted_tasks.update(n["task_ids"])
+        # Content with no query of ours behind it means the CLI started a turn itself: announce
+        # it first. System/rate-limit messages also arrive between turns, so only content opens one.
         if not state.in_turn and not isinstance(msg, (SystemMessage, RateLimitEvent)):
             state.in_turn = True
             state.interrupted = False
             state.browser_turn_ok = False
-            # A queued message the last turn ended before reading: this turn
-            # is the answer to it, not something a background task woke.
+            # A queued message the last turn ended before reading: this turn answers it.
             if (isinstance(msg, UserMessage)
                     and getattr(msg, "uuid", None) in state.queued):
                 await ws.send_json({"type": "turn_start", "queued": True})
@@ -1699,10 +1307,7 @@ async def _stream_messages(messages: AsyncIterator[Any], ws: WebSocket,
         for note in notes:
             await ws.send_json({"type": "tasknote", **note})
 
-        # A subagent's own messages ride the same stream, tagged with the
-        # Agent call they belong to. Its tool calls are shown (under that
-        # call, `parent`); its prose is not — that is the subagent talking to
-        # the parent, and the parent's reply is what says what came of it.
+        # Subagent messages ride this stream tagged by `parent`: its tool calls show, its prose doesn't.
         parent = getattr(msg, "parent_tool_use_id", None)
 
         if PARTIAL and StreamEvent is not None and isinstance(msg, StreamEvent):
@@ -1711,9 +1316,7 @@ async def _stream_messages(messages: AsyncIterator[Any], ws: WebSocket,
             ev = msg.event or {}
             state.stats.event(ev)
             if ev.get("type") == "content_block_start":
-                # What the model is doing before there's anything to show:
-                # a thinking block, or a tool call whose input is still being
-                # written — about a second before the call's chip can be.
+                # Live status before there's anything to show (~1s ahead of the tool chip).
                 block = ev.get("content_block") or {}
                 if block.get("type") in ("thinking", "redacted_thinking"):
                     await ws.send_json({"type": "phase", "phase": "thinking"})
@@ -1729,10 +1332,10 @@ async def _stream_messages(messages: AsyncIterator[Any], ws: WebSocket,
                     if speech:
                         await speech.feed(delta["text"])
         elif isinstance(msg, AssistantMessage):
-            # A subagent's reply carries its own model (a Haiku explorer), not
-            # the session's, so only the top level's counts.
+            # A subagent's reply carries its own model; only the top level's counts.
             if not msg.parent_tool_use_id:
                 await note_model(ws, state, getattr(msg, "model", None))
+                await note_refusal(ws, state, msg)
             for block in msg.content:
                 if isinstance(block, ToolUseBlock):
                     last_tool = block.name
@@ -1743,11 +1346,7 @@ async def _stream_messages(messages: AsyncIterator[Any], ws: WebSocket,
                         state.claimed[block.id] = replace(
                             change, topics=console_changes.refresh_topics(
                                 change, block.input, dev=state.profile == "dev"))
-                    # `detail` is the line the console shows; `raw` is what you
-                    # get by expanding it. Same formatter the transcript replay
-                    # uses, so a resumed session reads like the live one did.
-                    # A script is the whole point of its call, so it goes
-                    # across whole (it's capped at SCRIPT_CHARS already).
+                    # Same formatters as transcript replay. A script goes across whole (capped at SCRIPT_CHARS).
                     script = block.name == RUN_SCRIPT_TOOL
                     if script or block.name in DELEGATE_TOOL_NAMES:
                         script_calls.add(block.id)
@@ -1765,16 +1364,10 @@ async def _stream_messages(messages: AsyncIterator[Any], ws: WebSocket,
                     if speech:
                         await speech.feed(block.text)
         elif isinstance(msg, UserMessage):
-            # Tool results come back as a user message. This is where a
-            # claimed change is kept or dropped: the model asking for a write
-            # is not the write happening, and a summary that counted denials
-            # and failures as changes would be worse than none — it would be
-            # wrong in the direction of "don't worry, it's all here".
+            # Tool results arrive as a user message: where a claimed change is kept or dropped
+            # (counting denials as changes would be wrong in the reassuring direction).
             content = msg.content if isinstance(msg.content, list) else []
-            # The session replays your own message back with its uuid
-            # (replay-user-messages) — the checkpoint a rewind goes to. It is
-            # the one user message with no tool result in it; a subagent's
-            # prompt (parent set) is the parent's, not yours.
+            # The replayed user message (no tool result in it, no parent) carries the checkpoint uuid.
             uuid = getattr(msg, "uuid", None)
             if (uuid and not parent
                     and not any(isinstance(b, ToolResultBlock) for b in content)):
@@ -2107,7 +1700,7 @@ async def console_btw(body: dict) -> dict:
               "asking this on the side, without interrupting it. Answer briefly from "
               f"what's above.\n\n{question}")
     with agent.interactive():
-        return {"answer": (await agent.ask(prompt, model=DEFAULT_MODEL)).strip()}
+        return {"answer": (await agent.ask(prompt, model=default_model("general"))).strip()}
 
 
 @router.get("/api/console/interrupted")
@@ -2785,8 +2378,11 @@ async def _console_session(ws: "console_link.Link") -> None:
                 # copies this context, which is how an in-process tool learns
                 # which session called it (course_review_add records it).
                 console_tools.SESSION.set(state)
+                # An unrunnable model becomes a runnable one, said on the start line.
+                chosen = start_model(payload.get("model"), profile)
+                state.asked_model = chosen.model
                 client = ClaudeSDKClient(options=build_options(
-                    payload.get("session_id"), payload.get("model"),
+                    payload.get("session_id"), chosen.model,
                     mode, can_use_tool, ask_questions, state.voice,
                     profile=profile, cwd=cwd, spawned=spawned,
                     effort=payload.get("effort"),
@@ -2808,13 +2404,19 @@ async def _console_session(ws: "console_link.Link") -> None:
                 note = mode_note(mode)
                 # The mode actually in force — the picker has to show what the
                 # session is, not what was asked.
+                # The account this CLI started on: the bar reconnects idle tabs when it changes.
+                account = claude_quota.active_key() or None
                 await ws.send_json({"type": "mode", "mode": mode,
-                                    "default_model": default_model(profile)})
+                                    "default_model": start_model(None, profile).model
+                                    or default_model(profile),
+                                    "account": account})
                 await ws.send_json({"type": "status",
                                     "text": (("Rewound" if payload.get("resume_at") else "Resumed")
                                              + f" session {resumed[:8]}…" if resumed
                                              else "New session")
                                             + f" · {profile} · mode={mode}{note}"
+                                            + claude_accounts.start_note(account)
+                                            + "".join(f" · {n}" for n in chosen.notes)
                                             + f" · cwd={cwd or VAULT_PATH}"
                                             + (console_worktree.start_line(state.worktree)
                                                + console_project.start_note(Path(state.worktree["path"]))
@@ -3103,6 +2705,14 @@ async def _console_session(ws: "console_link.Link") -> None:
             if state.in_turn:
                 await ws.send_json({"type": "status",
                                     "text": "Still working — interrupt first or wait."})
+                continue
+            # Every account past its rules: the #9 guard's stop; a manual pick overrides it.
+            if (why := claude_accounts.refusal()) is not None:
+                await ws.send_json({"type": "held_back", "texts": [str(payload.get("text") or "")]})
+                await ws.send_json({"type": "status", "text": f"Not sent: {why}. Raise a ceiling "
+                                    "or pick an account by hand in Settings → Claude accounts."})
+                await ws.send_json({"type": "result", "duration_ms": None,
+                                    "is_error": True, "interrupted": False})
                 continue
 
             unlock_handoff(state, payload, _request_tab, _request_tabs, _request_message)

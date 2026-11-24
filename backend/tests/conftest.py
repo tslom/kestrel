@@ -1,6 +1,6 @@
-"""Shared fixtures. The one thing every db-touching test needs is an app.db
-that is NOT the real one — so `dbfile` points db.APP_DB at a throwaway file in
-a tmp dir, pre-built from a schema migrated once per session."""
+"""Shared fixtures. `dbfile` points db.APP_DB at a throwaway copy of a schema migrated
+once per session, so no test touches the real app.db. The autouse fixtures isolate
+every test from the developer's real usage, keychain, model catalog, relay and vault."""
 
 import shutil
 import sqlite3
@@ -12,13 +12,8 @@ from app import db
 
 @pytest.fixture(scope="session")
 def migrated_template(tmp_path_factory):
-    """One app.db run through the full migration set, built once per session.
-
-    Migrating from nothing costs ~17ms (WAL switch + every migration), and
-    half the suite opens a DB — so paying it per test was about half the
-    suite's wall time. The template is checkpointed and closed before anyone
-    copies it, so the main file alone holds the whole schema (no -wal to carry
-    along) and its header already says WAL."""
+    """One fully migrated app.db per session (migrating per test was ~half the
+    suite's wall time), checkpointed and closed so the main file holds the schema."""
     p = tmp_path_factory.mktemp("template") / "app.db"
     saved = db.APP_DB
     db.APP_DB = p
@@ -35,9 +30,8 @@ def migrated_template(tmp_path_factory):
 
 @pytest.fixture
 def fresh_dbfile(tmp_path, monkeypatch):
-    """Redirect db.APP_DB to a path with nothing at it. connect() creates and
-    migrates it from scratch on first open — for tests about migration itself
-    (test_migration_race) or about whether the file gets created at all."""
+    """db.APP_DB redirected to a path with nothing at it, for tests of migration
+    itself or of whether the file gets created."""
     p = tmp_path / "app.db"
     monkeypatch.setattr(db, "APP_DB", p)
     return p
@@ -45,10 +39,7 @@ def fresh_dbfile(tmp_path, monkeypatch):
 
 @pytest.fixture
 def dbfile(fresh_dbfile, migrated_template):
-    """Redirect db.APP_DB to a temp copy of the migrated template: real and
-    current, just empty and disposable. The copy's path is new to db._ready, so
-    its first connect() still runs _enable_wal and _migrate — each a cheap
-    no-op read against a DB that is already WAL and fully applied."""
+    """db.APP_DB redirected to a disposable copy of the migrated template."""
     shutil.copyfile(migrated_template, fresh_dbfile)
     return fresh_dbfile
 
@@ -63,9 +54,8 @@ def con(dbfile):
 
 @pytest.fixture
 def router_client(dbfile):
-    """Factory: a TestClient over a bare FastAPI carrying just these routers,
-    backed by the temp DB. Bare so the real app's lifespan — vault indexing,
-    the provider poller — never runs. Extra kwargs go to TestClient."""
+    """Factory: a TestClient over a bare FastAPI carrying just these routers (so the
+    real lifespan never runs), on the temp DB. Extra kwargs go to TestClient."""
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
@@ -79,8 +69,7 @@ def router_client(dbfile):
 
 @pytest.fixture
 def freeze_day(monkeypatch):
-    """Factory: pin db.day_key() to `day`. Keeps the `dt=None` parameter —
-    production calls day_key(dt) too, and a zero-arg stub TypeErrors there."""
+    """Factory: pin db.day_key() to `day`. Keeps `dt=None`: production calls day_key(dt)."""
     def freeze(day):
         monkeypatch.setattr(db, "day_key", lambda dt=None: day)
         return day
@@ -89,20 +78,70 @@ def freeze_day(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def no_usage_budget(monkeypatch):
-    """Blind the budget gate. It reads the real usage windows — the live
-    OAuth fetch and ~/.claude.json — so without this a test's model call
-    would pass or pause depending on how much of the week the developer has
-    spent. test_agent_budget.py patches the windows it wants."""
+    """Blind the budget gate (it reads the real usage windows); test_agent_budget.py patches its own."""
     from app import agent
     monkeypatch.setattr(agent, "_budget_windows", lambda fetch: [])
+    monkeypatch.setattr(agent, "_accounts_refusal", lambda: None)
     monkeypatch.setattr(agent, "_budget", None)
 
 
 @pytest.fixture(autouse=True)
+def fake_keychain(monkeypatch, tmp_path):
+    """In-memory Keychain for claude_accounts and a throwaway ~/.claude.json, so a
+    sign-in test never touches the developer's real Claude login."""
+    from app import claude_accounts, claude_quota
+    monkeypatch.setattr(claude_quota, "CLAUDE_CONFIG", tmp_path / ".claude.json")
+    monkeypatch.setattr(claude_quota, "_active", "")
+    monkeypatch.setattr(claude_quota, "_parked", {})
+    monkeypatch.setattr(claude_quota, "_live", claude_quota._LiveUsage())
+    monkeypatch.setattr(claude_accounts._Verdict, "refusal", None)
+    monkeypatch.setattr(claude_accounts._Verdict, "whys", {})
+    store: dict[tuple[str, str | None], dict] = {}
+
+    def read(service, account=None):
+        if account is None:
+            hit = [v for (s, _), v in store.items() if s == service]
+            return hit[0] if hit else None
+        return store.get((service, account))
+
+    def write(service, account, blob):
+        store[(service, account)] = blob
+
+    monkeypatch.setattr(claude_accounts, "_kc_read", read)
+    monkeypatch.setattr(claude_accounts, "_kc_write", write)
+    monkeypatch.setattr(claude_accounts, "_kc_delete",
+                        lambda service, account: store.pop((service, account), None))
+    return store
+
+
+@pytest.fixture(autouse=True)
+def empty_model_catalog(monkeypatch):
+    """No model list, access facts or Settings defaults (their readers would open the
+    real app.db); test_model_catalog.py puts them back."""
+    from app import model_catalog
+    monkeypatch.setattr(model_catalog, "catalog", lambda provider="claude", everything=False: [])
+    monkeypatch.setattr(model_catalog, "access", lambda uuid: {})
+    monkeypatch.setattr(model_catalog, "stored", lambda key: None)
+    monkeypatch.setattr(model_catalog, "fetched", lambda provider: None)
+
+
+@pytest.fixture(autouse=True)
+def no_price_fetch(monkeypatch):
+    """model_prices' web fetch fails, so no test downloads the price list;
+    test_model_prices.py swaps in its own payloads."""
+    from app import model_prices
+
+    def offline(url):
+        raise OSError("no network in tests")
+    monkeypatch.setattr(model_prices, "_get", offline)
+    model_prices._book.clear()
+    yield
+    model_prices._book.clear()
+
+
+@pytest.fixture(autouse=True)
 def no_location_relay(monkeypatch):
-    """Unset the relay whatever .env says. config loads backend/.env, so once
-    LOCATION_RELAY_URL is set there, every location.refresh() in the suite
-    would pull from — and ack, i.e. delete from — the real relay."""
+    """Unset the relay whatever .env says: refresh() would pull from and ack the real one."""
     from app.providers import location_relay
     monkeypatch.setattr(location_relay, "LOCATION_RELAY_URL", None)
     monkeypatch.setattr(location_relay, "LOCATION_RELAY_TOKEN", None)
@@ -110,17 +149,8 @@ def no_location_relay(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def empty_index(monkeypatch):
-    """Point indexer.session() at an empty in-memory notes table.
-
-    Autouse because it is an isolation bug, not a convenience: readers of the
-    vault index (app/places.py, app/courses.py) otherwise open the *real*
-    index.db, so a test's result depends on which notes happen to exist in the
-    developer's vault. Declaring two homes there is what first made
-    test_never_left_home fail — the config fallback it asserts on had been
-    quietly replaced by a note.
-
-    A test that wants notes monkeypatches `indexer.session` itself; that runs
-    after this fixture and wins."""
+    """Point indexer.session() at an empty in-memory notes table, so no test reads the
+    developer's real index.db. A test wanting notes patches `indexer.session` itself."""
     import sqlite3
     from contextlib import contextmanager
 
@@ -140,19 +170,13 @@ def empty_index(monkeypatch):
 
 @pytest.fixture
 def frozen_day(freeze_day):
-    """Pin db.day_key() so date-relative reads stay deterministic. Anything
-    that seeds fixed calendar dates and then reads back through a trailing
-    window (habit_history, streaks) otherwise passes only until real time
-    walks those dates out of the window."""
+    """Pin db.day_key() to a fixed day so seeded dates stay inside trailing windows."""
     return freeze_day("2026-08-01")
 
 
 @pytest.fixture
 def client(router_client, monkeypatch):
-    """TestClient over a minimal app carrying only the widgets router, backed by
-    the temp DB. The task routes' vault_views.regenerate_tasks_view() side
-    effect writes into the (possibly absent) vault, so it's stubbed to a no-op
-    here."""
+    """TestClient over the widgets router alone; regenerate_tasks_view (writes the vault) is stubbed."""
     from app import vault_views, widgets
 
     monkeypatch.setattr(vault_views, "regenerate_tasks_view", lambda: "stubbed")

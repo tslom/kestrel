@@ -1,18 +1,6 @@
-"""PostToolUse hook: lint the file Claude just edited; exit 2 with the errors.
-
-Exit 2 hands stderr back to the model inside the same turn, so a banned
-`date.today()` or a raw `fetch()` is fixed by the tab that wrote it, before
-any commit. Per-repo on purpose, in
-.claude/settings.json: a global hook would reach every Kestrel session, and
-console sessions load the global settings.
-
-backend/**.py → ruff with backend/ruff.toml; frontend/src/**.js(x) → eslint
-with frontend/eslint.config.js, errors only (the effect and exhaustive-deps
-rules are errors, so they block too). Anything else, or a linter that isn't
-installed, passes silently: this guards, it never gets in the way.
-
-Then comment_checks.py, which no linter covers: a `# noqa` without a reason,
-and a date stamp the edit added to a comment (more in the file than at HEAD).
+"""PostToolUse hook: ruff (backend) / eslint errors (frontend/src) on the edited file, then
+comment_checks.py; exit 2 hands the errors back inside the same turn. Per-repo on purpose:
+console sessions load the global settings. A missing linter passes silently.
 """
 
 import json
@@ -74,13 +62,27 @@ def check_comments(path: Path) -> str:
         out.append(f"{rel}:{ln} noqa without a code and reason: {c}")
     if out:
         out.append(comment_checks.NOQA_FIX)
+    head = _at_head(rel)
     now = comment_checks.dated(path, text)
-    before = comment_checks.dated(path, _at_head(rel))
+    before = comment_checks.dated(path, head)
     if len(now) > len(before):
         old = {c for _, c in before}
         new = [f"{rel}:{ln} {c}" for ln, c in now if c not in old] or [f"{rel}: {len(now) - len(before)} more"]
         out += [f"dated comment added (the file has {len(now)}, HEAD had {len(before)}):"] + new
         out.append(comment_checks.DATED_FIX)
+    longs = comment_checks.long_blocks(path, text)
+    longs_before = comment_checks.long_blocks(path, head)
+    if len(longs) > len(longs_before):
+        old = {c for _, _, c in longs_before}
+        new = [f"{rel}:{ln} {n} lines: {c[:60]}" for ln, n, c in longs if c not in old]
+        out += [f"comment block over {comment_checks.MAX_BLOCK} lines added:"] + new
+        out.append(comment_checks.LENGTH_FIX)
+    n, ceiling = comment_checks.comment_lines(path, text), comment_checks.allowed_lines(rel, text)
+    if n > ceiling:
+        out += [f"{rel} has {n} comment lines; its ceiling is {ceiling} (comments_baseline.json). "
+                "Cut a comment to make room, or move the reasoning to DESIGN.md. "
+                "Raising the ceiling is a decision to state in the commit message.",
+                comment_checks.LENGTH_FIX]
     return "\n".join(out)
 
 

@@ -1,9 +1,4 @@
-"""The `unanswered` metric — the People widget's "you owe them a reply" feed.
-
-Every case here is a bug that shipped: the widget claimed a friend had been
-ignored for 94 days because she was the last to speak in a 15-person group
-chat, and the rest of the list was 2FA shortcodes.
-"""
+"""The `unanswered` metric: the People widget's "you owe them a reply" feed. Every case is a shipped bug."""
 
 from datetime import datetime, timedelta
 
@@ -14,9 +9,7 @@ from app.providers import messages
 
 
 def _seed(con, rows, chats=()):
-    """rows: (chat_guid, handle, is_from_me, ts[, is_reaction]). handle is
-    None on outgoing, matching chat.db, which leaves handle_id unset on
-    messages you sent."""
+    """rows: (chat_guid, handle, is_from_me, ts[, is_reaction]); handle is None on outgoing, as in chat.db."""
     now = datetime.now().astimezone().isoformat(timespec="seconds")
     with con:
         for guid, is_group in chats:
@@ -45,8 +38,7 @@ def _name(con, identifier, name):
 
 
 def test_group_chat_is_not_a_reply_you_owe(con):
-    """The original bug: last speaker in a big group chat got billed for the
-    whole group going quiet."""
+    """The last speaker in a big group chat is not owed a reply."""
     _name(con, "2025550166", "Iris")
     _seed(con, [("any;+;chatGROUP", "2025550166", 0, _ago(94))],
           chats=[("any;+;chatGROUP", 1)])
@@ -55,8 +47,7 @@ def test_group_chat_is_not_a_reply_you_owe(con):
 
 
 def test_reply_in_one_thread_answers_the_person(con):
-    """Same human over iMessage and SMS. Answering either clears both — the
-    per-chat_guid version left the dead thread accusing you forever."""
+    """One human over iMessage and SMS: answering either clears both."""
     _name(con, "2025551212", "Dad")
     _seed(con, [
         ("any;-;+12025551212", "2025551212", 0, _ago(90)),   # old thread, unreplied
@@ -82,8 +73,7 @@ def test_person_who_texted_last_surfaces_once(con):
 
 
 def test_shortcodes_and_strangers_are_filtered(con):
-    """A bank's 2FA sender and a number you've never written to are not
-    correspondents; a stranger you did answer once is."""
+    """2FA senders and never-written-to numbers are not correspondents; a stranger you answered once is."""
     _name(con, "2025559999", "Jade")
     _seed(con, [
         ("SMS;-;42302", "42302", 0, _ago(40)),          # shortcode
@@ -107,16 +97,14 @@ def test_recent_inbound_is_not_yet_unanswered(con):
 
 
 def test_unknown_chat_guid_is_treated_as_one_to_one(con):
-    """The chats cache is droppable/derived — losing it must not blank the
-    feed, so a chat with no cached row is assumed 1:1."""
+    """A chat with no cached row is assumed 1:1 (the cache is droppable)."""
     _name(con, "2025551212", "Dad")
     _seed(con, [("SMS;-;+12025551212", "2025551212", 0, _ago(5))])  # no chats row
     assert len(messages._unanswered(con)[0]) == 1
 
 
 def test_a_reaction_you_left_counts_as_answering(dbfile):
-    """Hitting ❤️ instead of typing is still a reply — the thread shouldn't
-    keep nagging you about a message you visibly acknowledged."""
+    """A tapback from you counts as a reply."""
     con = db.connect()
     _seed(con, [
         ("c1", "2025551111", 0, _ago(9)),           # they wrote
@@ -127,8 +115,7 @@ def test_a_reaction_you_left_counts_as_answering(dbfile):
 
 
 def test_a_reaction_they_left_does_not_answer_for_you(dbfile):
-    """The Hazel bug: her ❤️ on your message was the newest row, so it both
-    started the clock and hid the real message still owed a reply."""
+    """Their tapback neither starts the clock nor hides the real message still owed."""
     con = db.connect()
     _seed(con, [
         ("c1", "2025551111", 0, _ago(9)),           # they wrote — still owed
@@ -153,8 +140,7 @@ def test_their_reaction_alone_is_not_something_to_answer(dbfile):
 
 
 def test_the_owed_message_comes_with_it(dbfile):
-    """A name and an age don't say whether this needs two words or ten
-    minutes, so the feed carries what they actually said."""
+    """The feed carries what they said, not just a name and age."""
     con = db.connect()
     _seed(con, [("c1", "2025551111", 0, _ago(5))], chats=[("c1", 0)])
     with con:

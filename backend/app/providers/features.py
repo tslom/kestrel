@@ -1,32 +1,10 @@
-"""Features provider — the keystone cross-provider day
-matrix. One row per (day, feature): a pure *denormalization* of the other
-providers' cache tables into a single tall table the brief/console can reason
-over. **No external calls, no LLM, no sibling-provider get()** (those trigger
-on-demand syncs) — only SQL/python over rows already on disk.
+"""Features provider: the cross-provider (day, feature) matrix.
 
-A source with no data for a day leaves that (day, feature) **absent, never 0**:
-a gap and a real zero must stay distinguishable for correlation. Within a
-present source a 0 is real and kept (a day with texts but none sent → msgs_sent
-0), but an entirely-missing source (Plaid down, no location fix) is a gap.
-
-Day is whatever each *source* stores — behavioral sources (spotify,
-messages, location) and tasks use day_key (4am rollover); health/weather/
-calendar/finance use civil date. We passthrough each source's own `day` rather
-than re-bucketing, so a feature value always matches what that provider's own
-endpoint reports. The cost is that one `day` column holds two different notions
-of a day: a pair drawn from both is joined across a boundary that can be off by
-up to four hours, which matters most for late nights. FEATURE_DAY_BASIS records
-which notion each feature uses, and correlations() marks such pairs
-`cross_basis` so a reader can discount them rather than having to know.
-
-`features(day, feature, value REAL, refreshed_at, PK(day,feature))` is
-derived/droppable — refresh() recomputes today+yesterday, get() backfills any
-never-computed day in the requested range on demand (like location.py). Because
-computation is pure and cheap, an empty day (no source had data) stays absent
-and is simply recomputed on the next read — same tradeoff location.py makes.
-get() also recomputes days whose sources have been written since (_stale_days),
-because "has any feature row" is not the same question as "has every source
-that now has data for it".
+Derived/droppable denormalization of the other providers' cache tables. No external
+calls, no LLM, no sibling-provider get() (those trigger syncs). A source with no data
+for a day leaves the feature absent, never 0. `day` is each source's own key (day_key
+or civil), see FEATURE_DAY_BASIS.
+Design: DESIGN.md → §11 Feature matrix.
 """
 
 import json
@@ -49,15 +27,11 @@ ALLOW_FUTURE = False
 
 BRIEF_SPAN_DAYS = 14  # window the daily brief reasons over
 
-# correlations() defaults: a year of overlap, a floor under the sample size so a
-# handful of coincident days can't manufacture an r, and a two-tailed p cutoff.
+# correlations() defaults: window, minimum overlap n, two-tailed p cutoff.
 CORR_WINDOW_DAYS = 365
 CORR_MIN_N = 20
 CORR_MAX_P = 0.05
 
-# Every feature and where it comes from. The four `_days` cache tables are pure
-# passthroughs (rename only); the raw-event tables are aggregated to match each
-# provider's own get() exactly (no drift). See the extractor callables below.
 _PASSTHROUGH = (
     # (table, {source_metric: feature_name})
     ("health_days", {"sleep_hours": "sleep_hours", "hrv": "hrv",
@@ -68,19 +42,15 @@ _PASSTHROUGH = (
     ("weather_days", {"tmax": "weather_tmax", "precip_prob": "precip_prob"}),
 )
 
-# Which source each feature belongs to — so correlations() can drop the
-# uninteresting within-source pairs (msgs_sent ~ contacts, steps ~ zone_min)
-# and keep only cross-source relationships.
+# Source per feature; correlations(cross_domain=True) drops within-source pairs.
 _PASSTHROUGH_DOMAIN = {"health_days": "health",
                        "location_days": "location", "weather_days": "weather"}
 FEATURE_DOMAIN = {feat: _PASSTHROUGH_DOMAIN[table]
                   for table, mapping in _PASSTHROUGH for feat in mapping.values()}
 FEATURE_DOMAIN.update({
     "listen_min": "spotify", "novelty": "spotify",
-    # "spotify", not "lastfm", even though the tags come from Last.fm: it's
-    # derived from the same `plays` rows, so pairing it with listen_min or
-    # novelty would surface the play count twice and read as a finding. Only
-    # the genuinely cross-source pairs (sleep, HRV, time at home) survive.
+    # "spotify" not "lastfm": same `plays` rows, so a lastfm domain would pair it with
+    # listen_min/novelty and double-count plays as a finding.
     "genre_variety": "spotify",
     "repeat_ratio": "spotify", "listen_sessions": "spotify",
     "longest_listen_min": "spotify",
@@ -90,11 +60,8 @@ FEATURE_DOMAIN.update({
     "tasks_done": "tasks", "hr_var_day": "health",
 })
 
-# Which notion of "day" each domain's rows are keyed on (module docstring).
-# Keyed by domain, not by feature, so there is still exactly one registry to
-# update per feature — a new feature picks up its basis from FEATURE_DOMAIN,
-# and test_every_domain_has_a_day_basis catches a new *domain* that forgets to
-# declare one.
+# Keyed by domain so a new feature takes its basis from FEATURE_DOMAIN;
+# test_every_domain_has_a_day_basis catches a new domain with none.
 DOMAIN_DAY_BASIS = {
     "spotify": "day_key", "messages": "day_key",
     "location": "day_key", "tasks": "day_key",
@@ -105,14 +72,10 @@ FEATURE_DAY_BASIS = {feat: DOMAIN_DAY_BASIS[dom]
                      for feat, dom in FEATURE_DOMAIN.items()
                      if dom in DOMAIN_DAY_BASIS}
 
-# hr_var_day needs enough of the day covered for its spread to mean anything;
-# below this many hourly buckets the day stays a gap (not a misleading 0).
+# Below this many hourly buckets hr_var_day stays a gap.
 HR_MIN_HOURS = 12
 
-# genre_variety gates: below this share of a day's plays tagged, the mix
-# describes a minority of the day and its spread says more about which artists
-# Last.fm knows than about what you listened to; below this many plays there
-# isn't enough of a day to have a shape at all.
+# genre_variety gap gates: min tagged share of a day's plays, min plays.
 GENRE_MIN_COVERAGE = 0.6
 GENRE_MIN_PLAYS = 5
 
@@ -123,74 +86,34 @@ def _marks(seq) -> str:
 
 def _location_covered_days(con, days):
     covered = location.coverage_minutes(con, days)
-    # Absent coverage is refused: this number is derived from the raw points,
-    # so absent means no fixes at all. is_thin owns that rule for both callers.
     return {d for d in days if not location.is_thin(covered.get(d))}
 
 
 
-# Coverage gates for passthrough sources whose silence isn't a zero. Keyed by
-# table; each returns the subset of `days` whose numbers rest on enough data to
-# mean anything, and the rest stay gaps (the HR_MIN_HOURS / GENRE_MIN_PLAYS
-# rule, one source over).
-#
-# The sensors that ride on hardware being awake need one; the pollers don't.
-# health/weather run server-side whether or not anything happens, so a 0 from
-# them is an observation. Only location is in this class.
-#
-# OwnTracks reports *movement*: a day with a single fix computes 0 places and 0
-# minutes at home, which is byte-for-byte a day spent indoors and the exact
-# opposite of the truth. location.summary() already refuses such a day, so
-# without this the card and the matrix disagree about the same date — a
-# one-fix day is a gap on the card and a never-left-the-house observation in
-# the correlations.
-#
-# The rule this gate exists for: a sensor's silence is only a zero if the
-# sensor was watching, and "is it on?" is not answerable from the numbers it
-# wrote. A sensor that looks always-on can be a hand-launched app that died
-# weeks ago.
+# table -> fn(con, days) returning the days with enough data to mean anything; the
+# rest stay gaps. Only location needs one (a one-fix day reads as "never left home").
 _COVERAGE_GATES = {"location_days": _location_covered_days}
 
 
 def _calendar_covered_days(con, days):
-    """Days the calendar cache can still answer for. `events` is not
-    append-only: calendar.get() calls `_sync(missing[0], missing[-1])`, which
-    DELETEs that whole span and re-inserts only what the API returned for it, so
-    a past day's rows can go away entirely. v3's schema comment already named
-    the marker that tells "no events that day" apart from "never fetched":
-    calendar_days."""
+    """Days the calendar cache can still answer for (`calendar_days` marks synced days;
+    `events` rows alone can't tell "no events" from "dropped")."""
     rows = con.execute(
         f"SELECT day FROM calendar_days WHERE day IN ({_marks(days)})", days)
     return {r["day"] for r in rows}
 
 
-# Sources that can stop being able to speak for a past day at all — a different
-# question from _COVERAGE_GATES above, which asks whether a day the source
-# *does* cover rests on enough data to mean anything.
-#
-# It matters because _compute_days rebuilds a day from scratch: recomputing a
-# day the calendar no longer holds would delete its calendar features and, by
-# the gap-not-zero rule, republish the day as *having had no events* — the same
-# confidently-wrong reading _stale_days exists to prevent, arrived at from the
-# opposite direction. `features` is the only surviving record of that day's
-# load, so those rows are carried forward instead (see _carried_forward).
-#
-# Only calendar has one. Every other source's cache table is append-only or
-# rewritten per-day in place, so a past day stays answerable: plays and messages
-# keep full history, health/location/weather rewrite the day they refresh,
-# and Plaid's window is far wider than anything the matrix reads.
+# Sources that can lose a past day entirely (only calendar): a rebuild would republish
+# it as "no events", so _carried_forward keeps those features instead.
 _RETENTION_GATES = {"calendar": _calendar_covered_days}
 
-# Features per source, derived from the one FEATURE_DOMAIN registry so a new
-# feature can't be forgotten here.
 _DOMAIN_FEATURES: dict[str, list[str]] = defaultdict(list)
 for _feat, _dom in FEATURE_DOMAIN.items():
     _DOMAIN_FEATURES[_dom].append(_feat)
 
 
 def _passthrough_rows(con, days, *, table, mapping):
-    """A `*_days(day, metric, value)` cache table, renamed straight through —
-    less any day the table's coverage gate rejects (_COVERAGE_GATES)."""
+    """A `*_days(day, metric, value)` table renamed through, minus days its _COVERAGE_GATES rejects."""
     gate = _COVERAGE_GATES.get(table)
     if gate is not None:
         days = sorted(gate(con, days))
@@ -212,9 +135,7 @@ def _plays_rows(con, days):
             f" WHERE day IN ({_marks(days)}) GROUP BY day", days).fetchall():
         yield r["day"], "listen_min", r["v"]
 
-    # artist_key, not artist_id — the importer's synthetic ids never match the
-    # poller's real ones, so grouping on artist_id makes every artist look new
-    # again at the import seam (spotify.artist_key, v35).
+    # artist_key, not artist_id: importer ids never match the poller's (v35).
     spotify.ensure_artist_keys(con)
     rows = con.execute(
         f"SELECT day, artist_key, played_at FROM plays WHERE day IN ({_marks(days)})",
@@ -236,14 +157,8 @@ def _plays_rows(con, days):
 
 
 def _listen_shape_rows(con, days):
-    """spotify: how the day's listening was shaped rather than how much of it
-    there was — repeat_ratio (one song on loop vs shuffle), listen_sessions
-    (scattered vs sustained), longest_listen_min. Its own extractor, not part
-    of _plays_rows, so a failure here can't cost the day its listen_min.
-
-    Delegated to the provider for the same reason `reply_latency` is:
-    re-expressing the math here is what let `novelty` drift for twelve days
-    (v35), so there is one implementation and a test pinning them together."""
+    """spotify: repeat_ratio, listen_sessions, longest_listen_min, via the provider's own
+    math. Separate from _plays_rows so a failure here can't cost the day its listen_min."""
     dayset = set(days)
     for day, shape in spotify.listen_shape_by_day(
             con, min(days), max(days)).items():
@@ -253,22 +168,8 @@ def _listen_shape_rows(con, days):
 
 
 def _genre_rows(con, days):
-    """lastfm: `genre_variety` — normalized Shannon entropy of a day's genre
-    mix (0 = everything you played was one sound, 1 = evenly spread across
-    every genre that showed up).
-
-    This is what's left of "genre as mood" once the tags are inspected: the
-    vocabulary is genre words, not mood words (bare `mellow`/`upbeat`/
-    `romantic` appear once each across ~2k artists, `sad` and `happy` never),
-    so any tag->mood lexicon would be firing on one or two artists and
-    reporting it as a mood. The *shape* of the mix survives that: locking onto
-    one sound all day is a different day from wandering across eight.
-
-    Two gates, both gap-not-zero. Coverage below GENRE_MIN_COVERAGE means the
-    mix describes a minority of the day and its spread is an artifact of which
-    artists happen to be tagged; fewer than GENRE_MIN_PLAYS plays means there
-    isn't enough of a day to have a shape (the HR_MIN_HOURS precedent).
-    """
+    """lastfm: `genre_variety`, normalized Shannon entropy of a day's genre mix (0 = one
+    sound, 1 = evenly spread). Days under GENRE_MIN_COVERAGE / GENRE_MIN_PLAYS are gaps."""
     spotify.ensure_artist_keys(con)
     rows = con.execute(
         f"SELECT p.day, p.artist_key, COUNT(*) AS plays, t.tags"
@@ -292,8 +193,7 @@ def _genre_rows(con, days):
         votes = counts[d]
         k, denom = len(votes), sum(votes.values())
         if k < 2 or not denom:
-            # One sound all day is a real zero, not a gap — as long as it
-            # cleared the gates above, that's a genuinely single-minded day.
+            # One sound all day (past the gates) is a real zero, not a gap.
             yield d, "genre_variety", 0.0
             continue
         h = -sum((c / denom) * math.log(c / denom) for c in votes.values())
@@ -312,21 +212,17 @@ def _messages_rows(con, days):
         yield r["day"], "msgs_received", r["received"]
         yield r["day"], "contacts", r["contacts"]
 
-    # How fast you answered, not how much you said — the volume features above
-    # can't tell a chatty day from a responsive one. Delegated to the provider
-    # rather than re-expressed in SQL here: the same duplication is what let
-    # `novelty` drift for twelve days (v35).
+    # The provider's own math, not SQL here (a second copy let novelty drift, v35).
     dayset = set(days)
     for day, minutes in messages.reply_latency_by_day(
             con, min(days), max(days)).items():
-        if day in dayset:  # `days` needn't be contiguous; the DELETE only
-            yield day, "reply_latency", minutes  # covers what was asked for
+        if day in dayset:  # `days` needn't be contiguous
+            yield day, "reply_latency", minutes
 
 
 def _finance_rows(con, days):
-    """finance: daily outflow, transfers/loan payments excluded — same filter as
-    finance.get('spend'). No zero-fill here: a $0 day is indistinguishable from
-    Plaid being down, so it stays a gap (the spec's rule)."""
+    """finance: daily outflow, same filter as finance.get('spend'). No zero-fill: a $0 day
+    can't be told from Plaid being down."""
     env = plaid.creds()[3]
     excl = finance.SPEND_EXCLUDED_CATEGORIES
     rows = con.execute(
@@ -341,11 +237,8 @@ def _finance_rows(con, days):
 
 
 def _events_rows(con, days):
-    """calendar: count of timed events and busy minutes (each clamped to its
-    civil-day window, so an overnight event doesn't over-count). All-day events
-    (birthdays/holidays — not load) are excluded from both, and so are timed
-    events over a day long (a retreat, a mis-dated hold): calendar.SPAN_SQL,
-    the rule the provider uses to hand those out as all-day."""
+    """calendar: timed-event count and busy minutes, clamped to the civil day. All-day and
+    over-a-day events (calendar.SPAN_SQL) are excluded."""
     tz = datetime.now().astimezone().tzinfo
     counts, busy = defaultdict(int), defaultdict(float)
     rows = con.execute(
@@ -370,8 +263,7 @@ def _events_rows(con, days):
 
 
 def _tasks_rows(con, days):
-    """tasks: completions per day_key. completed_at is local wall-clock, so it's
-    day_key'd here (4am rollover) rather than sliced on its civil date."""
+    """tasks: completions per day_key (completed_at is local wall-clock, not a civil slice)."""
     dayset = set(days)
     lo, hi = min(days), (date.fromisoformat(max(days)) + timedelta(days=1)).isoformat()
     counts: dict[str, int] = defaultdict(int)
@@ -391,10 +283,7 @@ def _tasks_rows(con, days):
 
 
 def _hr_var_rows(con, days):
-    """intraday HR: spread (population stdev, bpm) of a day's hourly mean heart
-    rate — a same-day physiological-load proxy from health_hours. A day
-    with < HR_MIN_HOURS covered stays a gap: partial wear makes the spread
-    unreliable and the gap-not-zero rule keeps it out of correlations."""
+    """intraday HR: population stdev (bpm) of hourly mean HR; < HR_MIN_HOURS stays a gap."""
     by_day: dict[str, list[float]] = defaultdict(list)
     rows = con.execute(
         f"SELECT day, value FROM health_hours"
@@ -408,8 +297,6 @@ def _hr_var_rows(con, days):
             yield d, "hr_var_day", round(sd, 2)
 
 
-# Order is cosmetic — features are partitioned by source, so no (day,feature)
-# collides across extractors. Each is guarded independently in _compute_days.
 _EXTRACTORS = [
     *(partial(_passthrough_rows, table=t, mapping=m) for t, m in _PASSTHROUGH),
     _plays_rows, _listen_shape_rows, _genre_rows, _messages_rows,
@@ -421,50 +308,25 @@ def _now() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
-# Source tables that stamp `refreshed_at` on every row, keyed by the same day
-# the features are — watched by _stale_days so a late arrival can reach a day
-# that has already been computed.
+# Tables with `refreshed_at` on each row, keyed by the features' own day.
 _ROW_STAMPED_SOURCES = (
     "health_days", "location_days", "weather_days",
     "plays", "messages", "fin_transactions", "health_hours",
 )
 
-# Every source _stale_days watches, as (required tables, SELECT yielding
-# (day, refreshed_at)). One registry rather than two, so adding a source is one
-# edit whether or not its timestamp happens to sit on the row.
-#
-# The three below are the ones this file's docstring used to hand back to the
-# reader as "needs an explicit recompute". None of them stamps a usable
-# `refreshed_at` next to the day, and each is reachable a different way.
+# Every source _stale_days watches: (required tables, SELECT yielding (day, refreshed_at)).
 _STALE_SOURCES = (
     *(((t,), f"SELECT day, refreshed_at FROM {t}") for t in _ROW_STAMPED_SOURCES),
-    # calendar: `events` rows carry no timestamp, but _sync stamps every day it
-    # rewrote into calendar_days, on the same civil date the features key on.
-    # That marker re-stamps the whole trailing window each poll whether or not
-    # an event changed, so the window goes stale once per poll and converges on
-    # the next sweep — the health_days behaviour, not a new one.
+    # calendar: `events` has no timestamp; calendar_days is stamped per synced day.
     (("calendar_days",), "SELECT day, refreshed_at FROM calendar_days"),
-    # tasks: `updated_at` comes from the tasks_touch trigger, which writes
-    # datetime('now','localtime') — a *space* separator, so it sorts before
-    # every ISO-T timestamp of the same second and has to be normalized before
-    # it can be compared against features.refreshed_at as a string. A row
-    # inserted already-done never fired the trigger, hence the created_at
-    # fallback. The day is completed_at's day_key, the same 4am fold
-    # _tasks_rows does in python — DAY_ROLLOVER_HOUR is interpolated so the
-    # rollover stays defined in exactly one place, and
-    # test_late_task_completion_folds_on_day_key_not_civil_date pins the SQL
-    # against db.day_key so the two can't drift.
+    # tasks: the trigger's space-separated `updated_at` is normalized to ISO-T to compare
+    # as a string; created_at covers rows inserted already-done. The day is the 4am fold
+    # (test_late_task_completion_folds_on_day_key_not_civil_date pins it to db.day_key).
     (("tasks",),
      f"SELECT date(completed_at, '-{db.DAY_ROLLOVER_HOUR} hours') AS day,"
      f" replace(COALESCE(updated_at, created_at), ' ', 'T') AS refreshed_at"
      f" FROM tasks WHERE status = 'done' AND completed_at IS NOT NULL"),
-    # lastfm tags: artist_tags is keyed by *artist*, so the day has to come
-    # from the plays that reference it. This is the arm that was actually wrong
-    # at scale — tags are fetched lazily, one artist at a time, so on a first
-    # read of a long history nearly every day's genre_variety was computed
-    # before the tags it rests on existed. Both halves of _genre_rows move
-    # underneath: the entropy, and the GENRE_MIN_COVERAGE gate that had kept
-    # under-tagged days out as gaps.
+    # lastfm tags: keyed by artist, so the day comes from the plays that reference it.
     (("plays", "artist_tags"),
      "SELECT p.day AS day, t.refreshed_at AS refreshed_at FROM plays p"
      " JOIN artist_tags t ON t.artist_key = p.artist_key"),
@@ -472,26 +334,8 @@ _STALE_SOURCES = (
 
 
 def _stale_days(con, days: list[str]) -> set[str]:
-    """Of `days`, the ones whose features predate their sources.
-
-    get()'s backfill test is per *day*: a day is "computed" if it has any
-    feature row at all. So a day that had health and spotify rows when it was
-    first computed is never revisited, and a source that lands afterwards — a
-    provider backfill, a history re-import, a newly built source — never
-    reaches it. It doesn't read as missing, either: the gap-not-zero rule means
-    the matrix reports it as *the source having no data that day*, which is
-    exactly the reading the data was supposed to correct.
-
-    Location hit this: `location._ensure_days()` recovered five days of
-    location_days that the nightly refresh had already computed
-    features for, and all five stayed location-less in the matrix.
-
-    A day is stale if any watched source wrote a row for it after the day's
-    features were computed — every source in _STALE_SOURCES, including the
-    three whose timestamp doesn't sit next to their day (calendar via
-    calendar_days, tasks via the touch trigger, lastfm tags via the plays that
-    reference the artist). Nothing is left needing a hand-run recompute.
-    """
+    """Of `days`, the ones where any _STALE_SOURCES row was written after the day's
+    features were computed (get()'s "has any feature row" test misses these)."""
     if not days:
         return set()
     computed = {r["day"]: r["computed"] for r in con.execute(
@@ -499,16 +343,12 @@ def _stale_days(con, days: list[str]) -> set[str]:
         f" WHERE day IN ({_marks(days)}) GROUP BY day", days)}
     if not computed:
         return set()
-    # Skip tables this DB hasn't got, the per-extractor guard in _compute_days
-    # one layer up.
     present = {r["name"] for r in con.execute(
         "SELECT name FROM sqlite_master WHERE type = 'table'")}
     lo, hi = min(computed), max(computed)
     stale: set[str] = set()
-    # One statement per source, unioned here. Joined inside a single UNION
-    # against a features CTE, the planner walked every source's day index end
-    # to end (78-166ms on the real DB); with `day BETWEEN` pushed into each arm
-    # it's an index range search per source, a few ms for all of them.
+    # One statement per source with `day BETWEEN` in each arm: a single UNION against a
+    # features CTE scanned every day index (78-166ms vs a few ms).
     for tables, sql in _STALE_SOURCES:
         if not all(t in present for t in tables):
             continue
@@ -522,10 +362,8 @@ def _stale_days(con, days: list[str]) -> set[str]:
 
 
 def _carried_forward(con, days: list[str]) -> dict[str, list[str]]:
-    """`{day: [feature, ...]}` that a rebuild of `days` must not delete, because
-    the source behind them can no longer answer for that day (_RETENTION_GATES)
-    and these rows are the only record left. Only days that actually have such
-    rows appear, so the common case is an empty dict."""
+    """`{day: [feature, ...]}` a rebuild must not delete (_RETENTION_GATES); only days
+    that have such rows appear."""
     out: dict[str, set[str]] = defaultdict(set)
     for domain, gate in _RETENTION_GATES.items():
         blind = sorted(set(days) - gate(con, days))
@@ -541,15 +379,8 @@ def _carried_forward(con, days: list[str]) -> dict[str, list[str]]:
 
 
 def _compute_days(con, days: list[str], now: str) -> None:
-    """Recompute every feature for `days` from the cache tables — pure local
-    SQL/python. One extractor failing (e.g. Plaid not configured) drops only
-    that source's features to gaps; the rest still land.
-
-    Features whose source can no longer speak for the day are carried forward
-    rather than rebuilt (_carried_forward). They're re-stamped with `now`, which
-    is both what refreshed_at means here — when this row was last confirmed as
-    the matrix's best knowledge — and what keeps the day from reading stale
-    forever and recomputing on every single read."""
+    """Recompute every feature for `days`. A failing extractor drops only its features to
+    gaps. Carried-forward rows are re-stamped `now` so the day doesn't read stale forever."""
     if not days:
         return
     keep = _carried_forward(con, days)
@@ -578,8 +409,7 @@ def _compute_days(con, days: list[str], now: str) -> None:
 
 
 def refresh() -> dict:
-    """Poller entrypoint: recompute today + yesterday. Cheap, pure-local — runs
-    each cycle so the day matrix trails the sources by at most one cycle."""
+    """Poller entrypoint: recompute today + yesterday."""
     today = db.day_key()
     yesterday = (date.fromisoformat(today) - timedelta(days=1)).isoformat()
     with db.session() as con:
@@ -594,9 +424,8 @@ def _read(con, rng: Range):
 
 
 def get(rng: Range, metric: str | None = None) -> dict:
-    """Read the slice from cache, backfilling any never-computed past day first
-    (local-only). With `metric` set, returns that one feature's series
-    ({day, value}); without it, the full matrix ({day, feature, value})."""
+    """Slice from cache, computing never-computed or stale days first. `metric` returns
+    one feature's {day, value} series; else the full {day, feature, value} matrix."""
     with db.session() as con:
         today = db.day_key()
         wanted = {d for d in rng.days() if d <= today}
@@ -618,9 +447,7 @@ def get(rng: Range, metric: str | None = None) -> dict:
 
 
 def matrix(end_day: str, span_days: int = BRIEF_SPAN_DAYS) -> dict:
-    """`{feature: {day: value}}` over the trailing `span_days` ending at
-    `end_day` — the compact form the daily brief reasons over. Materializes any
-    missing day in the window via get()."""
+    """`{feature: {day: value}}` over the trailing `span_days` ending at `end_day`."""
     start = (date.fromisoformat(end_day) - timedelta(days=span_days - 1)).isoformat()
     payload = get(ranges.parse_range(f"{start}..{end_day}"))
     out: dict[str, dict[str, float]] = defaultdict(dict)
@@ -631,12 +458,8 @@ def matrix(end_day: str, span_days: int = BRIEF_SPAN_DAYS) -> dict:
 
 # ---------- cross-source correlations ----------
 #
-# Pearson r between feature pairs over the days where *both* are present (the
-# matrix leaves a gap, never a 0, for an absent source — so n is the true
-# overlap, not a window length). Significance is the textbook two-tailed t-test
-# for r, whose p-value is the regularized incomplete beta I_x(df/2, 1/2) at
-# x = df/(df+t^2); we compute I_x in pure stdlib (Numerical Recipes' continued
-# fraction + lgamma) rather than pull in scipy for one function.
+# Pearson r over days where both are present; p from I_x(df/2, 1/2), x = df/(df+t^2),
+# in stdlib (continued fraction + lgamma), no scipy.
 
 
 def _betacf(a: float, b: float, x: float) -> float:
@@ -706,16 +529,10 @@ def correlations(end_day: str, window_days: int = CORR_WINDOW_DAYS, *,
                  min_n: int = CORR_MIN_N, max_p: float = CORR_MAX_P,
                  focus: str | set[str] | None = None,
                  cross_domain: bool = False) -> list[dict]:
-    """Significant feature pairs over the trailing `window_days`, ranked by
-    |r| (strongest first). Each: {a, b, r, n, p}. `focus` (a feature name or
-    set) keeps only pairs that touch it — e.g. focus='listen_min' for how
-    listening moves with everything else. `cross_domain` drops pairs whose two
-    features come from the same source (the mechanically-obvious ones).
-
-    A pair whose two features are keyed on different notions of a day carries
-    `cross_basis: True` (absent otherwise — the common case stays as it was, and
-    the brief pays no tokens for it). It is a caveat on the r, not a reason to
-    drop the pair: the misalignment is bounded by the 4am rollover."""
+    """Significant feature pairs over the trailing `window_days`, by |r| descending:
+    {a, b, r, n, p}. `focus` (name or set) keeps pairs touching it; `cross_domain` drops
+    same-source pairs. `cross_basis: True` (key absent otherwise) marks a pair whose
+    features use different day notions: a caveat on r, not a reason to drop it."""
     series = matrix(end_day, window_days)
     feats = sorted(series)
     if isinstance(focus, str):

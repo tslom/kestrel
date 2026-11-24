@@ -1,7 +1,4 @@
-"""location.py feature computation — the derived metrics over raw
-`location_points`. Focus on the dwell-gated `places` count (the driving-day
-transit-inflation fix, walk-tested) and that entropy stays over all
-clusters."""
+"""location.py derived metrics over raw `location_points`: the dwell-gated `places` count, ungated entropy."""
 
 import math
 from datetime import datetime, timedelta
@@ -11,11 +8,7 @@ from app import db
 from app.config import HOME_LAT, HOME_LON
 from app.providers import location, location_relay
 
-# What a day has to look like to clear location.COVERAGE_FLOOR_MIN. The gate
-# reads how much of the day the fixes span, not how many arrived, so a burst
-# of eight 5 minutes apart is a thin day however many rows it holds. Derived
-# from the constants, and one gap past the floor, so moving the floor moves
-# these tests and none of them turn into a test of the boundary.
+# A day that clears COVERAGE_FLOOR_MIN (the gate reads span, not count), derived so moving the floor moves the tests.
 COVERING_GAP_MIN = location.MAX_GAP_MIN
 COVERING_N = math.ceil(location.COVERAGE_FLOOR_MIN / COVERING_GAP_MIN) + 2
 
@@ -36,13 +29,11 @@ def _run(con, day):
 
 
 def test_places_excludes_transit_cells(dbfile):
-    """A cell the car only passes through (a single ~1min gap) is not a place;
-    a cell dwelt in past PLACE_MIN_DWELL_SEC is."""
+    """A drive-through cell is not a place; one dwelt in past PLACE_MIN_DWELL_SEC is."""
     con = db.connect()
     day = "2026-07-23"
     base = datetime(2026, 7, 23, 12, 0, 0)
-    # Two genuine stops (many fixes minutes apart, well past the threshold),
-    # then a run of drive-through cells each visited once ~1min apart.
+    # Two real stops, then drive-through cells one fix each ~1min apart.
     rows = []
     t = base
     # stop A: 5 fixes over ~10 min at one cell (away from home)
@@ -60,16 +51,12 @@ def test_places_excludes_transit_cells(dbfile):
     _seed_points(con, day, rows)
 
     m = _run(con, day)
-    # Only the two dwelt cells count; the 8 transit cells drop out even though
-    # they're distinct grid clusters.
     assert m["places"] == 2.0
     con.close()
 
 
 def test_entropy_counts_all_clusters(dbfile):
-    """entropy is unfiltered — transit cells still contribute (tiny) weight, so
-    a spread-out day reads as higher entropy than a single-stop day even when
-    `places` is gated."""
+    """Entropy is unfiltered: transit cells still weigh in even when `places` is gated."""
     con = db.connect()
     day = "2026-07-22"
     base = datetime(2026, 7, 22, 12, 0, 0)
@@ -87,13 +74,7 @@ def test_entropy_counts_all_clusters(dbfile):
 
 def _seed_day(con, day, *, n, minutes_apart=COVERING_GAP_MIN, start_hour=12,
               at_home_first=True, at_home_last=True):
-    """A day of `n` fixes `minutes_apart` apart, with control over whether the
-    first and last are at home — which is what decides leave_observed/
-    return_observed.
-
-    Spacing defaults to the covering gap because most callers want a day the
-    summary will actually center on; pass a smaller one to build the burst
-    shape the coverage gate exists to refuse."""
+    """`n` fixes `minutes_apart` apart; first/last at home decide leave_observed/return_observed. A smaller gap builds a burst."""
     t = datetime(*[int(x) for x in day.split("-")], start_hour, 0, 0)
     away = (HOME_LAT + 0.05, HOME_LON + 0.05)
     rows = []
@@ -106,9 +87,7 @@ def _seed_day(con, day, *, n, minutes_apart=COVERING_GAP_MIN, start_hour=12,
 
 
 def test_summary_marks_an_unseen_departure(dbfile, monkeypatch):
-    """first_leave is the first fix that was *away*, which is a real departure
-    only if a fix at home came before it. A day whose coverage starts after
-    the person already left must not read as "left at 12:00"."""
+    """first_leave counts as a departure only if a fix at home came before it."""
     day = "2026-07-23"
     monkeypatch.setattr(db, "day_key", lambda dt=None: day)
     con = db.connect()
@@ -123,8 +102,7 @@ def test_summary_marks_an_unseen_departure(dbfile, monkeypatch):
 
 
 def test_summary_skips_a_day_too_thin_to_trust(dbfile, monkeypatch):
-    """A day with one fix computes 0km / 0 places, which renders identically
-    to never leaving the house. It is a gap, not the day the card centers on."""
+    """A one-fix day is a gap (it would read as never leaving the house), not the day the card centers on."""
     thin, full = "2026-07-24", "2026-07-23"
     monkeypatch.setattr(db, "day_key", lambda dt=None: thin)
     con = db.connect()
@@ -141,16 +119,11 @@ def test_summary_skips_a_day_too_thin_to_trust(dbfile, monkeypatch):
 
 
 def test_a_burst_of_fixes_is_not_a_covered_day(dbfile, monkeypatch):
-    """A gate that counts fixes comes apart on a dense burst: the day with
-    the highest fix count in the whole series (121) holds 2.4h of coverage —
-    one drive, waved through as a full day whose 0 places and 0 min at home
-    then read as facts. Many fixes over a
-    short window is the *least* trustworthy shape, not the most."""
+    """Many fixes over a short window (the 121-fix, 2.4h day) is not a covered day."""
     burst, full = "2026-07-24", "2026-07-23"
     monkeypatch.setattr(db, "day_key", lambda dt=None: burst)
     con = db.connect()
     _seed_day(con, full, n=COVERING_N)
-    # Four times the fixes of the covering day, inside a fraction of its span.
     _seed_day(con, burst, n=COVERING_N * 4, minutes_apart=1)
     con.close()
 
@@ -161,9 +134,7 @@ def test_a_burst_of_fixes_is_not_a_covered_day(dbfile, monkeypatch):
 
 
 def test_the_card_and_the_gate_read_one_coverage(dbfile, monkeypatch):
-    """_day_shape shows coverage on the card and coverage_minutes gates on it.
-    A card displaying one number while the gate reads another is two answers
-    to one question, which is the disagreement this whole change closed."""
+    """_day_shape (card) and coverage_minutes (gate) agree."""
     day = "2026-07-23"
     monkeypatch.setattr(db, "day_key", lambda dt=None: day)
     con = db.connect()
@@ -175,9 +146,7 @@ def test_the_card_and_the_gate_read_one_coverage(dbfile, monkeypatch):
 
 
 def test_summary_backfills_days_the_poller_never_saw(dbfile, monkeypatch):
-    """refresh() only ever computes today and yesterday, so a day the backend
-    was down for is never computed by the poller. Every reader backfills its
-    own window — seven such days were sitting uncomputed when this shipped."""
+    """refresh() computes only today and yesterday, so readers backfill their own window."""
     old, today = "2026-07-23", "2026-07-28"
     monkeypatch.setattr(db, "day_key", lambda dt=None: today)
     con = db.connect()
@@ -193,10 +162,7 @@ def test_summary_backfills_days_the_poller_never_saw(dbfile, monkeypatch):
 
 
 def test_a_day_with_no_fixes_is_computed_once(dbfile, monkeypatch):
-    """A fix-less day writes no location_days rows (a gap, not zeros), and
-    judged by those it read as never-computed — so every GET re-ran the
-    DELETE for it. location_sync marks it computed; only a fix landing on it
-    later (a late-flushed OwnTracks queue) sends it back through."""
+    """A fix-less day is marked computed by location_sync; only a late fix re-queues it."""
     gap, today = "2026-07-25", "2026-07-28"
     monkeypatch.setattr(db, "day_key", lambda: today)
     with db.session() as con:
@@ -205,8 +171,6 @@ def test_a_day_with_no_fixes_is_computed_once(dbfile, monkeypatch):
                            " WHERE day=?", (gap,)).fetchone()["c"] == 0
         assert location._ensure_days(con, [gap]) == []     # not recomputed
 
-    # summary() walks a window with this gap in it; a second call recomputes
-    # nothing in it (today included — its count hasn't moved either).
     location.summary()
     calls = []
     real = location._compute_days
@@ -215,7 +179,6 @@ def test_a_day_with_no_fixes_is_computed_once(dbfile, monkeypatch):
     location.summary()
     assert calls == []
 
-    # A fix that arrives late for the gap day makes it computable again.
     with db.session() as con:
         _seed_day(con, gap, n=COVERING_N)
         assert location._ensure_days(con, [gap]) == [gap]
@@ -225,8 +188,7 @@ def test_a_day_with_no_fixes_is_computed_once(dbfile, monkeypatch):
 
 
 def _seed_ago(con, hours_ago, *, at_home, n=3):
-    """n fixes ending `hours_ago` hours before now, at home or away. Written
-    in UTC because that is how the listener stores them."""
+    """n fixes ending `hours_ago` hours ago, in UTC like the listener."""
     from datetime import timezone
     end = datetime.now(timezone.utc) - timedelta(hours=hours_ago)
     lat, lon = (HOME_LAT, HOME_LON) if at_home else (HOME_LAT + 0.05, HOME_LON + 0.05)
@@ -247,9 +209,7 @@ def _relay_on(monkeypatch):
 
 
 def test_silence_at_home_is_not_a_broken_source(dbfile, monkeypatch):
-    """Overland reports movement, so a phone sitting at home produces no fixes
-    at all — 40 hours of that is a weekend in, not a dead app. The dot must
-    stay ok, or a homebody week teaches you to ignore the panel."""
+    """40h of silence at home stays ok."""
     _relay_on(monkeypatch)
     con = db.connect()
     _seed_ago(con, 40, at_home=True)
@@ -266,8 +226,7 @@ def test_silence_at_home_is_not_a_broken_source(dbfile, monkeypatch):
 
 
 def test_silence_away_from_home_still_escalates(dbfile, monkeypatch):
-    """The other half: silence that ends away from home means the thread was
-    genuinely lost, and that is what the dot exists for."""
+    """Silence that ends away from home escalates."""
     _relay_on(monkeypatch)
     con = db.connect()
     _seed_ago(con, 40, at_home=False)
@@ -280,8 +239,7 @@ def test_silence_away_from_home_still_escalates(dbfile, monkeypatch):
 
 
 def test_home_stretch_starts_at_the_arrival(dbfile, monkeypatch):
-    """The stay began when they got home, not at the last fix of it — the
-    trailing run of at-home fixes is walked back to its first."""
+    """The stay starts at the first of the trailing at-home fixes."""
     _relay_on(monkeypatch)
     con = db.connect()
     _seed_ago(con, 50, at_home=False, n=2)   # out earlier
@@ -289,7 +247,7 @@ def test_home_stretch_starts_at_the_arrival(dbfile, monkeypatch):
     con.close()
 
     stretch = location.home_stretch()
-    # Four fixes a minute apart ending 40h ago -> the stay began ~40h3m ago.
+    # four fixes a minute apart ending 40h ago: began ~40h3m ago.
     assert 40 * 60 + 2 < stretch["minutes"] < 40 * 60 + 5
 
 

@@ -3,10 +3,8 @@ import { timer } from "../lib/timers.js";
 import { fetchJSON } from "../lib/api.js";
 import { useVisiblePoll } from "../lib/poll.js";
 
-// The console bar's subscription-usage chips: one per /usage-limit window,
-// cached percentages merged with the live rate_limit events the socket hands
-// the console (which stays their owner — they arrive on the same socket as
-// everything else).
+// The console bar's usage chips: one per /usage-limit window, cached percentages merged with the
+// socket's live rate_limit events (Console owns those).
 
 // display order + short labels for subscription /usage-limit windows
 const RATE_LIMIT_LABELS = {
@@ -25,9 +23,7 @@ const TURN_END_DELAY_MS = 4000;
 const money = (amount, currency) =>
   new Intl.NumberFormat(undefined, { style: "currency", currency }).format(amount);
 
-// How old the cached percentages are. Worth saying out loud: only interactive
-// Claude Code refreshes that cache, so a console-only afternoon leaves the
-// numbers behind, and an unlabelled stale percentage is worse than none.
+// Age of the cached percentages: only interactive Claude Code refreshes that cache, and an unlabelled stale percentage is worse than none.
 function formatAge(seconds) {
   if (seconds == null) return "never fetched";
   const mins = Math.round(seconds / 60);
@@ -37,13 +33,9 @@ function formatAge(seconds) {
   return `${hrs}h${mins % 60 ? ` ${mins % 60}m` : ""} old`;
 }
 
-// Two sources, one chip per window: the polled reading and the socket's
-// rate_limit events. The newer one wins. An event used to win outright, and
-// since the CLI sends one only when a window's status *changes*, a tab kept
-// whatever its last event said (a percent from an hour ago, or a resets_at
-// that had passed, which blanked the chip to "—" over a fresh reading) until
-// the next status change (New Features #52). An event with no stamp, or a
-// window the reading doesn't have, still counts.
+// One chip per window from two sources, newer wins (#52): the CLI sends an event only when status
+// changes, so an event winning outright kept a stale percent or a passed resets_at over a fresh
+// reading. An unstamped event, or a window the reading lacks, still counts.
 function mergeUsage(windows, events, readAt = -Infinity) {
   const byKey = new Map(windows.map((w) => [w.key, { ...w, live: false }]));
   for (const [key, ev] of Object.entries(events)) {
@@ -63,23 +55,17 @@ function mergeUsage(windows, events, readAt = -Infinity) {
   const rank = (k) => (RATE_LIMIT_ORDER.indexOf(k) + 1 || 99);
   return [...byKey.values()]
     .map((w) => (isExpired(w) ? { ...w, percent: null, expired: true,
-                                  // The window rolled over, so whatever it was
-                                  // rejecting for, it is not rejecting now.
+                                  // The window rolled over: no longer rejecting.
                                   status: "allowed" } : w))
     .sort((a, b) => rank(a.key) - rank(b.key));
 }
 
-// Past its reset a window's percentage is not merely old, it is void: the
-// quota rolled over and the number belongs to a window that no longer exists.
-// This is the 5h chip's whole problem — five hours turns over often enough
-// that any cache we did not just refresh is usually describing a dead window,
-// so the bar sat at a confident 100% for hours after the limit had lifted.
-// The week's number survives its own staleness because the week is still the
-// same week. Checked at render rather than fetched with the windows so it
-// flips on the clock, not on the next poll.
+// Past its reset a window's percentage is void, not merely old (the 5h chip sat at a confident 100%
+// for hours after the limit lifted); the week's number survives staleness. Checked at render so it
+// flips on the clock, not the next poll.
 const isExpired = (w) => w.resets_at != null && w.resets_at * 1000 <= Date.now();
 
-function formatResetIn(unixTs) {
+export function formatResetIn(unixTs) {
   if (unixTs == null) return null;
   const ms = unixTs * 1000 - Date.now();
   if (ms <= 0) return "resets soon";
@@ -91,8 +77,7 @@ function formatResetIn(unixTs) {
   return `resets in ${Math.round(hrs / 24)}d`;
 }
 
-// The same countdown, short enough to sit in the chip: "37m", "2h13m",
-// "4d6h". Minute precision — the chip re-renders once a minute, no faster.
+// Countdown for the chip: "37m", "2h13m", "4d6h"; minute precision (re-renders once a minute).
 function formatCountdown(unixTs) {
   if (unixTs == null) return null;
   const mins = Math.ceil((unixTs * 1000 - Date.now()) / 60000);
@@ -103,10 +88,7 @@ function formatCountdown(unixTs) {
   return `${Math.floor(hrs / 24)}d${hrs % 24}h`;
 }
 
-// "5h 87% ↻2h13m" — the countdown is what you actually plan around when the
-// percentage is high, so it lives in the chip rather than only in the title.
-// An expired window has no countdown: its next reset is unknown until a
-// fresh reading arrives.
+// "5h 87% ↻2h13m": the countdown is in the chip, not only the title. An expired window has none (next reset unknown).
 function ChipText({ w }) {
   const left = w.expired ? null : formatCountdown(w.resets_at);
   return (
@@ -117,9 +99,7 @@ function ChipText({ w }) {
   );
 }
 
-// The windows a rotating chip cycles through (5h, 7d and any per-model week,
-// "7d fable"), and how long each shows. One that's warning or shut holds the
-// chip instead: that's the number that matters until it resets.
+// Windows a rotating chip cycles (5h, 7d, per-model weeks); a warning or shut one holds the chip.
 const rotates = (key) => key === "five_hour" || key.startsWith("seven_day");
 const ROTATE_MS = 4000;
 const SEVERITY = { rejected: 2, allowed_warning: 1 };
@@ -138,17 +118,12 @@ export function rotation(windows) {
 export default function UsageChips({ rateLimits, rotate = false }) {
   const [usage, setUsage] = useState(null);   // cached %s from /api/console/usage
   const [turn, setTurn] = useState(0);
-  // Also the countdown's clock: a minute is its precision, and the re-render
-  // is what flips an expired window to "—" without waiting on the next poll.
+  // Also the countdown's clock: re-render flips an expired window to "—" without a poll.
   useVisiblePoll(() => setTurn((n) => n + 1), rotate ? ROTATE_MS : 60_000);
 
-  // Usage percentages. Polled, every 30s, and the backend asks the API at
-  // most once a minute however many chips are polling. Skipped while the tab
-  // is hidden, and caught up on return: nothing on the refresh bus reloads
-  // this. On top of that, any console tab's turn ending asks for a fresh
-  // reading (backend throttle 15s) — a few seconds late, so the API has
-  // counted the turn by the time it's asked.
-  // readAt: when the API was asked for this reading, on our clock.
+  // Polled every 30s (backend asks the API at most once a minute), skipped while hidden and caught up
+  // on return (the refresh bus doesn't reload this). A turn ending asks for a fresh reading a few
+  // seconds late so the API has counted it (backend throttle 15s). readAt: when the API was asked, our clock.
   const load = (fresh = false) => fetchJSON(`/api/console/usage${fresh ? "?fresh=1" : ""}`)
     .then((u) => setUsage({ ...u, readAt: u.age_seconds == null ? -Infinity
                                                                  : Date.now() - u.age_seconds * 1000 }))
@@ -156,9 +131,7 @@ export default function UsageChips({ rateLimits, rotate = false }) {
   useEffect(() => { load(); }, []);
   useVisiblePoll(load, 30_000, { catchUp: true });
   useEffect(() => {
-    // A wall-clock wait, not an ordering one: the API counting the turn is
-    // Anthropic's, and nothing tells us when it has. Several tabs ending
-    // together ask once.
+    // A wall-clock wait (nothing tells us when the API has counted the turn); tabs ending together ask once.
     const later = timer();
     const onTurnEnd = () => later.start(() => load(true), TURN_END_DELAY_MS);
     window.addEventListener(TURN_END_EVENT, onTurnEnd);
@@ -173,9 +146,7 @@ export default function UsageChips({ rateLimits, rotate = false }) {
     const w = cycle[turn % cycle.length];
     const stale = w.expired || (usage?.stale && !w.live);
     const pct = (x) => (x.percent != null ? `${Math.round(x.percent)}%` : "—");
-    // Sized to the widest window it cycles through, with and without the
-    // countdown: a chip that changed width every 4s would have the status
-    // bar fold and unfold its controls on the same beat (lib/barHost.js).
+    // Sized to the widest window (with and without countdown): a width change every 4s would fold/unfold the status bar (lib/barHost.js).
     const short = (x) => `${x.label} ${pct(x)}`.length;
     const full = (x) => short(x) + (x.expired ? 0 : (formatCountdown(x.resets_at) || "").length + 2);
     const widths = { "--chip-full": `${Math.max(...cycle.map(full))}ch`,

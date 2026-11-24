@@ -9,9 +9,7 @@ import { useSheetData } from "../lib/sheet.js";
 import { fmtAgo, fmtDay, shortDay } from "../lib/time";
 import { weatherIcon } from "./GlanceStrip.jsx";
 
-// Weather as the shape of the days: each one a low-to-high span on one shared
-// scale, so a cold snap is visibly further left, not just a smaller number. The
-// range is the fact here. Two lines would ask you to subtract.
+// Each day a low-to-high span on one shared scale (a cold snap sits visibly left); two lines would make you subtract.
 
 const VIEWS = ["tmax", "tmin", "precip_prob", "weather_code", "wind_speed", "uv_index"];
 const RAIN_WORTH_SAYING = 10;   // percent; under this the column stays blank

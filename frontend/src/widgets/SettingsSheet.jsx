@@ -1,22 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
 import { fetchJSON, postJSON } from "../lib/api";
-import { cachedDefault, cachedModels, modelChoices, modeKey, modelKey, NERD_KEY } from "../lib/consolePrefs.js";
+import { modeKey, NERD_KEY } from "../lib/consolePrefs.js";
 import Schedules from "./Schedules.jsx";
-import { ModelOptions } from "../console/ModelPicker.jsx";
+import ModelDefaults from "./ModelDefaults.jsx";
 import { AUTO_KEY } from "../lib/autoResume.js";
 import Providers from "./Providers.jsx";
+import ClaudeAccounts from "./ClaudeAccounts.jsx";
 import PhoneAccess from "./PhoneAccess.jsx";
 import { setThemeChoice, themeChoice } from "../lib/theme";
 import { setAxis, setLayout, useLook } from "../lib/look.js";
 import { AGENT_STYLES, LAYOUTS } from "../looks/index.js";
 
-// Settings: the choices that are yours to make once and leave. Only things that
-// really change something belong here, so it holds no config you could only
-// break, and nothing a card already does better: Sources keeps the connections
-// and the console bar keeps per-conversation controls.
-//
-// Preferences stay in localStorage as they always have, per browser; the Claude
-// login belongs to the CLI and is only asked about (app/claude_account.py).
+// Settings: choices made once. No config you could only break, nothing a card does better (Sources
+// keeps connections, the console bar per-conversation controls). Preferences stay in per-browser
+// localStorage; the Claude login belongs to the CLI and is only asked about (app/claude_account.py).
 
 const POLL_MS = 1500;
 const PLAN = { pro: "Pro", max: "Max", team: "Team", enterprise: "Enterprise" };
@@ -69,20 +66,20 @@ function ClaudeAccount() {
   const note = error || failed || a?.error;
   return (
     <>
-      <Row label={!data ? "Checking…" : a?.logged_in ? a.email || "Signed in" : "Not signed in"}
-        hint={a?.logged_in ? [PLAN[a.plan] || a.plan, a.expires_at && `until ${fmtDay(a.expires_at)}`]
-          .filter(Boolean).join(" · ") : undefined}>
+      <Row label={!data ? "Checking…" : a?.logged_in ? `Signed in as ${a.email || "…"}` : "Not signed in"}
+        hint={a?.logged_in ? [PLAN[a.plan] || a.plan, a.expires_at && `until ${fmtDay(a.expires_at)}`,
+          "sign in to another account to save it above"].filter(Boolean).join(" · ") : undefined}>
         {state === "waiting" ? <button className="pbtn" onClick={cancel}>Cancel</button>
           : !asking && <button className="pbtn" disabled={!data} onClick={() => setAsking(true)}>
-              {a?.logged_in ? "Switch account" : "Sign in"}
+              {a?.logged_in ? "Add account" : "Sign in"}
             </button>}
       </Row>
       {state === "waiting" && <p className="set-note">Waiting on the browser. Finish signing in there.</p>}
-      {state === "done" && <p className="set-note good">Signed in. New tabs use this account; a conversation already open may carry on as the old one until its tab reconnects.</p>}
+      {state === "done" && <p className="set-note good">Signed in and saved. Idle tabs reconnect onto it; in auto, the rules then pick by priority.</p>}
       {note && <p className="set-note bad">{note}</p>}
       {asking && (
         <div className="set-ask">
-          <p>This is the login for all of Claude Code on this Mac, your terminal included, and everything then shares that account's usage limits.</p>
+          <p>This is the login for all of Claude Code on this Mac, your terminal included. The account you're on now stays saved, so you can switch back in one click.</p>
           <div className="set-ask-row">
             <input type="email" value={email} placeholder="Email, to fill in the sign-in page (optional)"
               aria-label="Email for the sign-in page" onChange={(e) => setEmail(e.target.value)}
@@ -137,29 +134,19 @@ function Stored({ storageKey, fallback, options }) {
   );
 }
 
-// A profile's model: what the CLI last reported for it (cached by the
-// console), "default" named by what it resolves to there.
-function StoredModel({ profile }) {
-  const [value, setValue] = useState(() => localStorage.getItem(modelKey(profile)) || "default");
-  const choices = modelChoices(cachedModels(profile), cachedDefault(profile), value);
-  return (
-    <select className="set-select" value={value} onChange={(e) => {
-      setValue(e.target.value);
-      localStorage.setItem(modelKey(profile), e.target.value);
-    }}>
-      <ModelOptions choices={choices} />
-    </select>
-  );
-}
-
 export default function SettingsSheet({ onOpen }) {
   const [theme, setTheme] = useState(themeChoice);
   const look = useLook();
   return (
     <div className="settings">
-      <Section title="Claude account">
+      <Section title="Claude accounts">
+        <ClaudeAccounts />
         <ClaudeAccount />
         <ClaudeCode />
+      </Section>
+
+      <Section title="Models">
+        <ModelDefaults />
       </Section>
 
       <Section title="Providers">
@@ -197,9 +184,7 @@ export default function SettingsSheet({ onOpen }) {
       </Section>
 
       <Section title="New console tabs">
-        <p className="set-note">Tabs already open keep what they have until they reconnect.</p>
-        <Row label="Vault model"><StoredModel profile="general" /></Row>
-        <Row label="Dev model"><StoredModel profile="dev" /></Row>
+        <p className="set-note">Tabs already open keep what they have until they reconnect. Their model is under Models.</p>
         <Row label="Vault permissions" hint="Set “never ask” from the console bar, where it warns you">
           <Stored storageKey={modeKey("general")} fallback="auto" options={MODES} />
         </Row>

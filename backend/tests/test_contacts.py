@@ -1,10 +1,8 @@
 """What gets handed to osascript, and what never reaches it at all.
 
-No test here invokes osascript: `_run` is stubbed everywhere, so the suite
-says nothing about whether Contacts is reachable on this machine (that's what
-`python -m app.contacts check` is for). What it does pin is the argv layout —
-the create script walks argv in triples, and an off-by-one there writes a
-phone number into a label field on a card that then syncs to the phone.
+`_run` is stubbed everywhere (reachability is `python -m app.contacts check`).
+Pins the argv layout: the create script walks argv in triples, and an off-by-one
+writes a phone number into a label field that syncs to the phone.
 """
 
 import pytest
@@ -14,8 +12,7 @@ from app import contacts
 
 @pytest.fixture
 def calls(monkeypatch):
-    """Capture osascript argv instead of running it. Returns the recorded
-    calls; the script itself is dropped since it's a module constant."""
+    """Capture osascript argv instead of running it; returns the recorded calls."""
     recorded = []
 
     def fake_run(script, *args):
@@ -64,8 +61,7 @@ def test_a_phone_with_no_digits_is_refused(calls, no_addressbook):
 # ---------- argv layout ----------
 
 def test_fixed_fields_come_first_and_always_all_four(calls, no_addressbook):
-    """The script reads items 1-4 positionally, so an omitted org still has
-    to occupy its slot as an empty string."""
+    """Items 1-4 are positional: an omitted org is an empty string."""
     contacts.create(first="Ada", last="Lovelace", note="met at the fair")
     assert calls[0] == ["Ada", "Lovelace", "", "met at the fair"]
 
@@ -88,8 +84,7 @@ def test_labels_survive_when_given_as_tuples(calls, no_addressbook):
 
 
 def test_multiple_identifiers_stay_in_order(calls, no_addressbook):
-    """Order is the only thing distinguishing the primary number from the
-    rest — Contacts shows the first one first."""
+    """Order marks the primary number (Contacts shows the first first)."""
     contacts.create(first="Ada", phones=["2025551111", "2025552222"])
     assert calls[0][4:] == [
         "phone", "mobile", "2025551111",
@@ -98,8 +93,7 @@ def test_multiple_identifiers_stay_in_order(calls, no_addressbook):
 
 
 def test_argv_is_always_whole_triples(calls, no_addressbook):
-    """The AppleScript `repeat while i < n` walks by 3 and would read past the
-    end of argv on a partial tail."""
+    """argv is whole triples (the script walks by 3)."""
     contacts.create(first="Ada", phones=["2025551111", "2025552222"],
                     emails=["a@b.com"])
     assert (len(calls[0]) - 4) % 3 == 0
@@ -120,8 +114,7 @@ def test_blank_identifiers_are_dropped_not_passed_empty(calls, no_addressbook):
 # ---------- dedupe ----------
 
 def _book(*records):
-    """records are (card_id, name, {normalized identifiers}) — the shape
-    providers.messages._addressbook_records yields."""
+    """Records are (card_id, name, {normalized identifiers}), as providers.messages._addressbook_records yields."""
     return lambda: iter(records)
 
 
@@ -138,8 +131,7 @@ def test_a_shared_number_blocks_the_create(calls, monkeypatch):
 
 
 def test_dedupe_normalizes_both_sides(calls, monkeypatch):
-    """+1 (202) 555-1111 and 2025551111 are the same phone; the CRM already
-    treats them as one person, so creating a second card would split them."""
+    """+1 (202) 555-1111 and 2025551111 are one phone (a second card would split the CRM person)."""
     monkeypatch.setattr(contacts, "addressbook_records", _book(ADA))
     with pytest.raises(contacts.DuplicateContact):
         contacts.create(first="Ada", phones=["+1 (202) 555-1111"])
@@ -168,8 +160,7 @@ def test_an_unrelated_card_does_not_block(calls, monkeypatch):
 
 
 def test_a_card_can_be_excluded_from_its_own_dedupe(monkeypatch):
-    """The wrinkle update() hits: re-labelling a number already on the card
-    would otherwise collide with itself."""
+    """A card can be excluded from its own dedupe (update() re-labelling its own number)."""
     monkeypatch.setattr(contacts, "addressbook_records", _book(ADA))
     assert contacts.matches_for(phones=["2025551111"]) != []
     assert contacts.matches_for(phones=["2025551111"],
@@ -177,8 +168,7 @@ def test_a_card_can_be_excluded_from_its_own_dedupe(monkeypatch):
 
 
 def test_an_unreadable_addressbook_lets_the_create_through(calls, monkeypatch):
-    """Same best-effort posture as messages.py: no FDA means no dedupe, not a
-    refusal to write."""
+    """No Full Disk Access means no dedupe, not a refused write (as messages.py)."""
     monkeypatch.setattr(contacts, "addressbook_records", lambda: iter(()))
     contacts.create(first="Ada", phones=["2025551111"])
     assert len(calls) == 1
@@ -224,8 +214,7 @@ def test_an_empty_query_finds_nothing_rather_than_everything(monkeypatch):
 
 @pytest.fixture
 def one_card(monkeypatch):
-    """A card that exists, with one phone stored in pretty format — so the
-    normalize-to-remove path has something real to match against."""
+    """A card with one phone stored in pretty format."""
     monkeypatch.setattr(contacts, "addressbook_records", _book(ADA))
     monkeypatch.setattr(contacts, "_raw_identifiers", lambda cid: [
         {"kind": "phone", "value": "+1 (202) 555-1111",
@@ -259,8 +248,7 @@ def test_empty_string_clears_a_field(calls, one_card):
 
 
 def test_a_removal_targets_the_stored_format_not_the_typed_one(calls, one_card):
-    """AppleScript matches the literal string, so "2025551111" has to become
-    the "+1 (202) 555-1111" actually on the card."""
+    """A removal uses the stored format ("+1 (202) 555-1111"): AppleScript matches the literal string."""
     contacts.update("ADA-1:ABPerson", remove=["2025551111"])
     assert calls[0] == ["ADA-1:ABPerson", "delphone", "+1 (202) 555-1111", ""]
 
@@ -294,8 +282,7 @@ def test_a_bad_email_never_reaches_the_card(calls, one_card):
 
 
 def test_removals_are_ordered_before_additions(calls, one_card):
-    """Swapping a number for a new one: deleting after adding could match and
-    remove the addition instead."""
+    """Removals run before additions (else a swap could remove the new number)."""
     contacts.update("ADA-1:ABPerson", remove=["2025551111"],
                     add_phones=["2025552222"])
     ops = calls[0][1:]

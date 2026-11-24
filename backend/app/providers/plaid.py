@@ -1,15 +1,9 @@
-"""Plaid client + item lifecycle (archive/PLAID_PLAN.md phase 1) — the Plaid analogue
-of providers/oauth.py: raw HTTP, credential storage, and a small CLI. No
-plaid-python dependency; every Plaid call is a JSON POST through api() here.
+"""Plaid client + item lifecycle: raw HTTP (no plaid-python), credential storage, a small CLI.
 
-Secrets: the Plaid client_id/secret live in the `tokens` table (one row,
-provider='plaid'); item access_tokens live in `plaid_items`. app.db only —
-never in API responses, never logged. status() masks everything.
-
-Environments: one configured env at a time (`setup` overwrites the row).
-Items remember the env they were created in; sync/read only touches items
-matching the configured env, so a sandbox→production switch just orphans the
-sandbox items instead of mixing data.
+client_id/secret live in `tokens` (provider='plaid'), item access_tokens in `plaid_items`;
+never in responses or logs (status() masks). One env at a time; items remember theirs and
+sync/read only touch the configured env's, so switching env orphans rather than mixes.
+Design: DESIGN.md → OAuth and Plaid credentials.
 
 CLI (run from backend/ with the venv active):
     python -m app.providers.plaid setup --client-id ID --secret S --env sandbox
@@ -60,9 +54,7 @@ def creds() -> tuple[str, str, str, str]:
 
 
 def api(path: str, body: dict | None = None) -> dict:
-    """POST {base}{path} with client_id/secret injected. On non-2xx raises
-    PlaidError from the response's error fields — never echoes the request
-    body (it holds secrets)."""
+    """POST {base}{path} with credentials injected; non-2xx raises PlaidError (never echoes the secret-bearing body)."""
     client_id, secret, base, _ = creds()
     payload = {"client_id": client_id, "secret": secret, **(body or {})}
     req = urllib.request.Request(
@@ -83,8 +75,7 @@ def api(path: str, body: dict | None = None) -> dict:
 
 
 def setup(client_id: str, secret: str, env: str) -> None:
-    """Store (or replace) the Plaid credentials row. Reuses the tokens table:
-    token_uri = API base URL, scopes = env, oauth token columns stay NULL."""
+    """Store or replace the credentials row in `tokens`: token_uri = API base, scopes = env."""
     if env not in PLAID_HOSTS:
         raise ValueError(f"env must be one of: {', '.join(PLAID_HOSTS)}")
     with db.session() as con, con:
@@ -117,14 +108,9 @@ def list_items(env: str) -> list[dict]:
 
 
 def create_link_token(item_id: str | None = None) -> str:
-    """Link token for connecting a new bank, or — with item_id — for Link
-    update mode (re-auth after ITEM_LOGIN_REQUIRED, or granting additional
-    consent after `needs_consent`: pass the access_token, omit products).
-
-    `additional_consented_products: ["liabilities"]` on every token —
-    optional, so it never blocks Link finishing for an institution that
-    doesn't support liabilities, but grants it up front where supported
-    instead of requiring a second reconnect later."""
+    """Link token for a new bank, or with item_id for update mode (re-auth or `needs_consent`:
+    access_token, no products). `additional_consented_products: ["liabilities"]` is optional,
+    so it never blocks Link, and grants consent up front where supported."""
     body = {
         "client_name": "vault-dashboard",
         "language": "en",

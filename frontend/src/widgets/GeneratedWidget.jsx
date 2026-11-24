@@ -14,11 +14,8 @@ export function useGeneratedCard() {
     postJSON("/api/generated/promote", { path, curated }).then(reload);
   }
 
-  // A clear inbox doesn't make the card vanish: it does what every other
-  // quiet card does — a labelled line, so "nothing to review" and "the
-  // widget isn't rendering" don't look identical.
-  // Notes to file are "today", not "needs you": nothing is waiting on them,
-  // and they keep until you get to them.
+  // A clear inbox stays a labelled line so "nothing to review" differs from "not rendering".
+  // Notes to file are "today", not "needs you": they keep.
   const level = !notes ? null : notes.length > 0 ? HAS : QUIET;
   const summary = !notes?.length ? "inbox clear"
     : `${notes.length} note${notes.length > 1 ? "s" : ""} to file`;

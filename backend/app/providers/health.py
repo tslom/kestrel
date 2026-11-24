@@ -1,17 +1,9 @@
-"""Google Health provider — Fitbit Air data over the Google
-Health API v4 (the Fitbit Web API successor; legacy API dies Sept 2026).
-Google Health is truth; `health_days` + `health_sync` in app.db are the
-derived cache (safe to drop and re-pull). One row per (day, metric) so
-weekly trends are a SQL query, not an API loop.
-
-Auth: the shared oauth helper, token row (google, GOOGLE_HEALTH_ACCOUNT).
-Day mapping: the API's own civil dates (user timezone) — plain dates, like
-calendar, not day_key rollover; a sleep session belongs to the date you woke
-up. Filters accept `sleep.interval.civil_end_time`, but the response interval
-carries only UTC instants + offsets, so the wake-up date is computed as
-endTime + endUtcOffset. Naps count toward that day's totals.
-A day with a sync marker but no row for a metric means the source had no
-data (watch not worn ≠ never fetched).
+"""Google Health provider (Fitbit Air, Health API v4). Google Health is truth;
+`health_days`, `health_sync`, `health_hours` and `sleep_segments` are derived
+cache. Days are the API's civil dates, not day_key; sleep belongs to the
+wake-up date (endTime + endUtcOffset). A synced day with no row for a metric
+means no data, not never fetched.
+Design: DESIGN.md → §3 Health.
 """
 
 import logging
@@ -40,64 +32,40 @@ NAME = "health"
 METRICS = ("steps", "resting_hr", "hr_avg", "hr_max", "hrv", "sleep_hours",
            "sleep_deep_min", "sleep_rem_min", "sleep_light_min",
            "sleep_awake_min", "active_zone_minutes",
-           # nightly wellness signals — SpO2 %, breaths/min, and skin temp
-           # (°F). Useful for spotting illness; all sleep-derived, so they
-           # land on the wake-up day like the sleep stages.
+           # nightly, sleep-derived (wake-up day): SpO2 %, breaths/min, skin temp °F
            "spo2", "respiratory_rate", "skin_temp")
 DEFAULT_METRIC = "steps"
 ALLOW_FUTURE = False    # your body has no next-week data
 
 API_BASE = "https://health.googleapis.com/v4/users/me/dataTypes"
 
-# dailyRollUp caps the civil range per request: 14 days for heart-rate (and
-# other high-resolution types), 90 for the rest.
+# dailyRollUp's per-request civil-range cap: 14 days for heart-rate, 90 otherwise.
 ROLLUP_MAX_DAYS = 90
 ROLLUP_MAX_DAYS_HEART_RATE = 14
 
-# refresh() keeps [today-7 .. today] warm — sleep and resting HR land within
-# a day, steps backfill when the watch syncs late; colder days are fetched on
-# demand by get() and backfill the cache.
+# refresh() keeps [today-7 .. today] warm; colder days are fetched on demand by get().
 REFRESH_PAST_DAYS = 7
 
-# Intraday HR: hourly-bucketed heart rate for a short trailing window,
-# feeding features.py's hr_var_day. Only the recent past is useful (a same-day
-# load proxy) and the rollUp endpoint caps heart-rate at ROLLUP_MAX_DAYS_HEART_RATE.
+# Intraday HR (feeds features.py's hr_var_day); the rollUp caps heart-rate at 14 days.
 INTRADAY_HR_DAYS = 7
 HR_HOURLY_METRIC = "hr_hourly"
 
-# Intraday steps, same (day, hour) shelf as the HR buckets and the same rollUp
-# call with a different dataType — the curve behind "14,000 steps", so an
-# afternoon walk can be told from a day spent pacing. Unlike heart rate this
-# one is not capped at 14 days by the API, so cold days are filled on demand by
-# day_detail() rather than by widening the poller's window: the trailing week
-# covers the days you actually look at, and July is one fetch away if you ask.
+# Intraday steps share the health_hours shelf. Not capped at 14 days, so cold
+# days fill on demand in day_detail(), not by widening the poller's window.
 STEPS_HOURLY_METRIC = "steps_hourly"
 
-# Sleep stages as the API names them -> the four keys the rest of the app
-# already uses (health_days' sleep_deep_min &c., and the CSS classes the sheet
-# colors them with).
+# API stage names -> the four keys the app and sheet CSS use.
 STAGE_KEYS = {"DEEP": "deep", "REM": "rem", "LIGHT": "light", "AWAKE": "awake"}
 
-# The desk card's window (see summary()). Four weeks rather than one: the
-# card's job is to say whether a number is unusual *for you*, and a seven-day
-# baseline over a body that keeps a weekday/weekend shape calls every Saturday
-# unusual. Four weeks carries four of each weekday, so the shape averages out
-# instead of becoming the signal.
+# Desk card window: 28 days holds four of each weekday, so a weekday/weekend shape averages out.
 SUMMARY_DAYS = 28
 
-# What the card can lead with. Deliberately not METRICS: the sleep-stage
-# breakdown and the nightly wellness trio are sheet material — a card that
-# could open with "REM 84 min" would be back to reporting numbers nobody
-# asked it for, which is the thing the card form exists to stop.
+# What the card can lead with; deliberately not METRICS (stages and the nightly trio are sheet-only).
 SUMMARY_METRICS = ("steps", "sleep_hours", "resting_hr", "active_zone_minutes")
 
 
 def _api(url: str, token: str, body: dict | None = None) -> dict:
-    # A body means POST — urllib inferred that from `data`; say it outright.
-    # Every call this provider makes is a read, POSTs included: rollUp and
-    # dailyRollUp take their range in a body but change nothing, so a retry
-    # after a dropped connection or a 503 is safe (http.py retries only
-    # callers that say so for anything but GET).
+    # Every call is a read, POSTs included (rollUp takes its range in a body), so retry is safe.
     return http.json_request(url, label="health API", token=token,
                              method="GET" if body is None else "POST",
                              body=body, idempotent=True, reauth=lambda:
@@ -142,26 +110,11 @@ def _rollup_points(token: str, dtype: str, start: date, end: date,
 
 def _hourly(token: str, dtype: str, start: date, end: date, pick,
             max_days: int = ROLLUP_MAX_DAYS) -> dict[tuple[str, int], float]:
-    """Hourly buckets over local days [start, end] inclusive, as
-    {(local_day, local_hour): value}. `pick` reads the value out of one
-    rollup point and returns None for a bucket the watch didn't record.
-
-    A rollUp endpoint takes a physical-time `range` (UTC instants) and a
-    `windowSize` duration; it returns one bucket per hour, each stamped with a
-    UTC `startTime` on an hour boundary. We ask over a UTC span wide enough to
-    cover the local days, then bucket each point by its start instant converted
-    to the local tz — so DST/offset shifts land in the right local hour without
-    us assuming a whole-hour offset.
-
-    The zone is `tz.zone_on(day)`, not the machine's. This only ever ran over a
-    trailing week when the two agreed; asking it for a cold day in July (which
-    the drill-down does) reads a day the desk spent on the other coast, and the
-    machine clock would frame it three hours out — which both loses the day's
-    first hours and folds the next morning's into it: one such day summed to
-    10,610 hourly steps against a stored daily 8,765."""
-    # Widen by a day each side so the local-day edges are fully covered
-    # whatever the offset, then filter by the bucket key; the API caps the
-    # span, so leave those two days inside this type's limit.
+    """Hourly buckets over local days [start, end] inclusive -> {(local_day, local_hour): value}.
+    `pick` returns None for a bucket the watch didn't record. The span is framed
+    in `tz.zone_on(day)`, never the machine's zone: a cold day spent elsewhere
+    otherwise double-counts hours (10,610 hourly vs 8,765 daily steps)."""
+    # Widen a day each side to cover the edges, filter by bucket key; the 2 days stay inside the API cap.
     out: dict[tuple[str, int], float] = {}
     url = f"{API_BASE}/{dtype}/dataPoints:rollUp"
     chunk = start
@@ -189,12 +142,8 @@ def _hourly(token: str, dtype: str, start: date, end: date, pick,
 
 
 def _bucket(ts: str) -> tuple[str, int]:
-    """A UTC instant -> the (local day, local hour) it belongs to.
-
-    Resolved twice because the zone is a function of the day and the day is a
-    function of the zone: seed with the UTC date, then re-read in whatever zone
-    that lands on. One pass is enough to settle it — the zones a move puts on
-    either side of a bucket differ by hours, not days."""
+    """A UTC instant -> (local day, local hour). Zone depends on day and day on
+    zone, so seed with the UTC date and re-read once; that settles it."""
     inst = datetime.fromisoformat(ts.replace("Z", "+00:00"))
     seed = inst.astimezone(tz.zone_on(inst.date()))
     local = inst.astimezone(tz.zone_on(seed.date()))
@@ -207,15 +156,13 @@ def _pick_hr(p: dict) -> float | None:
 
 
 def _pick_steps(p: dict) -> float | None:
-    """An hour with no steps still comes back as a bucket, and 0 is a real
-    answer there — you were sitting — so only a missing `countSum` is a gap."""
+    """0 steps is a real answer; only a missing `countSum` is a gap."""
     steps = p.get("steps") or {}
     return None if "countSum" not in steps else float(steps["countSum"])
 
 
 def _hr_hourly(token: str, start: date, end: date) -> dict[tuple[str, int], float]:
-    """Hourly mean bpm. Capped at the heart-rate span limit, which is tighter
-    than every other type's."""
+    """Hourly mean bpm, capped at the 14-day heart-rate span."""
     return _hourly(token, "heart-rate", start, end, _pick_hr,
                    max_days=ROLLUP_MAX_DAYS_HEART_RATE)
 
@@ -232,10 +179,8 @@ def _instant(dt: datetime) -> str:
 
 def _write_hours(con, metric: str, start: date, end: date,
                  buckets: dict[tuple[str, int], float], mark: bool = False) -> int:
-    """Replace one metric's window in health_hours. Scoped by metric as well as
-    by day: the two intraday series are pulled over different windows (steps
-    can go back further than heart rate), and a delete that took the whole day
-    would have one sync quietly evicting the other's rows."""
+    """Replace one metric's window in health_hours. The delete is scoped by metric
+    too: the two series use different windows and must not evict each other."""
     now = datetime.now().isoformat(timespec="seconds")
     with con:
         con.execute("DELETE FROM health_hours WHERE metric=? AND day BETWEEN ? AND ?",
@@ -245,10 +190,7 @@ def _write_hours(con, metric: str, start: date, end: date,
             " VALUES (?, ?, ?, ?, ?)",
             [(day, hour, metric, value, now)
              for (day, hour), value in buckets.items()])
-        # A fetched day with no buckets is still a fetched day — that's what
-        # stops day_detail() re-asking the API about a day you left the watch
-        # on the nightstand. Only the steps pull sets the mark, because only
-        # the steps pull is what `steps_at` claims happened.
+        # An empty fetched day is still fetched (stops day_detail() re-asking); only steps sets `steps_at`.
         d = start
         while mark and d <= end:
             con.execute(
@@ -260,15 +202,9 @@ def _write_hours(con, metric: str, start: date, end: date,
 
 
 def _gather(jobs: dict[str, Callable[[], object]]) -> dict[str, object]:
-    """Run independent API reads side by side -> {name: result or the
-    exception it raised}.
-
-    Concurrent because each call is mostly waiting on Google: measured
-    serially, a refresh made 11 calls back to back for ~12.6s, every one
-    0.6-1s of round trip except the two heart-rate rollUps (2-4s, the only
-    ones whose cost grows with the window). Side by side the refresh costs
-    roughly its slowest call. Workers touch no database — they only fetch;
-    the caller writes on its own connection."""
+    """Run independent API reads concurrently -> {name: result or the exception
+    it raised}. Serial was ~12.6s for 11 calls; concurrent costs the slowest
+    (heart-rate rollUp, 2-4s). Workers fetch only; the caller writes."""
     out: dict[str, object] = {}
     with ThreadPoolExecutor(max_workers=max(1, len(jobs)),
                             thread_name_prefix="health") as pool:
@@ -291,10 +227,7 @@ def _fetch_hours(token: str, start: date, end: date) -> dict[str, object]:
 
 def _write_fetched_hours(con, start: date, end: date,
                          fetched: dict[str, object]) -> int:
-    """Write each series that came back; then raise the first that didn't.
-    The two are separate calls with separate rows (_write_hours scopes its
-    delete by metric), so a heart-rate timeout is no reason to drop the
-    steps curve beside it."""
+    """Write each series that came back, then raise the first error (one series failing keeps the other)."""
     n, errors = 0, []
     for metric, got in fetched.items():
         if isinstance(got, BaseException):
@@ -371,9 +304,7 @@ def _hr_days(token, start, end):
 
 
 def _sleep_days(token, start, end):
-    """Nightly totals and the nights' segments together — the sleep dataPoint
-    carries its stage segments and its stage totals in one response, so the
-    nights ride along rather than costing a second call."""
+    """Nightly totals plus the nights' segments; one response carries both."""
     stage_metric = {"DEEP": "sleep_deep_min", "REM": "sleep_rem_min",
                     "LIGHT": "sleep_light_min", "AWAKE": "sleep_awake_min"}
     days: dict[str, dict[str, float]] = defaultdict(dict)
@@ -392,13 +323,9 @@ def _sleep_days(token, start, end):
     return days, nights
 
 
-# One entry per API series: (name, the health_days metrics it owns, optional,
-# fetch(token, start, end) -> {day: {metric: value}}). Ownership is what lets a
-# failed series leave its own cached rows alone while the others are replaced.
-#
-# `optional` marks the additive wellness types whose dataType may be
-# unavailable for a given watch/account: an API refusal (RuntimeError) there
-# means "no such data", not a failed sync. A network failure still counts.
+# (name, health_days metrics it owns, optional, fetch(token, start, end) -> {day: {metric: value}}).
+# Ownership lets a failed series keep its cached rows. `optional` types may be
+# unavailable on a watch: an API refusal (RuntimeError) is "no data"; a network failure still counts.
 _SLEEP_METRICS = ("sleep_hours", "sleep_deep_min", "sleep_rem_min",
                   "sleep_light_min", "sleep_awake_min")
 SERIES = (
@@ -415,8 +342,6 @@ SERIES = (
          t, "daily-heart-rate-variability", "daily_heart_rate_variability",
          "dailyHeartRateVariability", "averageHeartRateVariabilityMilliseconds",
          "hrv", s, e)),
-    # Sleep-derived nightly signals (SpO2 %, respiratory rate, skin temp).
-    # Each is a Daily-record list type keyed on its wake-up date.
     ("spo2", ("spo2",), True,
      lambda t, s, e: _list_metric(
          t, "daily-oxygen-saturation", "daily_oxygen_saturation",
@@ -425,7 +350,7 @@ SERIES = (
      lambda t, s, e: _list_metric(
          t, "daily-respiratory-rate", "daily_respiratory_rate",
          "dailyRespiratoryRate", "breathsPerMinute", "respiratory_rate", s, e)),
-    # Skin temp comes back in °C; store °F to match the rest of the US dashboard.
+    # API gives °C; stored as °F.
     ("skin-temp", ("skin_temp",), True,
      lambda t, s, e: _list_metric(
          t, "daily-sleep-temperature-derivations",
@@ -438,9 +363,8 @@ SERIES = (
 
 @dataclass
 class _Pull:
-    """What one _fetch got back. `metrics` are the metrics whose series
-    answered — the only ones whose cached rows may be replaced; `errors` the
-    series that didn't. `nights` is None unless the sleep series answered."""
+    """What one _fetch got back. `metrics`: those whose series answered (only these
+    may be replaced in cache); `nights` is None unless sleep answered."""
     days: dict[str, dict[str, float]] = field(
         default_factory=lambda: defaultdict(dict))
     nights: dict[str, list[dict]] | None = None
@@ -449,10 +373,8 @@ class _Pull:
 
 
 def _fetch(start: date, end: date) -> _Pull:
-    """Pull every metric for [start, end] from the API, one concurrent call
-    per series. A rollup point with no value field means no data — no row for
-    that day. A series that fails is reported in `errors` and contributes
-    nothing; the others still land."""
+    """Pull every series for [start, end] concurrently. A point with no value means
+    no row. A failed series goes to `errors` and contributes nothing."""
     token = oauth.get_token("google", GOOGLE_HEALTH_ACCOUNT)
     got = _gather({name: (lambda fn=fn: fn(token, start, end))
                    for name, _, _, fn in SERIES})
@@ -475,11 +397,8 @@ def _fetch(start: date, end: date) -> _Pull:
 
 
 def _sleep_sessions(token: str, start: date, end: date):
-    """Yield (wake-up day, sleep object) for every session ending in the window.
-
-    Sleep sessions attach to the civil date the session ENDED (wake-up day) —
-    the one day-attribution rule in this provider that isn't `day_key()` and
-    isn't the start date either."""
+    """Yield (wake-up day, sleep object) for every session ending in the window;
+    the day is the civil date the session ENDED, not its start."""
     sleep_filter = (f'sleep.interval.civil_end_time >= "{start.isoformat()}"'
                     f' AND sleep.interval.civil_end_time < '
                     f'"{(end + timedelta(days=1)).isoformat()}"')
@@ -490,18 +409,13 @@ def _sleep_sessions(token: str, start: date, end: date):
 
 
 def _local(ts: str, offset: str) -> datetime:
-    """A UTC instant plus its recorded offset -> the wall clock you slept by.
-
-    Stored rather than re-derived: converting with *today's* zone is exactly
-    the bug the terrain sheet found at six-year scale, and a night is the one
-    thing you read against the clock in the room."""
+    """A UTC instant plus its recorded offset -> the wall clock you slept by (never today's zone)."""
     inst = datetime.fromisoformat(ts.replace("Z", "+00:00"))
     return inst.astimezone(timezone(timedelta(seconds=int(offset.removesuffix("s")))))
 
 
 def _segments_of(sleep: dict) -> list[dict]:
-    """The night's stage segments, in clock order. `stages` rides along on the
-    same dataPoint the nightly totals are read from — this is free."""
+    """The night's stage segments, in clock order."""
     out = []
     for s in sleep.get("stages", []):
         stage = STAGE_KEYS.get(s.get("type"))
@@ -517,13 +431,9 @@ def _segments_of(sleep: dict) -> list[dict]:
 def _sync(con, start: date, end: date) -> int:
     """API -> cache for the window: replace metric rows, mark days synced.
 
-    A series that failed keeps its cached rows (the delete is scoped to the
-    metrics that answered), and then the first failure is raised — after the
-    rest have landed. The window is *not* marked synced in that case: a mark
-    claims every metric was fetched, and a cold day backfilled without its
-    heart rate must still read as missing so the next get() asks again. The
-    raised error prefers one that isn't the network, so offline.best_effort()
-    can't swallow a dead token behind a timeout."""
+    A failed series keeps its cached rows; the first failure is raised after the
+    rest land, and the window is not marked synced (so get() asks again). The
+    raised error prefers a non-network one so best_effort() can't hide a dead token."""
     pull = _fetch(start, end)
     now = datetime.now().isoformat(timespec="seconds")
     with con:
@@ -552,10 +462,7 @@ def _sync(con, start: date, end: date) -> int:
 
 def _write_segments(con, start: date, end: date,
                     nights: dict[str, list[dict]], now: str) -> None:
-    """Replace the window's segments. Caller owns the transaction, because this
-    and the metric rows it sits beside came out of one fetch and a night whose
-    totals landed without its shape would draw a hypnogram that disagrees with
-    the bar above it."""
+    """Replace the window's segments. Caller owns the transaction so totals and shape land together."""
     con.execute("DELETE FROM sleep_segments WHERE day BETWEEN ? AND ?",
                 (start.isoformat(), end.isoformat()))
     con.executemany(
@@ -563,8 +470,7 @@ def _write_segments(con, start: date, end: date,
         " refreshed_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         [(day, seq, s["stage"], s["start"], s["end"], s["minutes"], now)
          for day, segs in nights.items()
-         # naps and the main session share a wake-up day, so sequence across
-         # the day rather than within a session
+         # naps share the wake-up day: sequence across the day
          for seq, s in enumerate(sorted(segs, key=lambda s: s["start"]))])
 
 
@@ -572,16 +478,12 @@ def _auto_habit(con, start: date, end: date, metric: str, threshold: float,
                 habit_name: str, note_fn, gate: tuple[str, float] | None = None
                 ) -> int:
     """Auto-check `habit_name` for each just-synced day whose `metric` reaches
-    `threshold`. Reads the health_days cache (each metric already lands on its
-    honest civil day) and fills only untouched days — a manual check or un-check
-    always wins. `note_fn(value, gate_value)` renders the check-in note. Returns
-    the number of new auto check-ins. Disabled when `threshold` is <= 0.
+    `threshold`. Fills only untouched days (a manual check or un-check wins).
+    `note_fn(value, gate_value)` renders the note. Returns new check-ins; off
+    when `threshold` <= 0.
 
-    `gate` is an optional second `(metric, threshold)` the same day must also
-    clear — for signals where volume alone is ambiguous (see the exercise
-    peak-HR gate in config). A gated day with no gate metric cached does not
-    check in: the gate is a requirement, not a tiebreak. Passing a gate whose
-    threshold is <= 0 drops it."""
+    `gate` is an optional second `(metric, threshold)` the day must also clear;
+    a gated day with no gate metric cached does not check in. Gate <= 0 is dropped."""
     if threshold <= 0:
         return 0
     if gate and gate[1] <= 0:

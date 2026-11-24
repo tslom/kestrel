@@ -1,29 +1,9 @@
 """Study mode: where a course is right now, and what the user got wrong.
 
-Tutoring is the console's heaviest use — proofs for CSCI 170, C++ for 103,
-exam review — and it had two blind spots. It didn't know where in the term the
-material sat ("is this on the test?", "did I miss a lecture?" were answered by
-grepping, or by guessing), and nothing outlived a session of what the user had
-got wrong, so "review everything I've missed" had nothing to review.
-
-**Context** is read off the syllabus, never written anywhere. The extracted
-text under `syllabi/text/` is the ground: its dated rows ("10/1, 10/5
-Recursion"), its week blocks ("Week 7 / 10/05-09 / ..."), and any line that
-names an exam next to a date. Layout is lost in extraction, so this is
-deliberately a *reader* rather than a parser of record — every row it returns
-is the syllabus's own words with a date resolved beside them, and a syllabus
-it can't date (CSCI 103's table comes out as two unaligned columns) falls back
-to the course note's curated tables, then to the verbatim schedule text.
-Nothing is ever invented to fill a gap: no rows is reported as no rows.
-
-**The review log** is vault markdown — one note per course, `type:
-course-review`, found through index.db's frontmatter exactly like the course
-notes themselves, so the user can read it in Obsidian, annotate it, and move it
-out of `06-Generated/` without the console losing it. A mistake is the user's
-study material, not a fact about their life (that's the Brain) and not a row
-any card needs to join against, so there's no table and no second copy. Each
-entry is a `###` heading plus a few `- **Key:** value` bullets; anything else
-the user writes inside an entry is kept and read back as notes.
+Context is read off the syllabus text (`syllabi/text/`), never written; a *reader*, not a
+parser of record. Nothing is invented: no dates means no rows. The review log is a vault
+note per course (`type: course-review`, found by frontmatter; no table), one `###` entry
+each with `- **Key:** value` bullets. Design: DESIGN.md → `app/study.py`.
 """
 
 from __future__ import annotations
@@ -46,20 +26,15 @@ _MONTH_WORDS = {
     "aug": 8, "august": 8, "sep": 9, "sept": 9, "september": 9, "oct": 10,
     "october": 10, "nov": 11, "november": 11, "dec": 12, "december": 12,
 }
-# Which months a term's dates can fall in. A date outside them is noise —
-# "24/7" in a support-line blurb, a fraction, a phone extension — and the term
-# filter is what lets the patterns below stay loose.
+# Months a term's dates can fall in; the filter lets the patterns below stay loose ("24/7").
 _TERM_MONTHS = {"fall": range(8, 13), "spring": range(1, 6), "summer": range(5, 9)}
 
 _DASH = r"[-–—−]"
-# 8/24, 9/28-10/02, 10/05−09, 12/1/2026. A range is one token: "week 6
-# (9/28–10/2)" is a week, and reading it as two point dates is how a midterm
-# would land on both ends of it.
+# 8/24, 9/28-10/02, 10/05−09, 12/1/2026. A range is one token, not two point dates.
 _SLASH = re.compile(
     rf"(?<![\d/.])(\d{{1,2}})/(\d{{1,2}})(?:/(\d{{4}}|\d{{2}}))?(?![\d/])"
     rf"(?:\s*{_DASH}\s*(?:(\d{{1,2}})/)?(\d{{1,2}})(?![\d/]))?")
-# Tue Oct 6, Tuesday, October 6th, Sept. 24th, Saturday December 12th. The
-# month word is checked against _MONTH_WORDS afterwards, so "Marx 2" isn't March.
+# Tue Oct 6, October 6th, Sept. 24th. The month word is checked against _MONTH_WORDS afterwards.
 _NAMED = re.compile(r"\b([A-Z][a-z]{2,8})\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b(?!\s*[%:/])")
 
 
@@ -161,8 +136,7 @@ _WEEK_START = re.compile(r"(?<!\d)(\d{1,2})[/-](\d{1,2})(?!\d)")
 
 
 def _span(dates_text: str, term: str) -> tuple[date, date] | None:
-    """First and last day named in a row's date cell: "10/19–10/27",
-    "8/24, 8/25", "11/2–11/5"."""
+    """First and last day named in a row's date cell ("10/19–10/27", "8/24, 8/25")."""
     season, year = _term_year(term)
     months = _TERM_MONTHS.get(season, range(1, 13))
     days: list[date] = []
@@ -192,9 +166,7 @@ def _line_rows(text: str, term: str) -> list[dict]:
 
 
 def _table_rows(text: str, term: str) -> list[dict]:
-    """Dated rows out of the course note's markdown tables — a date in one of
-    the first two cells ("| 8/24, 8/25 | Introduction |", "| 6 | 10/2 | Files
-    and Linux |")."""
+    """Dated rows from the course note's markdown tables (a date in one of the first two cells)."""
     rows = []
     for line in text.splitlines():
         if not line.lstrip().startswith("|") or set(line.strip()) <= set("|-: "):
@@ -209,16 +181,12 @@ def _table_rows(text: str, term: str) -> list[dict]:
 
 
 def _week_blocks(text: str, term: str) -> list[dict]:
-    """"Week 7 / 10/05−09 / ..." blocks — MATH 229's and ENGR 102's shape. The
-    start date is all that's trusted (ENGR's end date is split across lines),
-    so a block runs a week from it."""
+    """"Week 7 / 10/05−09 / ..." blocks. Only the start date is trusted (end dates wrap lines): a block runs 7 days."""
     season, year = _term_year(term)
     months = _TERM_MONTHS.get(season, range(1, 13))
     lines = text.splitlines()
     heads = [i for i, ln in enumerate(lines) if _WEEK.match(ln)]
-    # The last block has no next header to stop at, and runs straight on into
-    # the grading policy — where MATH 229's "quizzes" once became an exam. A
-    # typical block's length is the best stop there is.
+    # The last block has no next header and would run into the grading policy; stop at the median block length.
     gaps = sorted(b - a for a, b in zip(heads, heads[1:]))
     typical = gaps[len(gaps) // 2] if gaps else 12
     blocks = []
@@ -234,8 +202,7 @@ def _week_blocks(text: str, term: str) -> list[dict]:
         if start is None:
             continue
         body = " ".join(" ".join(lines[body_from:stop]).split())
-        # Column-wrapped extraction: "Artificial In- telligence", and the tail
-        # of a date range split onto the next line ("8-24 thru 8-" / "28").
+        # Column-wrapped extraction: "In- telligence", date range tails split across lines.
         body = re.sub(r"(\w)- ([a-z])", r"\1\2", body)
         body = re.sub(rf"^\d{{1,2}}(?:\s*{_DASH}\s*\d{{1,2}})?\s+", "", body)
         blocks.append({"start": start, "end": start + timedelta(days=6),
@@ -244,12 +211,8 @@ def _week_blocks(text: str, term: str) -> list[dict]:
 
 
 def schedule(code: str) -> dict:
-    """The course's dated schedule, and where it was read from.
-
-    Syllabus first, because it's the ground truth; the course note's tables
-    only when the syllabus text has nothing datable (they were curated from
-    the same PDF, so they're the next-best reading of it). Three rows is the
-    bar — one stray "Week 3" mention isn't a schedule."""
+    """The course's dated schedule and where it was read from: syllabus first, the note's
+    tables only when the syllabus has nothing datable. Three rows is the bar."""
     note_path, post = courses.find_course(code)
     meta = post.metadata
     term = meta.get("term") or courses.current_term()
@@ -271,10 +234,8 @@ def schedule(code: str) -> dict:
 
 # ---------- exams ----------
 
-# "Final Presentations", "Final Project Reports", "Final exam review", "Exam
-# Information" — the word is there and the exam isn't. Struck out before the
-# search rather than excluded by lookahead, which backtracks "Final exam
-# review" into a match on "Final".
+# "Final Presentations", "Final exam review": the word is there, the exam isn't. Struck
+# out before the search; a lookahead would backtrack "Final exam review" into "Final".
 _NOT_EXAM = re.compile(
     r"\b(?:final|midterm|exam)s?(?:\s+exams?)?\s+(?:review|project|presentation|"
     r"report|portfolio|grade|score|information|period|week)\w*", re.I)
@@ -285,16 +246,13 @@ _BLOCK_EXAM = re.compile(r"\b(midterm(?:\s+exam)?(?:\s*#?\d)?|final\s+exam|"
 
 
 def _is_exam_row(r: dict) -> bool:
-    """A schedule row that *is* an exam ("10/6 7pm Midterm 1"), as opposed to
-    a week block that merely contains one beside its lectures."""
+    """A schedule row that is an exam, not a week block that merely contains one."""
     return not r["when"].startswith("Week") and bool(
         _EXAM.search(_NOT_EXAM.sub(" ", r["text"])))
 
 
 def _units(text: str) -> list[str]:
-    """Lines, with the paragraph-per-page extractions (CSCI 103's whole page
-    is one line) broken into sentences so a date is read beside its own
-    sentence's words."""
+    """Lines, with paragraph-per-page extractions split into sentences (a date reads beside its own words)."""
     out = []
     for line in text.splitlines():
         if len(line) > 300:
@@ -337,17 +295,13 @@ def _candidates(text: str, term: str, origin: str) -> list[dict]:
 
 
 def exams(sched: dict) -> list[dict]:
-    """Every exam the syllabus or the note dates, merged by day.
-
-    A week-range mention ("Midterm 1 falls in week 6 (9/28–10/2)", a week
-    block holding "Midterm Exam 1") is only an approximate date, and is folded
-    into an exact one inside it rather than listed beside it."""
+    """Every exam the syllabus or note dates, merged by day. A week-range mention is
+    approximate and is folded into an exact date inside it."""
     term = sched["term"]
     cands = (_candidates(sched["syllabus_body"], term, "syllabus")
              + _candidates(sched["note_body"], term, "note"))
     for r in sched["rows"]:
-        # Not a bare "final" here: in a week of course plans it is final
-        # presentations, final projects, "FINAL- Team Report" (ENGR 102).
+        # No bare "final" here: in week blocks it means final presentations/projects.
         if r["when"].startswith("Week") and (m := _BLOCK_EXAM.search(_NOT_EXAM.sub(" ", r["text"]))):
             cands.append({"date": r["start"], "end": r["end"], "label": _exam_label(m.group(1)),
                           "quotes": [("syllabus", f'{r["when"]}: {r["text"][:160]}')]})
@@ -365,8 +319,7 @@ def exams(sched: dict) -> list[dict]:
         out.append({**c, "approx": True})
     for e in out:
         e.setdefault("approx", False)
-        # The syllabus's own words first; at most two, a quote is evidence
-        # rather than a transcript.
+        # Syllabus quotes first, at most two.
         e["quotes"] = sorted(e["quotes"], key=lambda q: q[0] != "syllabus")[:2]
     out.sort(key=lambda e: e["date"])
     return out
@@ -383,8 +336,7 @@ def _better(new: str, old: str) -> bool:
 # ---------- course_context ----------
 
 def term_start(term: str) -> date | None:
-    """Monday of the term's first scheduled day, across every course note in
-    the term — one course whose syllabus can't be dated still gets a week."""
+    """Monday of the term's first scheduled day across every course note (so an undatable syllabus still gets a week)."""
     firsts = []
     for _, meta in _notes_of_type("course"):
         if meta.get("term") != term or not meta.get("code"):
@@ -419,16 +371,14 @@ def _when(d: date, today: date) -> str:
 
 
 def _excerpt(text: str, chars: int = 1600) -> str:
-    """The syllabus's schedule section verbatim, for a syllabus nothing above
-    could date — from the first "Week 1" (or "schedule") to a size cap."""
+    """The schedule section verbatim, for a syllabus nothing above could date: first "Week 1" to a size cap."""
     m = re.search(r"^\s*Week\s*1\b", text, re.I | re.M)
     if not m:
         return ""
     start = text.rfind("\n", 0, max(0, m.start() - 1))
     out = []
     for line in text[start + 1:start + 1 + chars].splitlines():
-        # A page footer or a paragraph-length line is the policy text after
-        # the table, not more of it.
+        # A page footer or paragraph-length line is the policy text after the table.
         if re.match(r"^\s*Page \d+\s*$", line) or len(line) > 300:
             break
         out.append(line.rstrip())
@@ -461,10 +411,7 @@ def context(code: str, query: str | None = None) -> str:
             for origin, q in e["quotes"]:
                 lines.append(f'    {origin}: "{q[:200]}"')
             if e["date"] >= today and sched["rows"]:
-                # What the schedule puts between the previous exam and this
-                # one. Stated as schedule, not as coverage: a final is often
-                # cumulative and CSCI 103's exams follow projects, so what an
-                # exam *covers* is the syllabus's to say, quoted above.
+                # Stated as schedule, not coverage: what an exam covers is the syllabus's to say.
                 before = [r for r in sched["rows"]
                           if (prev is None or r["end"] >= prev)
                           and r["start"] < e["date"] and not _is_exam_row(r)]
@@ -494,9 +441,7 @@ def context(code: str, query: str | None = None) -> str:
     else:
         lines.append("Schedule: nothing in the syllabus text or the course note "
                      "carries dates.")
-    # A syllabus that couldn't be dated may still list its topics week by week
-    # (CSCI 103's lecture table comes out as two unaligned columns). Shown as
-    # is, beside whatever the note could date — usually labs, not lectures.
+    # An undatable syllabus may still list topics by week; show it as is beside what the note could date.
     if sched["source"] != "syllabus" and (ex := _excerpt(sched["syllabus_body"])):
         lines.append("")
         lines.append("The syllabus's own schedule section, verbatim — it has no "
@@ -575,7 +520,7 @@ def _review_path(code: str) -> Path | None:
     hit = _review_note(code)
     if hit:
         return hit[0]
-    # Not indexed yet (the watcher reindexes on a debounce) but already on disk.
+    # Not indexed yet (watcher debounce) but on disk.
     path = _default_path(code)
     return path if path.exists() else None
 
@@ -615,18 +560,11 @@ def entries(code: str) -> list[dict]:
 
 
 # ---------- spaced review ----------
-#
-# A logged miss used to sit in the note until someone thought to ask for it.
-# Now each entry comes back on a widening schedule, worked out from the
-# entry's own history — no table, no second copy: the miss dates are its
-# heading and `Again:` lines, and each right answer in review is a
-# `Reviewed:` line the console appends. A right answer moves it one step
-# along INTERVALS; a miss (in review or anywhere) starts it over; past the
-# last step it's learned and stops coming back.
+# Derived from each entry's own history (heading, `Again:` and `Reviewed:` lines): a right
+# answer moves one step along INTERVALS, a miss restarts, past the last step it's learned.
 
 INTERVALS = (1, 3, 7, 14)
-# An exam this close makes every unlearned item due, schedule or not — the
-# night before is not the time to wait for day 7.
+# An exam this close makes every unlearned item due.
 CRAM_DAYS = 2
 
 
@@ -647,7 +585,7 @@ def schedule_of(e: dict, today: date, cram: bool = False) -> dict:
         if kind == "miss":
             streak, last = 0, d
         elif last is None or d > last:
-            # A second right the same day isn't a second interval survived.
+            # A second right the same day isn't a second interval.
             streak, last = streak + 1, d
     if last is None:
         last = today
@@ -749,17 +687,14 @@ def add_review(code: str, concept: str, mistake: str, correct: str, *,
             type="course-review", code=code, term=term,
             course=f"[[{note_path.stem}]]",
             tags=["usc", "review", term],
-            # The provenance the PostToolUse hook stamps on a console Write;
-            # this note is written from the backend, so the hook never sees it.
+            # Provenance the PostToolUse hook stamps on console Writes; this is a backend write.
             origin="generated", generated_by="console",
             generated_at=datetime.now().isoformat(timespec="seconds"),
             reviewed=False)
         path.write_text(frontmatter.dumps(fresh, sort_keys=False) + "\n", encoding="utf-8")
 
     text = path.read_text(encoding="utf-8")
-    # The same idea missed again is the strongest signal this log carries, so
-    # it's counted on the first entry rather than filed as a second one that
-    # would read as two unrelated things.
+    # A repeat miss is counted on the first entry, not filed as a second one.
     same = next((e for e in _parse(text) if _norm(e["concept"]) == _norm(concept)), None)
     if same is not None:
         a, b = same["span"]
@@ -808,8 +743,7 @@ def review_text(code: str, since: str | None = None, query: str | None = None,
             since = date.fromisoformat(since.strip()).isoformat()
         except ValueError:
             raise courses.CourseError(f"{since!r} isn't a date — pass YYYY-MM-DD")
-        # An entry counts from its latest miss: a thing got wrong in week 2
-        # and again yesterday is fresh material for this week's exam.
+        # An entry counts from its latest miss.
         items = [e for e in items
                  if max([e["date"]] + [a[:10] for a in e["again"]]) >= since]
     if query:
@@ -846,17 +780,11 @@ def review_text(code: str, since: str | None = None, query: str | None = None,
 
 
 # ---------- coverage: what has actually been drilled ----------
-#
-# The review log knows what went wrong; it can't say what was never asked.
-# StudyBlock.jsx posts every answered quiz question and flashcard here, tagged
-# with the page it was worked from, so "have I gone through Unit 2b?" and
-# "where do my misses sit?" are answered from attempts rather than memory.
+# StudyBlock.jsx posts every answered quiz question/flashcard here, tagged with its source page.
 
 _PAGE_REF = re.compile(r"^\s*(d[0-9a-f]{5,10})#p(\d{1,4})\s*$", re.I)
 KINDS = ("choice", "free", "card")
-# StudyBlock.jsx's order. Anything else is "didn't say". Normally said before
-# answering, so it can't be fitted to the verdict; `rated_after` marks the ones
-# that weren't, and coverage counts them separately.
+# StudyBlock.jsx's order; anything else is "didn't say". `rated_after` marks ratings given after the verdict.
 CONFIDENCE = ("dont_know", "guess", "unsure", "sure")
 
 
@@ -925,9 +853,7 @@ def coverage_text(code: str, since: str | None = None) -> str:
                     " WHERE (? IS NULL OR a.day >= ?) ORDER BY a.day",
                     (since, since))
                 if courses.course_key(r["course"] or "") == want]
-        # Docs nothing has been asked from, by anyone: probably dropped for
-        # some course and never drilled. Not filtered by course — a doc
-        # doesn't know its course until a quiz is tagged with one.
+        # Docs never drilled by anyone; not filtered by course (a doc has none until a quiz is tagged).
         idle = con.execute(
             "SELECT filename, page_count, added_at FROM docs d WHERE mime = 'application/pdf'"
             " AND NOT EXISTS (SELECT 1 FROM study_attempts a WHERE a.doc_sha = d.sha)"
@@ -940,9 +866,7 @@ def coverage_text(code: str, since: str | None = None) -> str:
         out = [f"{code}: {len(rows)} answered, {right} right "
                f"({round(100 * right / len(rows))}%), first {rows[0]['day']}, "
                f"last {rows[-1]['day']}."]
-        # Confidence splits right/wrong the way the totals can't: a miss
-        # they were sure of is a misconception to undo, a right they guessed
-        # is a pass that won't hold. Only rows that were asked (see CONFIDENCE).
+        # Sure-and-wrong is a misconception; guessed-and-right won't hold.
         sure_miss = [r for r in rows if not r["correct"] and r["confidence"] == "sure"]
         shaky = [r for r in rows if r["correct"] and r["confidence"] in ("guess", "unsure")]
         late = lambda rs: (f", {n} rated after seeing the answer"

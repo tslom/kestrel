@@ -1,10 +1,7 @@
-""".claude/hooks/comment_checks.py over the tree, and the hook that applies it
-to each edit.
+""".claude/hooks/comment_checks.py over the tree, and the hook that applies it to each edit.
 
-- Every `# noqa` names its code and says why. Ruff (PGH004, RUF100) refuses
-  a blanket or unused one; the reason is checked here.
-- Dated comments are a ratchet: comments_baseline.json holds the count, the
-  suite fails if it goes up, and asks for the baseline to come down with it.
+Ratchets in comments_baseline.json (dated comments, long blocks, comment lines per file) fail
+when a number goes up and ask for `--tighten` when one comes down.
 """
 
 import importlib.util
@@ -38,8 +35,43 @@ def test_dated_comments_do_not_grow():
     assert n <= base, (
         f"dated comments went up by {n - base} (baseline {base}): {cc.DATED_FIX} "
         "Run the lint-on-edit hook's check on the file you touched to see which.")
-    assert n == base, (f"dated comments went down to {n}: set \"dated_comments\": {n} in "
-                       "backend/tests/comments_baseline.json so it can't creep back.")
+    assert n == base, f"dated comments went down to {n}: run `{cc.TIGHTEN}` so it can't creep back."
+
+
+def test_comment_lines_per_file_do_not_grow():
+    base = json.loads(cc.BASELINE.read_text())
+    over, loose, new = [], [], []
+    for p in cc.tree_files():
+        rel, text = p.relative_to(ROOT).as_posix(), p.read_text()
+        n, ceiling = cc.comment_lines(p, text), cc.allowed_lines(rel, text, base)
+        if n > ceiling:
+            over.append(f"{rel}: {n} comment lines, ceiling {ceiling}")
+        elif rel in base["comment_lines"] and n < ceiling:
+            loose.append(rel)
+        elif rel not in base["comment_lines"] and n:
+            new.append(rel)
+    assert not over, f"{cc.LENGTH_FIX}\n  " + "\n  ".join(over)
+    gone = [r for r in base["comment_lines"] if not (ROOT / r).exists()]
+    assert not (loose or new or gone), (
+        f"comment counts moved down, or files came or went ({(loose + new + gone)[:5]}): "
+        f"run `{cc.TIGHTEN}` so they can't creep back.")
+
+
+def test_long_comment_blocks_do_not_grow():
+    n, base = cc.count_long_blocks(), json.loads(cc.BASELINE.read_text())["long_blocks"]
+    assert n <= base, (f"{n - base} more comment blocks over {cc.MAX_BLOCK} lines "
+                       f"(baseline {base}): {cc.LENGTH_FIX}")
+    assert n == base, f"long comment blocks went down to {n}: run `{cc.TIGHTEN}`."
+
+
+@pytest.mark.parametrize("path, src, want", [
+    ("x.py", '"""One.\n\nTwo.\n"""\nx = 1  # trailing, not a block\n# a\n# b\n', [(1, 4), (6, 2)]),
+    ("x.js", "// a\n// b\nconst x = 1; // trailing\n/* c\n   d */\n", [(1, 2), (4, 2)]),
+    ("x.jsx", "<div>\n  {/* a\n     b */}\n</div>\n", [(2, 2)]),
+    ("x.css", "/* a\n   b\n   c */\n.x { color: red; } /* trailing */\n", [(1, 3)]),
+])
+def test_blocks_are_runs_of_comment_only_lines(path, src, want):
+    assert [(ln, n) for ln, n, _ in cc.blocks(Path(path), src)] == want
 
 
 @pytest.mark.parametrize("line, ok", [
@@ -99,3 +131,43 @@ def test_the_hook_lets_an_old_date_stay(tmp_path, monkeypatch):
     f.parent.mkdir(parents=True)
     f.write_text("// seen 11-03\nconst a = 1;\n")
     assert hook.check_comments(f) == ""
+
+
+def _hook_on(tmp_path, monkeypatch, head, now, rel="backend/app/x.py"):
+    hook = _load_hook()
+    monkeypatch.setattr(hook, "ROOT", tmp_path)
+    monkeypatch.setattr(hook, "_at_head", lambda r: head)
+    f = tmp_path / rel
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(now)
+    return hook.check_comments(f)
+
+
+LONG = "".join(f"# reason {i}\n" for i in range(cc.MAX_BLOCK + 1))
+
+
+def test_the_hook_refuses_an_added_long_block(tmp_path, monkeypatch):
+    monkeypatch.setattr(cc, "_base", lambda: {"comment_lines": {"backend/app/x.py": 99}})
+    err = _hook_on(tmp_path, monkeypatch, "x = 1\n", LONG + "x = 1\n")
+    assert f"over {cc.MAX_BLOCK} lines added" in err and "DESIGN.md" in err
+
+
+def test_the_hook_lets_a_long_block_shrink(tmp_path, monkeypatch):
+    monkeypatch.setattr(cc, "_base", lambda: {"comment_lines": {"backend/app/x.py": 99}})
+    assert _hook_on(tmp_path, monkeypatch, "# old\n" * 12 + "x = 1\n", LONG + "x = 1\n") == ""
+
+
+def test_the_hook_refuses_a_file_over_its_ceiling(tmp_path, monkeypatch):
+    monkeypatch.setattr(cc, "_base", lambda: {"comment_lines": {"backend/app/x.py": 1}})
+    err = _hook_on(tmp_path, monkeypatch, "# one\nx = 1\n", "# one\n# two\nx = 1\n")
+    assert "ceiling is 1" in err
+
+
+def test_tighten_never_raises_a_number(tmp_path, monkeypatch):
+    (tmp_path / "backend" / "app").mkdir(parents=True)
+    (tmp_path / "backend" / "app" / "x.py").write_text("# a\n# b\nx = 1\n")
+    baseline = tmp_path / "b.json"
+    baseline.write_text(json.dumps({"dated_comments": 0, "long_blocks": 0,
+                                    "comment_lines": {"backend/app/x.py": 1}}))
+    monkeypatch.setattr(cc, "BASELINE", baseline)
+    assert cc.tighten(tmp_path)["comment_lines"] == {"backend/app/x.py": 1}

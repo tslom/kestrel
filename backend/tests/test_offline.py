@@ -1,13 +1,7 @@
-"""providers.offline — the read path surviving a network that isn't there.
+"""providers.offline — the read path surviving a missing network.
 
-The bug this exists for: the lid opens, the app launches thirty seconds later
-with DNS not up yet, and every provider-backed widget 500s at once because the
-backfill inside get() raised. Cached rows were sitting right there.
-
-The invariants: a network-shaped failure is swallowed and the cached read still
-answers, stamped stale; an answer from a reachable source (expired token, bad
-range) still raises, because stale data must never hide a credential that needs
-reconnecting.
+Network-shaped failures are swallowed (cache answers, stamped stale); reachable-source errors still raise.
+Design: DESIGN.md → `providers/offline.py`: test-pinned behaviours.
 """
 
 import socket
@@ -20,8 +14,7 @@ from app.providers import offline
 
 
 def _urlerror() -> urllib.error.URLError:
-    """What a dead resolver actually reaches us as — urlopen wrapping gaierror,
-    the exact shape logged during a post-wake outage."""
+    """A dead resolver as it reaches us: urlopen wrapping gaierror."""
     return urllib.error.URLError(
         socket.gaierror(8, "nodename nor servname provided, or not known"))
 
@@ -39,7 +32,7 @@ def test_swallows_network_error_and_notes_it():
 
 
 def test_body_after_a_swallowed_fetch_still_runs():
-    """The point of swallowing: the cached read below the backfill continues."""
+    """The cached read below the backfill continues."""
     reached = []
     with offline.collect():
         with offline.best_effort("weather backfill"):
@@ -61,8 +54,7 @@ def test_every_network_shape_is_swallowed(exc):
 
 
 def test_http_error_still_raises():
-    """The source answered — 401 means reconnect, and yesterday's number
-    hiding that is how a credential stays expired for a week."""
+    """A 401 from a reachable source still raises."""
     with pytest.raises(urllib.error.HTTPError):
         with offline.collect():
             with offline.best_effort("email backfill"):
@@ -70,8 +62,7 @@ def test_http_error_still_raises():
 
 
 def test_value_error_still_raises():
-    """oauth.NotAuthorized is converted to ValueError by the providers before
-    it reaches us; that's a 400, not a stale read."""
+    """A ValueError (from oauth.NotAuthorized) is a 400, not a stale read."""
     with pytest.raises(ValueError):
         with offline.collect():
             with offline.best_effort("calendar backfill"):
@@ -88,9 +79,7 @@ def test_notes_do_not_leak_between_reads():
 
 
 def test_nested_collect_keeps_the_outer_notes():
-    """A provider reading through another provider must not swallow the
-    caller's notes — features reads six sources, and the envelope the caller
-    stamps has to still say what went missing."""
+    """A provider reading through another keeps the caller's notes."""
     with offline.collect() as outer:
         with offline.best_effort("outer fetch"):
             raise _urlerror()

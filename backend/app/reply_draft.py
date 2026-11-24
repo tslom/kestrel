@@ -1,19 +1,6 @@
-"""Reply drafter — candidate replies for a thread that's
-waiting on you.
-
-Not a provider: no range or metric axis, nothing cached, no refresh (the
-`leave.py` precedent). One function, called straight from the People router
-when the ✎ button is pressed — never from the poller, so no background job
-is quietly reading conversations and calling a model.
-
-Runs on the Claude Code CLI via claude_agent_sdk.query() — subscription
-login, like email triage and the brief; never the raw Anthropic API
-(ANTHROPIC_API_KEY stays unset).
-
-**It never sends anything.** The output is text handed back to the panel to
-copy; sending stays a human action in Messages/Gmail. That's deliberate: an
-auto-sent reply in someone's real conversation is the one mistake here that
-can't be taken back, so this feed suggests rather than acts.
+"""Reply drafter: candidate replies for a thread waiting on you. Not a provider; called
+only from the People router, never the poller. **Never sends**: output is text to copy.
+Design: DESIGN.md → People (`app/reply_draft.py`).
 """
 
 import asyncio
@@ -69,9 +56,7 @@ def message_thread(con, chat_guid: str, limit: int) -> list[dict]:
 
 
 def email_thread(con, thread_id: str, limit: int) -> list[dict]:
-    """Recent messages of one email thread, oldest first. Snippets only —
-    full bodies live in Gmail and are fetched transiently elsewhere; a
-    snippet is enough to draft a short reply from."""
+    """Recent messages of one email thread, oldest first. Snippets only (bodies are never stored)."""
     rows = con.execute(
         "SELECT received_at, is_sent, subject, snippet FROM emails"
         " WHERE thread_id = ? ORDER BY received_at DESC LIMIT ?",
@@ -83,12 +68,8 @@ def email_thread(con, thread_id: str, limit: int) -> list[dict]:
 
 def drafts_for(*, kind: str, name: str | None, chat_guid: str | None = None,
                thread_id: str | None = None, limit: int, count: int) -> dict:
-    """Candidate replies for one waiting thread.
-
-    Returns `{"drafts": [...], "turns": N}` — `turns` lets the caller say
-    "drafted from 12 messages" instead of implying the model knew more than
-    it did. An empty thread returns no drafts rather than inviting the model
-    to invent a conversation."""
+    """Candidate replies for one waiting thread -> `{"drafts": [...], "turns": N}`.
+    An empty thread returns no drafts rather than inviting the model to invent one."""
     with db.session() as con:
         if kind == "message" and chat_guid:
             turns = message_thread(con, chat_guid, limit)

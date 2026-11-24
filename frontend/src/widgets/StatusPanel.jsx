@@ -5,21 +5,15 @@ import SheetHead from "../ui/SheetHead.jsx";
 import { dragPin } from "../lib/drag.js";
 import { holdDelete, useHeld } from "../lib/undo.js";
 
-// Status slide-over: every source's auth, last refresh and cache freshness in
-// one list, worst first (GET /api/status does the ranking). Doubles as the
-// debug view — the last error verbatim, the newest cached day, row counts —
-// so "why is Health empty" is a click, not a log grep.
-//
-// The re-auth buttons are the same flows the widgets use (oauth_routes /
-// spotify_routes / Plaid Link); this is just the place you actually notice
-// they're needed.
+// Status slide-over: every source's auth and freshness, worst first (GET /api/status ranks),
+// plus the last error verbatim. Re-auth buttons reuse the widgets' flows (oauth_routes /
+// spotify_routes / Plaid Link).
 
 const LABEL = {
   ok: "ok", stale: "stale", broken: "broken", off: "not set up",
 };
 
-// What each source actually depends on — the thing to go check when it's red.
-// Answers "where does this data come from" without a trip to DESIGN.md.
+// What each source depends on: the thing to check when it's red.
 const ORIGIN = {
   calendar: "Google Calendar API", email: "Gmail API",
   health: "Fitbit (via Google)", weather: "Open-Meteo (no auth)",
@@ -70,8 +64,7 @@ function Row({ row, onAction, busy }) {
               {row.days_behind}d behind (flagged past {row.stale_after_days}d)
             </p>
           )}
-          {/* history: the current state can't show a fault that already
-              healed, or a sub-step that failed while the refresh succeeded */}
+          {/* history: state can't show a healed fault or a failed sub-step of a good refresh */}
           {(row.events || []).length > 0 && (
             <ul className="status-events">
               {row.events.map((e) => (
@@ -89,12 +82,8 @@ function Row({ row, onAction, busy }) {
   );
 }
 
-// One recorded failure. Distinct from `Row` above: a source has a *state* you
-// can act on, a fault is something that already happened and the only actions
-// are read it or clear it.
-//
-// `count` is the number that carries the weight — a fault seen once during a
-// migration and a fault firing on every render look identical without it.
+// One recorded failure (already happened: read or clear, unlike a source's state). `count`
+// separates a one-off from a fault firing on every render.
 function Fault({ row }) {
   const [open, setOpen] = useState(false);
   return (
@@ -111,8 +100,7 @@ function Fault({ row }) {
       {open && (
         <div className="status-more">
           <p className="status-meta">
-            {/* stored with microseconds so the backend's trim can order by
-                it; nobody reads those, so cut back to seconds here */}
+            {/* stored with microseconds for the backend's trim ordering; cut to seconds here */}
             {row.origin} · {row.kind} · first seen {row.first_at.slice(0, 19).replace("T", " ")}
             {row.count > 1 && `, ${row.count} times`}
           </p>
@@ -136,19 +124,16 @@ export default function StatusPanel({ onPin }) {
     .then((d) => { setData(d); setError(null); return d; })
     .catch((e) => { setError(e.message); return null; }), []);
 
-  // Separate from the status read, and never allowed to fail it: the fault log
-  // is a debugging convenience and the source list is the panel's actual job.
+  // Separate from the status read and must never fail it.
   const loadFaults = useCallback(() => fetchJSON("/api/failures?limit=25")
     .then(setFaults).catch(() => setFaults(null)), []);
 
   useEffect(() => { load(); loadFaults(); }, [load, loadFaults]);
 
-  // The consent poll below outlives nothing: it has to stop when the sheet
-  // goes, and the sheet going is this component unmounting.
+  // The consent poll stops on unmount.
   useEffect(() => () => clearInterval(pollRef.current), []);
 
-  // Consent happens in another tab, so nothing tells us when it's done —
-  // poll until the source flips (or we give up), same as AccountsBar did.
+  // Consent happens in another tab: poll until the source flips (or we give up).
   const pollUntilFixed = (source) => {
     const until = Date.now() + 5 * 60 * 1000;
     clearInterval(pollRef.current);
@@ -173,9 +158,7 @@ export default function StatusPanel({ onPin }) {
         });
         return;
       }
-      // OAuth: the backend opens the consent tab. A tab this window opens is
-      // a dead end in the desktop shell — window.open returns null there and
-      // opens nothing — so the hand-off happens in app/browser.py instead.
+      // The backend opens the consent tab (app/browser.py): window.open returns null in the desktop shell.
       const url = action.kind === "spotify" ? "/api/oauth/spotify/start" : "/api/oauth/start";
       await postJSON(url, action.kind === "spotify"
         ? { open_browser: true }
@@ -188,9 +171,7 @@ export default function StatusPanel({ onPin }) {
   };
 
   const counts = data?.counts || {};
-  // Hoisted out of the pin button's onClick so the header can drag the same
-  // shape. The event log rides along only for sources that aren't ok — on a
-  // healthy day it's 14 sources of noise.
+  // Shared by pin and drag; the event log rides along only for sources that aren't ok.
   const pinData = data && {
     source: "status", worst: data.worst, counts: data.counts,
     sources: data.sources.map((s) => ({
@@ -201,8 +182,7 @@ export default function StatusPanel({ onPin }) {
   };
   return (
     <>
-    {/* The pin: "why is this widget empty" is a console question, and the
-        answer is always here. */}
+    {/* Pin: "why is this widget empty" is a console question answered here. */}
     <SheetHead
       refreshedAt={["broken", "stale", "off", "ok"]
         .filter((s) => counts[s])
@@ -234,10 +214,7 @@ export default function StatusPanel({ onPin }) {
             </li>
           ))}
         </ul>
-        {/* The layers the source list can't speak for: a read that 500ed, a
-            card that couldn't render, a console turn that came back an error.
-            Hidden entirely when empty — an always-present "0 faults" heading
-            is one more thing to learn to skim past. */}
+        {/* Faults the source list can't speak for (500s, render errors, console errors); hidden when empty. */}
         {faults?.failures?.length > 0 && !held.has("faults") && (
           <>
             <h3 className="status-group">

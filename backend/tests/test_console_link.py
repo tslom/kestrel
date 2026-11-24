@@ -1,8 +1,7 @@
 """console_link: a session outlives its socket, so a reload doesn't end a turn.
 
-What a page arriving mid-turn gets back has to rebuild the log exactly: the
-transcript up to where the turn began (`cut`), then the turn's events — your
-message first, text deltas joined, answered cards left out, still-open ones in.
+A page arriving mid-turn rebuilds the log: transcript up to `cut`, then the turn's
+events (your message first, text deltas joined, answered cards out, open ones in).
 """
 
 import asyncio

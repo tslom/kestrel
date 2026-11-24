@@ -1,11 +1,7 @@
-/* Round 4: the map's grounds (plan/mapGrounds.js), `html[data-map=…]`.
-   The painters read their colours off the map pane, so a ground that needs a
-   different surface re-points the paper tokens here, on .map-wrap only: the
-   nodes, labels and their halos follow, and nothing outside the map changes. */
+/* The map's grounds (plan/mapGrounds.js), `html[data-map=…]`. Painters read colours off the
+   map pane, so a ground re-points the paper tokens on .map-wrap only. */
 
-/* Night lights is a night picture in either theme: the pane goes to deep
-   navy, the labels to moonlight, and the label halo to the ground's colour so
-   names still lift off the lights. */
+/* Night lights is dark in either theme; the label halo takes the ground's colour. */
 :root[data-map="lights"] .map-wrap {
   --paper:        #060810;
   --paper-raise:  #070A13;
@@ -22,8 +18,7 @@
 :root[data-map="lights"] .map-wrap .node.needs .core { fill: #1A1408; }
 :root[data-map="lights"] .map-wrap .badge text { fill: #070A13; }
 
-/* Aurora: the colour fields carry the pane, so the label halo is softened
-   to a translucent wash instead of a hard paper outline. */
+/* Aurora: a translucent label halo, not a hard paper outline. */
 :root[data-map="aurora"] .map-wrap .node .nm,
 :root[data-map="aurora"] .map-wrap .node .st,
 :root[data-map="aurora"] .map-wrap .map-hub .nm,
@@ -32,8 +27,7 @@
 }
 :root[data-map="aurora"] .map-wrap .node .core { fill: color-mix(in srgb, var(--paper-raise) 80%, transparent); }
 
-/* The grid and dots are quiet enough that the quiet nodes' grey dot gets
-   lost in them; a ring keeps a card a card. */
+/* A ring keeps quiet nodes visible against the grid and dots. */
 :root[data-map="dots"] .map-wrap .node.quiet .core,
 :root[data-map="grid"] .map-wrap .node.quiet .core {
   fill: var(--paper-raise); stroke: var(--paper-faint); stroke-width: 1.25;

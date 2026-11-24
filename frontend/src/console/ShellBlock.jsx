@@ -1,15 +1,10 @@
 import { Suspense, lazy, useLayoutEffect, useRef, useState } from "react";
 import { useDebounce } from "../lib/timers.js";
 
-// One `!` command: what you ran, how it's going, what it printed. The output
-// scrolls in its own box, so the log following the conversation can't move it:
-// this keeps to the newest line itself, until you scroll up in it to read, and
-// picks up again when you come back down. Same rule as the log (onLogScroll).
-//
-// The command runs on a pty (backend: console.run_shell). If it's still going
-// after TERM_AFTER_MS, the box turns into a live terminal on it, so a prompt,
-// a password, vim or top can be answered right here; when it ends, the box is
-// the plain text again, which is what Claude reads (New Features #58).
+// One `!` command: command, status, output. The output box scrolls itself to the newest line until
+// you scroll up, and resumes at the bottom (same rule as the log's onLogScroll). It runs on a pty
+// (console.run_shell); past TERM_AFTER_MS the box becomes a live terminal (prompts, passwords, vim,
+// top); when it ends it's plain text again, which is what Claude reads (#58).
 
 const AT_BOTTOM_PX = 24;
 const TERM_AFTER_MS = 600;

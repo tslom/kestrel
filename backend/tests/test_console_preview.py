@@ -1,11 +1,7 @@
 """What the approval card shows (app/console_preview.py).
 
-The card this replaces rendered the tool's raw input, so "delete this event?"
-was answered against a 64-hex calendar id and an opaque event id — nothing a
-person could recognise, and no way to tell the 9am from the duplicate 9am. The
-tests here are about that gap: the ids resolve to the thing they name, the
-resolution matches what the tool will actually address, and a lookup that
-fails says so instead of rendering a confident blank.
+Ids resolve to the thing they name, matching what the tool will address; a failed
+lookup says so instead of a confident blank (raw ids hid the duplicate 9am).
 """
 
 from zoneinfo import ZoneInfo
@@ -19,9 +15,7 @@ from app import tz as tzbase
 
 @pytest.fixture(autouse=True)
 def pinned_zone(monkeypatch):
-    """Pin the zone the card renders in. Without it these assertions test the
-    developer's own TIMELINE — the same reading that makes a bare clock time
-    on a card worth distrusting in the first place."""
+    """Pin the render zone; otherwise these test the developer's own TIMELINE."""
     monkeypatch.setattr(tzbase, "zone_on", lambda day: ZoneInfo("America/Los_Angeles"))
     monkeypatch.setattr(tzbase, "label", lambda day: "PT")
 
@@ -78,8 +72,7 @@ def test_a_match_resolves_the_same_way_the_tool_will(dbfile):
 
 
 def test_an_ambiguous_match_is_reported_not_guessed(dbfile):
-    """routes/calendar.find_event refuses this call. A card that picked one of
-    the two would describe an event nothing was about to happen to."""
+    """routes/calendar.find_event refuses this call; the card must not pick one."""
     _event(event_id="a", summary="Standup", day="2026-09-22")
     _event(event_id="b", summary="Standup", day="2026-09-23",
            start="2026-09-23T17:00:00-07:00", end="2026-09-23T18:00:00-07:00")
@@ -89,9 +82,7 @@ def test_an_ambiguous_match_is_reported_not_guessed(dbfile):
 
 
 def test_a_wildcard_in_the_match_is_literal_on_card_and_route(dbfile):
-    """`_` and `%` used to be LIKE wildcards in both title lookups: "Q_3" also
-    matched "Q13 review", so the route refused an unambiguous call as a
-    two-way match — and the card agreed, because it ran the same bad query."""
+    """`_` and `%` are literal in both title lookups ("Q_3" must not match "Q13 review")."""
     from app.routes import calendar as calendar_routes
     _event(event_id="a", summary="Q_3 sync", day="2026-09-22")
     _event(event_id="b", summary="Q13 review", day="2026-09-23",
@@ -111,8 +102,7 @@ def test_a_date_settles_the_ambiguity(dbfile):
 
 
 def test_an_id_outside_the_cache_says_so(dbfile):
-    """The card is thin here for a reason, and the reason has to be on it —
-    otherwise a delete with no detail looks like a delete of nothing."""
+    """A thin card says why (else a delete with no detail looks like a delete of nothing)."""
     card = one("mcp__vault__event_delete", event_id="nope", calendar_id="gym@g")
     assert "cached window" in card["unresolved"]
 
@@ -190,7 +180,7 @@ def test_a_command_leads_with_its_description(dbfile):
     long = "\n".join(f"echo {i}" for i in range(200))
     card = one("Bash", command=long, description="Print two hundred lines")
     assert card["lead"] == "Print two hundred lines"
-    # the card folds a long command now, so it isn't cut at 600 chars
+    # a long command is folded, not cut at 600 chars
     assert card["title"] == long
     assert one("Bash", command="ls")["lead"] is None
 
@@ -207,8 +197,7 @@ def test_an_unknown_tool_still_reads_as_rows(dbfile):
     card = one("mcp__some_server__do_thing", who="Ada", count=3, event_id="x")
     assert ["who", "Ada"] in card["rows"]
     assert ["count", "3"] in card["rows"]
-    # The id is what the rest of the card exists to translate; untranslated,
-    # it is noise on a line of its own.
+    # The raw id is what the card translates; it gets no row of its own.
     assert not any(r[0] == "event id" for r in card["rows"])
 
 
@@ -220,8 +209,7 @@ def test_a_long_body_becomes_the_note_rather_than_a_line(dbfile):
 
 def test_a_resolver_that_trips_costs_the_card_its_detail_and_no_more(dbfile,
                                                                      monkeypatch):
-    """This runs inside can_use_tool, between the model asking and the card
-    appearing. An exception here would take the approval path with it."""
+    """The preview runs inside can_use_tool: an exception would take the approval path down."""
     def boom(*a, **k):
         raise RuntimeError("cache on fire")
 

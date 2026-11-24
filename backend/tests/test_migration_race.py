@@ -1,13 +1,8 @@
-"""db._migrate concurrency — connect() migrates on every open, and the backend
-opens many connections at once (the poller refreshes all providers in parallel
-threads). On a fresh/behind DB, without the in-process lock two threads both
-read schema_version=0 and both run the CREATE TABLE migration; the loser wakes
-from busy_timeout to "table already exists". The lock serializes them: first
-migrates, rest re-read the bumped version and fall through.
+"""db._migrate concurrency, WAL entry and content-fingerprinted migrations.
 
-A barrier fires all threads into connect() simultaneously to maximize
-contention — with the lock removed this fails ~every run (verified at 20/20 for
-8+ threads), so it's a real guard, not a hopeful one."""
+A barrier fires all threads into connect() at once; with the lock removed it fails ~every run (20/20 at 8+ threads).
+Design: DESIGN.md → Schema history (`db.py` MIGRATIONS), Migration lock and WAL skip.
+"""
 
 import logging
 import sqlite3
@@ -22,8 +17,7 @@ N_THREADS = 12
 
 @pytest.fixture
 def dbfile(fresh_dbfile):
-    """These tests are about migrating, so they get an empty path rather than
-    conftest's pre-migrated copy."""
+    """An empty path, not conftest's pre-migrated copy."""
     return fresh_dbfile
 
 
@@ -59,15 +53,7 @@ def test_concurrent_connects_on_fresh_db_dont_race(dbfile):
 class _FakeCon:
     """A connection whose WAL conversion is busy the first `fails` times.
 
-    Faked rather than staged with real connections on purpose. The failure only
-    happens when two connections are *both* converting at once: SQLite returns
-    SQLITE_BUSY immediately for that (it won't run the busy handler on a lock
-    upgrade, to avoid deadlocking), which is exactly why busy_timeout doesn't
-    cover it. A merely-locked database isn't enough — a squatter holding SHARED
-    or EXCLUSIVE makes the conversion *wait* and succeed, so staging one tests
-    nothing. Two real simultaneous converters is a ~4% coin flip, which is a
-    detector the barrier test above already provides.
-    """
+    Faked because only two simultaneous converters trigger SQLITE_BUSY; a lock squatter just makes it wait."""
 
     def __init__(self, fails: int = 0, mode: str = "delete"):
         self.fails, self.mode, self.calls = fails, mode, []
@@ -108,16 +94,13 @@ def test_enable_wal_gives_up_rather_than_spinning_forever(monkeypatch):
 
 
 def test_enable_wal_does_nothing_when_already_wal():
-    """The common path: every connection after the first. One read, no write,
-    no lock — so the retry loop can never cost anything in steady state."""
+    """Already-WAL costs one read: no write, no lock."""
     con = _FakeCon(fails=10**6, mode="wal")
     db._enable_wal(con)
     assert con.calls == ["PRAGMA journal_mode"]
 
 
 def test_migrate_is_idempotent_on_current_db(dbfile):
-    # Second connect() on an already-current DB must not re-run any migration
-    # (would blow up on CREATE TABLE) and must leave exactly one version row.
     db.connect().close()
     con = db.connect()
     rows = con.execute("SELECT v FROM schema_version").fetchall()
@@ -130,11 +113,6 @@ def test_migrate_is_idempotent_on_current_db(dbfile):
 
 
 # ---------- migrations are identified by content, not by position ----------
-#
-# The bug this replaces: `feat/alarms-reconciler` and `main` would each have
-# added a 40th migration. The DB records "40 applied" either way, and the old
-# `_schema_version(con) >= len(MIGRATIONS)` reads that as current — so
-# whichever branch you were on, its own 40th never ran and never said so.
 
 def _extra(name: str) -> str:
     return f"CREATE TABLE {name} (id INTEGER PRIMARY KEY);"
@@ -159,8 +137,7 @@ def test_a_migration_added_on_another_branch_still_applies(dbfile, monkeypatch):
 
 
 def test_switching_back_does_not_re_run_a_migration(dbfile, monkeypatch):
-    """The other half: the slot-sharing migration this branch already ran must
-    not be applied twice, which would fail on CREATE TABLE."""
+    """A slot-sharing migration this branch already ran is not applied twice."""
     base = list(db.MIGRATIONS)
     monkeypatch.setattr(db, "MIGRATIONS", base + [_extra("branch_a")])
     db.connect().close()
@@ -173,8 +150,7 @@ def test_switching_back_does_not_re_run_a_migration(dbfile, monkeypatch):
 
 
 def test_editing_a_comment_does_not_re_run_a_migration(dbfile, monkeypatch):
-    """Identity is the SQL, not the prose wrapped around it — these scripts
-    carry a lot of prose, and re-running one would fail on CREATE TABLE."""
+    """Identity is the SQL, not its comments."""
     monkeypatch.setattr(db, "MIGRATIONS", db.MIGRATIONS + [_extra("extra")])
     db.connect().close()
     monkeypatch.setattr(db, "MIGRATIONS",
@@ -184,8 +160,7 @@ def test_editing_a_comment_does_not_re_run_a_migration(dbfile, monkeypatch):
 
 
 def test_a_counted_db_is_adopted_without_re_running_anything(dbfile):
-    """Upgrade path: a DB that only ever knew `schema_version` keeps its
-    tables and gains the fingerprint record."""
+    """A DB that only knew `schema_version` keeps its tables and gains the fingerprints."""
     db.connect().close()
     con = db.connect()
     con.execute("DELETE FROM schema_applied")             # back to counting only
@@ -200,8 +175,7 @@ def test_a_counted_db_is_adopted_without_re_running_anything(dbfile):
 
 
 def test_a_db_counted_past_this_branch_defers_rather_than_guessing(dbfile, monkeypatch, caplog):
-    """A DB migrated by a longer branch: this checkout cannot fingerprint the
-    scripts it doesn't have, so it must neither claim nor reuse their slots."""
+    """A DB counted past this checkout's migrations is neither claimed nor reused."""
     monkeypatch.setattr(db, "MIGRATIONS", db.MIGRATIONS + [_extra("only_there")])
     db.connect().close()
     con = db.connect()
@@ -218,8 +192,7 @@ def test_a_db_counted_past_this_branch_defers_rather_than_guessing(dbfile, monke
 
 
 def test_busy_timeout_set_before_wal(dbfile):
-    # Regression for the ordering fix: busy_timeout must be in place so the
-    # journal_mode=WAL write-lock waits instead of failing outright.
+    # busy_timeout must precede the WAL switch so its write lock waits.
     con = db.connect()
     assert con.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
     assert con.execute("PRAGMA journal_mode").fetchone()[0] == "wal"

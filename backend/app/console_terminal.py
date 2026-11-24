@@ -1,25 +1,14 @@
 """Computer use for a normal tab: a real `claude` on a pseudo-terminal, as a job.
 
-Claude Code's computer-use server only exists interactively: 0 tools in an SDK
-session even with it enabled, 24 on a pty (measured). A console tab can't
-have it, so its `use_computer` tool hands the task to a `claude` Kestrel runs
-itself and reports the answer back. You stay in your conversation, and only one
-job runs at a time because the CLI holds a single computer-use lock.
+An SDK session has 0 computer-use tools (24 on a pty, measured), so `use_computer`
+hands the task to a `claude` Kestrel runs itself; one job at a time (the CLI holds a
+single computer-use lock). Nothing reads the screen: the job's transcript is the
+answer. Only the CLI's own "allow this app?" prompt needs the user, on the live
+terminal. Design: DESIGN.md → `app/console_terminal.py`.
 
-The job's transcript says everything the tab needs, so nothing reads the screen.
-Don't start: a misread prompt there is a wrong click on the Mac. The one thing a
-transcript can't do is answer the CLI's own "allow this app?" prompt, so that
-stays the user's, on the live terminal. It comes up in Claude's view whenever
-the transcript goes quiet: the CLI only logs a call once it's answered, so a
-prompt looks like silence, as does anything else that wants a person. The cost
-is the terminal showing through a long wait, which is harmless.
-
-Frames to the tab that started it, beside the job's own tool_use/tool_result:
-    {"type": "computer_start", "id"}   a job is running, attach to watch it
-    {"type": "computer_prompt", "id", "show"}   it needs you on the terminal, or not
-    {"type": "computer_end", "id"}
-The terminal socket is /ws/console/computer?id=…, binary both ways, JSON for
-{"type": "resize", "rows", "cols"}. It attaches to a job; it can't start anything.
+Frames to the starting tab: computer_start {id}, computer_prompt {id, show}
+(it needs you on the terminal, or not), computer_end {id}. /ws/console/computer?id=
+is binary both ways plus JSON {"type": "resize", rows, cols}; it attaches, never starts.
 """
 import asyncio
 import fcntl
@@ -39,7 +28,7 @@ from uuid import uuid4
 from claude_agent_sdk import ToolResultBlock
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from . import console, console_profiles, sessions
+from . import console, console_profiles, model_catalog, sessions
 from .config import (COMPUTER_DIR, COMPUTER_JOB_LIMIT_S, COMPUTER_MODEL,
                      COMPUTER_SETUP_LIMIT_S, CONSOLE_CLI_PATH)
 
@@ -50,8 +39,7 @@ QUIT_WAIT_S = 2
 BACKLOG_BYTES = 256 * 1024      # what a terminal attaching late gets to catch up
 QUIET_S = 7                     # transcript silent this long: bring up the terminal
 ROWS, COLS = 40, 110
-# Set by a Claude Code running this backend's own turn. Inherited, the marker
-# turns transcript saving off in the child, and the transcript is all we read.
+# Inherited, these turn transcript saving off in the child, and the transcript is all we read.
 _DROP_ENV = {"ANTHROPIC_API_KEY", "CLAUDE_CODE_CHILD_SESSION", "CLAUDECODE"}
 Send = Callable[[dict], Awaitable[None]]
 
@@ -137,10 +125,8 @@ class TranscriptEvents:
             out.append({"type": "tool_use", "id": call, "name": str(block.get("name") or ""),
                         "detail": sessions.tool_detail(tool_input),
                         "desc": sessions.tool_desc(tool_input), "raw": json.dumps(tool_input)})
-        # A message is logged a block at a time, each line carrying the final
-        # stop_reason, so a thinking block says end_turn seconds before the
-        # answer exists. Ending there returns the last progress note as the
-        # result and kills the job before it says anything else.
+        # Each logged block carries the final stop_reason, so a thinking block says end_turn
+        # before the answer exists: end only on a text block.
         said = any(isinstance(b, dict) and b.get("type") == "text" for b in content)
         if said and message.get("stop_reason") == "end_turn":
             self._end(out)
@@ -166,8 +152,9 @@ def computer_enabled() -> bool:
 
 def command(session_id: str, task: str | None) -> list[str]:
     cli = str(CONSOLE_CLI_PATH) if CONSOLE_CLI_PATH.exists() else "claude"
-    # --model, never /model: that one writes the user's global default.
-    argv = [cli, "--session-id", session_id, "--model", COMPUTER_MODEL]
+    # --model, never /model (it writes the user's global default); swapped if the account can't run it.
+    model = model_catalog.pick(COMPUTER_MODEL).model or COMPUTER_MODEL
+    argv = [cli, "--session-id", session_id, "--model", model]
     return [*argv, "--", task] if task else argv
 
 

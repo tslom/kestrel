@@ -1,10 +1,5 @@
-"""REST face of the providers: GET /api/{source}?range=&metric=.
-
-Routes are generated from the registry — adding a provider module and
-registering it is all it takes to get its endpoint. Registered names must not
-collide with the hand-written routes in widgets.py/main.py (the health
-provider owns /api/health; the liveness probe moved to /api/healthz).
-"""
+"""REST face of the providers: GET /api/{source}?range=&metric=, generated from the registry.
+Registered names must not collide with hand-written routes in widgets.py/main.py."""
 
 import json
 
@@ -19,20 +14,16 @@ router = APIRouter(prefix="/api")
 
 
 def _serve(fn, *args):
-    """Run a hand-written read the way get() runs a registry one: inside
-    offline.collect(), so a live fetch that fell back to cache stamps the
-    payload `stale`/`offline` instead of vanishing — best_effort() with no
-    collect() around it has nowhere to write its note, which is how
-    /health/night served cache-only nights as if fresh — and with ValueError
-    (bad day, bad range, not authorized) as a 400. Pass a lambda when parsing
-    an argument can itself raise, so that lands inside too."""
+    """Run a hand-written read the way get() runs a registry one: inside offline.collect()
+    (best_effort() outside it has nowhere to note a cache fallback), ValueError as a 400.
+    Pass a lambda when parsing an argument can itself raise."""
     try:
         with offline.collect() as degraded:
             payload = fn(*args)
     except ValueError as e:
         raise HTTPException(400, str(e))
     if degraded and isinstance(payload, dict):
-        # Envelope first, payload over it — the same precedence get() uses.
+        # Envelope first, payload over it (get()'s precedence).
         payload = {"stale": True, "offline": degraded, **payload}
     return payload
 

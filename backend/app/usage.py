@@ -1,31 +1,9 @@
-"""Usage — is the desk's ranking right, and does every card still earn its slot?
+"""Usage: is the desk's ranking right, and does every card still earn its slot?
 
-`lib/salience.js` sorts seventeen cards into three bands every morning and
-nothing has ever checked its work. From inside the app a card you stopped
-caring about in July looks exactly like one you read daily: both render, both
-sit there, neither says anything.
-
-The trap this has to avoid is measuring clicks and calling it value. Most good
-cards here are read at a glance and never touched — a line saying "8 to
-review" has done its whole job before you decide not to click it — so an
-interaction count alone convicts precisely the cards that work best. Two
-things keep the numbers honest:
-
-  * **days, not totals.** "Still used?" is a question about habit, and a
-    running total cannot tell fifty opens last March from five a week since.
-  * **the band it was sitting in.** A card the desk folded into `quiet` every
-    day for a month and that you never opened is dead weight. A card sitting
-    in `needs`/`has` that you never opened is being read exactly as designed —
-    the same shape as the "silence is a signal, but only if the source would
-    have sent something" rule in DESIGN.md.
-
-So this reports what it saw and refuses to compute a verdict out of the
-interaction count alone. `summary()` returns both halves and the panel says
-which cards are *candidates*, never which are worthless.
-
-Same never-raise contract as `failures.py`: telemetry is not load-bearing.
+Tallies per day of `seen` / `open` / `sheet` / `command` (plus the `cleared` set). Reports what
+it saw and never a verdict from interaction counts alone (glance-read cards are never clicked).
+Never raises: telemetry. Design: DESIGN.md → Usage.
 """
-
 import sqlite3
 from datetime import datetime
 
@@ -39,8 +17,7 @@ router = APIRouter(prefix="/api/usage")
 KINDS = {"seen", "open", "sheet", "command"}
 BANDS = {"needs", "has", "quiet", ""}
 
-# One POST carries a whole flush, and the desk buffers ~20 impressions on
-# load. A ceiling stops a stuck client turning a bug into unbounded writes.
+# One POST is a whole flush (~20 impressions on load); the ceiling bounds a stuck client.
 MAX_BATCH = 200
 
 
@@ -63,12 +40,7 @@ def record(kind: str, label: str, band: str = "", count: int = 1) -> None:
 
 
 def summary(days: int = 30) -> dict:
-    """Per label, over the trailing `days` days of *recorded* history.
-
-    The window is counted from the newest recorded day, not from today, so a
-    backend that was off for a week doesn't quietly shrink every denominator
-    and make the whole desk look abandoned.
-    """
+    """Per label, over the trailing `days` days of recorded history (counted from the newest recorded day, not today)."""
     try:
         with db.session() as con:
             newest = con.execute("SELECT MAX(day) AS d FROM usage").fetchone()["d"]
@@ -83,17 +55,14 @@ def summary(days: int = 30) -> dict:
 
             rows = con.execute(
                 "SELECT label,"
-                # days the card was on the desk at all, and the split that
-                # says whether it ever had anything to report
+                # days on the desk, and days it had anything to report
                 "  COUNT(DISTINCT CASE WHEN kind='seen' THEN day END) AS days_seen,"
                 "  COUNT(DISTINCT CASE WHEN kind='seen' AND band<>'quiet'"
                 "        THEN day END) AS days_active,"
-                # you unfolded a card the desk had folded — the ranking being
-                # told it got this one wrong
+                # unfolded a card the desk had folded
                 "  COUNT(DISTINCT CASE WHEN kind='open' THEN day END) AS days_opened,"
                 "  COALESCE(SUM(CASE WHEN kind='open' THEN count END), 0) AS opens,"
-                # the full sheet: engagement that works for every band, since
-                # an unfoldable card is only ever one the desk folded
+                # the full sheet: works for every band
                 "  COUNT(DISTINCT CASE WHEN kind='sheet' THEN day END) AS days_sheet,"
                 "  COALESCE(SUM(CASE WHEN kind='sheet' THEN count END), 0) AS sheet_opens,"
                 "  MAX(CASE WHEN kind<>'seen' THEN last_at END) AS last_touch"
@@ -115,42 +84,29 @@ def summary(days: int = 30) -> dict:
     labels = []
     for r in rows:
         d = dict(r)
-        # Sheets with no card behind them (status, review, usage itself) log a
-        # `sheet` row and nothing else. They are not desk cards, so scoring
-        # them alongside the cards puts a permanent "0/0" row in a table whose
-        # whole job is to be read as "days active out of days on the desk".
+        # Sheets with no card (status, review, usage) are not desk cards; skip them (they'd read "0/0").
         if not d["days_seen"]:
             continue
         d["touches"] = d["opens"] + d["sheet_opens"]
         d["days_touched"] = max(d["days_opened"], d["days_sheet"])
-        # The only claim worth making automatically, and it is deliberately
-        # narrow: the desk judged this card had nothing to say on every single
-        # day it saw it, and you never went looking either. Anything with a
-        # day in needs/has is excluded — that card was being read.
+        # The one automatic verdict, deliberately narrow: quiet every day seen and never touched.
         d["idle"] = (d["days_seen"] >= 7
                      and d["days_active"] == 0
                      and d["touches"] == 0)
         labels.append(d)
 
-    # Least-touched first: the list exists to surface the bottom, and burying
-    # that under the cards you obviously use is how a panel goes unread.
+    # Least-touched first: the list exists to surface the bottom.
     labels.sort(key=lambda x: (x["touches"], -x["days_seen"]))
     return {"labels": labels, "commands": commands,
             "days_covered": covered, "since": since}
 
 
 # ---------------------------------------------------------------- cleared
-#
-# "N cleared today" in the plan view's list header: asks finished by acting,
-# not by snoozing. Stored in the same table as kind `cleared`, but as a *set*
-# per day rather than a tally — acting on one ask twice (tick a habit, untick,
-# tick) is one ask cleared, and an undo has to be able to take it back out.
-# So these two write the row outright instead of going through record()'s
-# count-adding upsert, and the generic POST can't send the kind at all.
+# A per-day *set* of asks finished by acting (kind `cleared`), not a tally: these write the row
+# outright instead of record()'s count-adding upsert, and the generic POST can't send the kind.
 
 def set_cleared(ask_id: str, cleared: bool = True) -> int:
-    """Mark (or, for an undo, unmark) an ask cleared today. Returns today's
-    count. Never raises."""
+    """Mark (or, for an undo, unmark) an ask cleared today. Returns today's count. Never raises."""
     try:
         with db.session() as con, con:
             if cleared:

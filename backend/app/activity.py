@@ -1,21 +1,9 @@
 """What the backend changed on its own, and how to take each change back.
 
-Several things write while nobody is looking: a bill's due date opens a task
-(providers/finance.py), a flight opens a check-in task
-(providers/email_extract.py), a text to yourself becomes an event or a food
-entry or a list item (app/selftexts.py). Each used to write and say nothing,
-so the only way to find out was to notice the result. Every such write now
-goes through `record()`, and the desk's "While you were away" card reads the
-log back with an Undo on each row.
-
-`record()` is the obligation, not a convenience: an unattended write that
-skips it is a change nobody is told about. test_activity.py fails on a
-`db.create_task(` call site outside the user-initiated ones that doesn't also
-call it.
-
-Undo is per kind and only reverses what the row made. It refuses rather than
-guesses when the thing has moved on since — a task you already finished is
-yours now, and undoing the automation must not erase that.
+Every unattended write must call `record()` after it lands (test_activity.py fails on a
+`db.create_task(` site that doesn't); the "While you were away" card reads the log with
+an Undo per row. Undo reverses only what the row made and refuses when it has moved on.
+Design: DESIGN.md → Unattended writes.
 """
 
 import json
@@ -79,9 +67,7 @@ def get(row_id: int) -> dict | None:
 
 
 def seen_through(con) -> int:
-    """The newest row id you've said "looks fine" to. An id rather than a
-    time: a row written in the same second as the click would otherwise be
-    marked seen without ever having been on screen."""
+    """The newest row id you've said "looks fine" to (an id, not a time: same-second rows)."""
     r = con.execute("SELECT value FROM sync_state WHERE key=?", (SEEN_KEY,)).fetchone()
     return int(r["value"]) if r else 0
 
@@ -131,7 +117,7 @@ def _undo_event(ref: dict) -> None:
     try:
         cal.delete_event(event_id=ref["event_id"], calendar_id=ref["calendar_id"])
     except _H as e:
-        # Gone already (deleted in Google Calendar) is the outcome undo wanted.
+        # Already gone counts as undone.
         if e.status_code not in (404, 410):
             raise UndoError(str(e.detail))
 
@@ -197,8 +183,7 @@ def get_activity(days: int = WINDOW_DAYS):
 
 
 class SeenIn(BaseModel):
-    # The newest id the card was showing — not "everything", so a row that
-    # landed between the fetch and the click stays unseen.
+    # The newest id the card showed, so a row landing mid-click stays unseen.
     through: int | None = None
 
 

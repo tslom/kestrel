@@ -1,22 +1,10 @@
-// One icon system for the whole desk. Every glyph the UI used to draw with a
-// character — emoji (🎂 🚗 💬 📎 🔇 ⏰ 📋 🎉, the weather set) or a typographic
-// stand-in (↻ ✕ ✓ ✎ ↩ ⊕ ★ ♫ ⤢ ▤ ▦) — resolves here instead. Emoji were the
-// real problem: they arrive pre-colored from the system font, so they ignored
-// both Flexoki and dark mode, and each one carries a different weight and
-// baseline. These are all drawn on the same 24px grid with the same stroke, in
-// `currentColor`, so an icon inherits the color and hover state of the button
-// it sits in, exactly like the text next to it did.
-//
-// Adding one: keep the 24 grid and let the stroke do the work (no fills, no
-// stroke-width overrides) — that shared weight is the only reason a car and a
-// checkmark read as members of one set.
+// One icon system for the desk (emoji ignore Flexoki and dark mode). 24px grid, one stroke, `currentColor`.
+// Adding one: keep the grid, no fills, no stroke-width overrides; the shared weight makes it a set.
 
 const S = { fill: "none", stroke: "currentColor", strokeWidth: 1.75,
   strokeLinecap: "round", strokeLinejoin: "round" };
 
-// Precipitation icons need the cloud lifted to make room for what falls out of
-// it, so they get a compact one rather than a scaled copy (scaling would thin
-// the stroke and break the match).
+// A compact cloud for precipitation (a scaled copy would thin the stroke).
 const CLOUD = "M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9z";
 const CLOUD_SM = "M16.5 15H8.5a5.5 5.5 0 1 1 5.27-7h1.23a3.5 3.5 0 1 1 0 7z";
 
@@ -29,10 +17,7 @@ const PATHS = {
   arrowUp: ["M12 19V5", "M5 12l7-7 7 7"],
   sliders: ["M4 7h9", "M19 7h1", "M16 5a2 2 0 1 0 0 4 2 2 0 0 0 0-4z",
     "M4 17h1", "M11 17h9", "M8 15a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"],
-  // `close` already means "delete" on cards that only delete (lists, list
-  // items), so a card offering both a reversible and a permanent removal —
-  // habits archive *and* delete — needs the permanent one to look different
-  // or the two buttons read as the same button twice.
+  // `close` means "delete" on delete-only cards; a card with archive and delete needs this to differ.
   trash: ["M4 7h16", "M10 11v6", "M14 11v6",
     "M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12", "M9 7V4h6v3"],
   check: ["M20 6 9 17l-5-5"],
@@ -63,16 +48,12 @@ const PATHS = {
   chevronRight: ["m9 6 6 6-6 6"],
 
   // ---- nouns: what a row is about
-  // The frosting scallop is what separates a cake from a rounded rectangle,
-  // and the flame is a dot rather than a teardrop — at 12px a filled teardrop
-  // is a smudge, while a dot on a stick still reads as a lit candle.
+  // Scalloped frosting; the flame is a dot (a teardrop smudges at 12px).
   cake: ["M20 21v-8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8",
     "M4 16s.5-1 2-1 2.5 2 4 2 2.5-2 4-2 2.5 2 4 2 2-1 2-1",
     "M2 21h20", "M12 8v3", "M12 5.2h.01"],
   message: ["M20.5 12a8 8 0 0 1-11.7 7.1L4 20.5l1.4-4.8A8 8 0 1 1 20.5 12z"],
-  // The citation set. An envelope needs its flap to be an envelope at 11px,
-  // and the calendar needs its two rings — the header rule alone reads as a
-  // plain framed box, which is what `expand` already looks like.
+  // The citation set: the envelope needs its flap and the calendar its rings at 11px (else it looks like `expand`).
   mail: ["M4 6h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z",
     "m3.6 7.2 8.4 5.9 8.4-5.9"],
   // Email filing: the label a message goes under, and finding it again.
@@ -117,8 +98,7 @@ const PATHS = {
     "M13 6h3a2 2 0 0 1 2 2v7", "M6 9v12"],
 };
 
-// `size` is a number of px, not em: these sit in 10–13px UI text, and letting
-// them track font-size would make the small ones illegible.
+// `size` is px, not em: tracking font-size would make the small ones illegible.
 export default function Icon({ name, size = 14, className = "", ...rest }) {
   const d = PATHS[name];
   if (!d) return null;

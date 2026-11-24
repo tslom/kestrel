@@ -1,7 +1,4 @@
-"""providers/metric_cache.upsert_days — the shared day/metric upsert. The bug
-it guards against is a forgotten `refreshed_at=excluded...` on conflict, so the
-key assertions are: (1) conflicts overwrite value AND refreshed_at, and (2) the
-returned count matches the (day, metric) rows written."""
+"""providers/metric_cache.upsert_days: a conflict must overwrite value AND refreshed_at (a forgotten `refreshed_at=excluded...` is the bug), and the returned count matches rows written."""
 
 from app import db
 from app.providers import metric_cache

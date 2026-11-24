@@ -14,26 +14,12 @@ is the model), read from the tab's own folder, so a branch can change it:
       "runOnWorktreeCreate": ["npm install"]
     }
 
-- **scripts** are the dev tab's bar buttons. Each runs in the tab's folder
-  (its worktree), in a login zsh, output kept here for the view pane's Tasks.
-  `icon`: run, test, lint or build. A second click on a running one stops it.
-- **$PORT** is the tab's own port. Dev tabs run at once, each in its own
-  worktree, and two `next dev`s on 3000 means the second tab previews the
-  first one's code. So each tree gets a port of its own in 41000–41999,
-  hashed from its path (stable across restarts), skipping one that's taken
-  by another tree's server. It's in every script's env as PORT and
-  KESTREL_PORT, and the start line tells the agent, so a server it starts
-  itself lands there too.
-- **previewUrl** (with $PORT, ${PORT} or {port} filled in) is where the
-  preview pane points; **autoOpenPreview** opens the pane on it once a
-  script's server starts listening.
-- **runOnWorktreeCreate**: commands (or script ids) run, in order, as one
-  "setup" run when a tab's worktree is made: the `npm install` a fresh tree
-  of a site needs. In the background, so the tab opens at once, and shown in
-  Tasks like any other run.
-
-Runs belong to this backend process: they stop when their tree is released
-(the tab closed with nothing to keep) and when the backend exits.
+`scripts` are the dev tab's bar buttons (icon: run, test, lint, build), run in the
+tab's folder in a login zsh. `$PORT` (also `${PORT}`, `{port}` in previewUrl) is the
+tab's own port, in env as PORT and KESTREL_PORT. `runOnWorktreeCreate` commands (or
+script ids) run in order as one background "setup" run. Runs belong to this process:
+they stop when their tree is released and at exit.
+Design: DESIGN.md → Dev tabs: project scripts, a port per worktree, PR watch.
 """
 
 from __future__ import annotations
@@ -125,9 +111,8 @@ def _listening(port: int) -> bool:
 
 
 def port_for(tree: Path) -> int:
-    """This tree's port: its hash's slot, or the next one that's free (or
-    already served from this tree, after a backend restart) and not another
-    tree's."""
+    """This tree's port: its hash slot, else the next free one (or already served from
+    this tree after a restart) that isn't another tree's."""
     key = str(tree.resolve())
     with _lock:
         if key in _ports:
@@ -241,7 +226,7 @@ def stop(run_id: str) -> bool:
 
 
 def stop_tree(tree: Path) -> None:
-    """A released tree's runs go with it (console.py, on the tab's close)."""
+    """A released tree's runs go with it (on the tab's close)."""
     key = str(tree)
     with _lock:
         mine = [r for r in _runs.values() if r.tree == key]
@@ -257,8 +242,8 @@ def _stop_all() -> None:
 
 
 def on_created(tree: Path) -> dict | None:
-    """runOnWorktreeCreate, as one background run. Never raises: a tab whose
-    install didn't start can still edit (console_worktree._setup's rule)."""
+    """runOnWorktreeCreate as one background run. Never raises: a tab whose install
+    didn't start can still edit."""
     try:
         cfg = load(tree)
     except ProjectError:

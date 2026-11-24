@@ -1,38 +1,10 @@
-"""Finance provider (archive/PLAID_PLAN.md phase 2) —
-bank balances + transactions + recurring streams + liabilities via Plaid.
-Plaid is truth; `fin_accounts` + `fin_transactions` + `fin_recurring` +
-`fin_liabilities` in app.db are the derived cache (droppable — a cursor
-reset re-pulls the full history). Item credentials live in `plaid_items`
-(NOT derived; see providers/plaid.py).
+"""Finance provider: Plaid balances, transactions, recurring streams, liabilities.
 
-Sync model: cursor-based /transactions/sync per item — no webhooks (localhost
-app, the 300s poller is the freshness budget). Pages accumulate in memory and
-rows + next_cursor persist only after has_more goes false; persisting
-mid-pagination corrupts the stream on mutation errors. Pending→posted arrives
-as removed+added under a NEW transaction_id, so `removed` deletions must
-apply or transactions duplicate.
-
-Recurring + liabilities are plain get-and-replace calls (no cursor), but they
-are **once-a-day legs**: neither dataset moves faster than daily, and running
-them on the 300s cycle spent ~570 Plaid calls a day to re-fetch identical
-rows. `sync_state` holds a `finance:{leg}:{item_id}` -> day_key marker, set
-only on a successful fetch — so a failure (or an item parked on
-needs_consent) retries next cycle, and the post-reconnect POST /api/plaid/sync
-heals immediately rather than waiting out the day.
-
-Sign convention: amounts keep Plaid's raw sign — positive = money OUT.
-Flipping for humans happens only at display layers (brief_line, widget).
-Day mapping: Plaid's civil `date` field (like calendar/health), not
-db.day_key(); day_key only anchors "today" via ranges.py.
-
-Products gotcha: items originally linked with `products: ["transactions"]`
-only don't have liabilities consent. `/liabilities/get` on such an item
-raises PRODUCTS_NOT_SUPPORTED or ADDITIONAL_CONSENT_REQUIRED — caught and
-surfaced as item status `needs_consent`, which reuses the FinanceWidget's
-existing login_required reconnect path (Link update mode already wired;
-`plaid.create_link_token` always requests `additional_consented_products:
-["liabilities"]` so either a fresh connect or a reconnect can grant it).
-Recurring requires no re-link — every item gets it regardless of status.
+Plaid is truth; `fin_accounts`/`fin_transactions`/`fin_recurring`/`fin_liabilities`
+are a droppable cache (a cursor reset re-pulls history). Credentials live in
+`plaid_items` (not derived; see plaid.py). Amounts keep Plaid's raw sign (positive
+= money OUT); `day` is Plaid's civil date, not day_key. Recurring and liabilities
+are once-a-day legs. Design: DESIGN.md → §18 Finance (Plaid).
 """
 
 from datetime import date, datetime, timedelta
@@ -49,22 +21,14 @@ ALLOW_FUTURE = False    # banks post no next-week transactions
 
 SYNC_PAGE_COUNT = 500   # transactions per /transactions/sync page
 
-# Money moving between your own accounts isn't spending — a credit card
-# payment would otherwise count the purchase AND the payment. Same exclusion
-# applies to cashflow: an internal transfer isn't income or an expense.
+# Own-account moves aren't spending or cashflow (a card payment would count twice).
 SPEND_EXCLUDED_CATEGORIES = ("TRANSFER_IN", "TRANSFER_OUT", "LOAN_PAYMENTS")
 
-# Net-worth buckets by Plaid account `type`. Depository/investment balances
-# are assets; credit/loan `current` is the positive amount owed (a debt).
-# "other" is ambiguous and left out on purpose.
+# Net-worth buckets by Plaid `type`; credit/loan `current` is the positive amount owed. "other" is left out.
 NET_WORTH_ASSET_TYPES = ("depository", "investment", "brokerage")
 NET_WORTH_LIABILITY_TYPES = ("credit", "loan")
 
-# ADDITIONAL_CONSENT_REQUIRED: item never had liabilities in its consent.
-# PRODUCTS_NOT_SUPPORTED: institution doesn't offer the product at all —
-# same dead end from our side, still surfaced as needs_consent rather than
-# a hard error (no amount of reconnecting fixes the latter, but the item
-# otherwise works fine and shouldn't look "broken").
+# Both surface as needs_consent, not a hard error: the item otherwise works.
 _LIABILITIES_CONSENT_ERRORS = {"PRODUCTS_NOT_SUPPORTED", "ADDITIONAL_CONSENT_REQUIRED"}
 
 BILL_TASK_LEAD_DAYS = 5   # auto-task fires once due_day - 5 <= today <= due_day
@@ -78,9 +42,7 @@ def _set_status(con, item_id: str, status: str, error: str | None) -> None:
 
 def _sync_item(con, item: dict, *, _retried: bool = False) -> int:
     """One cursor loop for one item; returns applied row-change count.
-    ITEM_LOGIN_REQUIRED parks the item (status login_required) quietly — the
-    widget's Reconnect button runs Link update mode and the next sync heals
-    it. A pagination-mutation error restarts once from the stored cursor."""
+    ITEM_LOGIN_REQUIRED parks the item; a pagination-mutation error restarts once."""
     added: list[dict] = []
     modified: list[dict] = []
     removed: list[dict] = []
@@ -128,10 +90,8 @@ def _sync_item(con, item: dict, *, _retried: bool = False) -> int:
                  _format_location(t.get("location")), t.get("website"),
                  _format_counterparties(t.get("counterparties"),
                                         t.get("merchant_name")), now))
-        # A posted charge names the pending one it replaces. Expense claims
-        # made on the pending one move over now, in this same write, before
-        # the pending row is deleted below. Imported here, not at the top:
-        # expenses imports the providers package, which imports this.
+        # Claims on a pending charge move to its posted replacement before the pending row is deleted below.
+        # Local import: expenses imports the providers package, which imports this.
         from .. import expenses
         expenses.follow_posted(con, added)
         for r in removed:
@@ -157,16 +117,14 @@ def _sync_item(con, item: dict, *, _retried: bool = False) -> int:
 
 
 def _leg_due(con, leg: str, item_id: str) -> bool:
-    """Has this once-a-day leg already run for this item today? Unknown key =
-    due, so a dropped sync_state row costs one extra fetch, never a miss."""
+    """True unless this leg already ran for the item today (unknown key = due)."""
     r = con.execute("SELECT value FROM sync_state WHERE key=?",
                     (f"finance:{leg}:{item_id}",)).fetchone()
     return not r or r["value"] != db.day_key()
 
 
 def _mark_leg(con, leg: str, item_id: str) -> None:
-    """Called only after a leg actually fetched. Marking on failure would park
-    a broken leg until tomorrow; leaving it unmarked retries next cycle."""
+    """Call only after a leg fetched; marking a failure would park it until tomorrow."""
     with con:
         con.execute(
             "INSERT INTO sync_state (key, value) VALUES (?,?)"
@@ -175,12 +133,8 @@ def _mark_leg(con, leg: str, item_id: str) -> None:
 
 
 def _sync_recurring(con, item: dict, now: str) -> bool:
-    """No re-link required, so this runs regardless of item status (unlike
-    liabilities) — but only once per day_key, gated by the caller. One row per
-    Plaid stream_id; inflow/outflow come back as separate lists upstream,
-    tagged here so a caller can pick just the bills (outflow) without
-    re-deriving the split from sign or category. Returns whether the fetch
-    landed, which is what decides if the day's leg gets marked done."""
+    """One row per stream_id, tagged inflow/outflow; runs regardless of item status.
+    Returns whether the fetch landed (decides if the day's leg is marked)."""
     try:
         out = plaid.api("/transactions/recurring/get",
                          {"access_token": item["access_token"]})
@@ -217,11 +171,7 @@ def _sync_recurring(con, item: dict, now: str) -> bool:
 
 def _maybe_create_bill_task(con, account_id: str, due_day: str | None,
                              min_payment: float | None, label: str) -> None:
-    """The ONE finance auto-task — a credit card's
-    minimum payment, due_day - BILL_TASK_LEAD_DAYS through due_day.
-    Dedupes on source_ref=account_id:due_day, so a paid-off/dismissed task
-    doesn't reappear this cycle, and next month's due_day makes a fresh
-    one. Subscriptions/price-creep are brief lines only, never tasks."""
+    """The one finance auto-task: a card's minimum payment, deduped on source_ref=account_id:due_day."""
     if due_day is None or min_payment is None:
         return
     today = db.day_key()
@@ -240,12 +190,8 @@ def _maybe_create_bill_task(con, account_id: str, due_day: str | None,
 
 
 def _sync_liabilities(con, item: dict, now: str) -> bool:
-    """Skipped entirely for items already flagged needs_consent — retrying a
-    known-dead call just burns API quota; POST /api/plaid/sync
-    (post-reconnect) resets the status and the next poller tick tries again.
-    On success from a previously-flagged item, the status heals itself here
-    rather than waiting for a separate reset. Returns whether the fetch
-    landed; a False keeps the day's leg unmarked so it retries."""
+    """Skipped for needs_consent items (POST /api/plaid/sync resets them); success heals the status.
+    Returns whether the fetch landed; False leaves the day's leg unmarked."""
     if item["status"] == "needs_consent":
         return False
     try:
@@ -301,11 +247,7 @@ def _sync_liabilities(con, item: dict, now: str) -> bool:
 
 
 def _snapshot_net_worth(con, env: str, now: str) -> None:
-    """Record one net-worth point per day_key for `env`. Runs after all items
-    sync, so fin_accounts holds the freshest balances. Upsert on (day, env):
-    repeated syncs within a day overwrite with the latest snapshot rather than
-    piling up rows. No-op when no account carries a current balance (nothing
-    real to record)."""
+    """Upsert one net-worth point per (day_key, env) after all items sync; no-op without a current balance."""
     rows = con.execute(
         "SELECT a.type, a.current FROM fin_accounts a"
         " JOIN plaid_items i ON i.item_id=a.item_id AND i.env=?"
@@ -327,10 +269,8 @@ def _snapshot_net_worth(con, env: str, now: str) -> None:
 
 
 def refresh() -> dict:
-    """Poller entrypoint: sync every item in the configured env, except
-    parked login_required ones (no point failing every tick — the widget's
-    Reconnect flow resets them via POST /api/plaid/sync). Quiet no-op while
-    there are no creds or no items (the poller runs from first boot)."""
+    """Poller entrypoint: sync every item in the env except parked login_required ones.
+    Quiet no-op without creds or items."""
     try:
         env = plaid.creds()[3]
     except plaid.NotConfigured as e:
@@ -345,8 +285,6 @@ def refresh() -> dict:
         for item in items:
             txns += _sync_item(con, item)
             now = datetime.now().isoformat(timespec="seconds")
-            # recurring/liabilities are once-a-day (see module docstring): the
-            # transactions cursor still runs every cycle, these two don't.
             for leg, fn in (("recurring", _sync_recurring),
                             ("liabilities", _sync_liabilities)):
                 if _leg_due(con, leg, item["item_id"]) and fn(con, item, now):
@@ -357,10 +295,8 @@ def refresh() -> dict:
 
 
 def brief_line(it: dict) -> str:
-    """One line per item for --format brief; branches on the metric's shape.
-    Amounts flip Plaid's sign for humans: outflows render negative. Checked
-    in shape-specificity order — bills_due and transactions both carry an
-    'amount' key, so bills_due (has 'due_day' too) must be checked first."""
+    """One line per item for --format brief; outflows render negative.
+    Order matters: bills_due and transactions both carry 'amount', so bills_due goes first."""
     if "due_day" in it and "kind" in it:   # bills_due
         amt = "?" if it["amount"] is None else f"{it['amount']:.2f}"
         flag = " OVERDUE" if it.get("is_overdue") else ""
@@ -391,11 +327,7 @@ def _account_label(name: str | None, mask: str | None) -> str:
 
 
 def _format_location(loc: dict | None) -> str | None:
-    """Pre-join Plaid's location object into a "City, ST" display string.
-    Plaid only populates location for in-store (payment_channel=in store)
-    purchases; online spend comes back all-null, so this returns None then
-    and the widget simply shows no location. City alone or region alone is
-    kept if that's all Plaid has."""
+    """A "City, ST" string; Plaid fills location only for in-store purchases, else None."""
     if not loc:
         return None
     parts = [p for p in (loc.get("city"), loc.get("region")) if p]
@@ -403,13 +335,7 @@ def _format_location(loc: dict | None) -> str | None:
 
 
 def _format_counterparties(cps: list | None, merchant: str | None) -> str | None:
-    """Join Plaid's counterparties into a display string of the parties that
-    aren't the merchant itself — payment apps, marketplaces and processors
-    (e.g. "DoorDash", "PayPal"), the "how you paid" that merchant_name misses.
-    Dropped: the merchant counterparty (already the row's title) and
-    financial_institution parties (the bank rails — "Bank of America" on your
-    own card is noise, not signal). Returns None when nothing's left (the
-    common case)."""
+    """Counterparties other than the merchant and financial_institution rails; None when empty."""
     if not cps:
         return None
     m = (merchant or "").strip().lower()
@@ -429,9 +355,7 @@ def _week_start(day: str) -> str:
 
 
 def get(rng: Range, metric: str | None = None) -> dict:
-    """Read the slice from cache. No API calls here — the cursor model means
-    the cache is complete up to last_synced_at; ranges older than the pulled
-    history window are simply empty."""
+    """Read the slice from cache; no API calls (ranges older than the pulled history are empty)."""
     metric = metric or DEFAULT_METRIC
     try:
         env = plaid.creds()[3]
@@ -450,7 +374,6 @@ def get(rng: Range, metric: str | None = None) -> dict:
         refreshed = min(synced) if synced else None
 
         if metric == "balances":
-            # Range-independent snapshot: cached balances as of the last sync.
             rows = con.execute(
                 "SELECT a.account_id, a.name, a.mask, a.type, a.subtype,"
                 " a.available, a.current, a.iso_currency"
@@ -468,8 +391,7 @@ def get(rng: Range, metric: str | None = None) -> dict:
             return {"metric": metric, "data": data, "refreshed_at": refreshed}
 
         if metric == "recurring":
-            # Range-independent, like balances: active streams as of the
-            # last sync, soonest predicted next payment first.
+            # Range-independent like balances; soonest predicted payment first.
             rows = con.execute(
                 "SELECT r.stream_id, r.flow, r.desc, r.merchant, r.frequency,"
                 " r.avg_amount, r.last_amount, r.last_day,"
@@ -490,9 +412,7 @@ def get(rng: Range, metric: str | None = None) -> dict:
             return {"metric": metric, "data": data, "refreshed_at": refreshed}
 
         if metric == "bills_due":
-            # Liabilities due <=14d + recurring outflow predicted <=7d,
-            # merged so the brief/widget can render one "what's coming"
-            # list instead of two.
+            # Liabilities due <=14d + recurring outflow predicted <=7d, one list.
             today = db.day_key()
             liab_horizon = (date.fromisoformat(today) + timedelta(days=14)).isoformat()
             rec_horizon = (date.fromisoformat(today) + timedelta(days=7)).isoformat()
@@ -505,12 +425,7 @@ def get(rng: Range, metric: str | None = None) -> dict:
                 " LEFT JOIN fin_accounts a ON a.account_id=l.account_id"
                 " WHERE l.due_day IS NOT NULL AND l.due_day <= ?"
                 " ORDER BY l.due_day", (env, liab_horizon)).fetchall()
-            # A "bill due" is a merchant obligation (Spotify, a card autopay).
-            # Plaid also flags anonymous peer transfers (a monthly Zelle to the
-            # barber) as MATURE outflow streams — real, but not bills. Those
-            # carry no merchant_name (stored as '' by _sync_recurring, not
-            # NULL), so requiring a non-empty merchant drops that noise without
-            # a mute list.
+            # Peer transfers (monthly Zelle) are outflow streams with merchant '' (not NULL); not bills.
             rec_rows = con.execute(
                 "SELECT r.merchant, r.desc, r.avg_amount, r.predicted_next_date"
                 " FROM fin_recurring r JOIN plaid_items i"
@@ -536,9 +451,7 @@ def get(rng: Range, metric: str | None = None) -> dict:
             return {"metric": metric, "data": data, "refreshed_at": refreshed}
 
         if metric == "spend":
-            # Daily outflow sum, transfers/loan payments excluded (see
-            # SPEND_EXCLUDED_CATEGORIES). Pending included. Days up to today
-            # zero-fill so sparklines get a continuous series.
+            # Daily outflow, pending included; days up to today zero-fill for sparklines.
             marks = ",".join("?" * len(SPEND_EXCLUDED_CATEGORIES))
             rows = con.execute(
                 f"SELECT t.day, ROUND(SUM(t.amount), 2) AS value"
@@ -556,10 +469,7 @@ def get(rng: Range, metric: str | None = None) -> dict:
             return {"metric": metric, "data": data, "refreshed_at": refreshed}
 
         if metric == "cashflow":
-            # Weekly net = money in − money out, internal transfers excluded
-            # (same SPEND_EXCLUDED_CATEGORIES). Bucketed by ISO week (Monday).
-            # Weeks in range with no activity zero-fill so the bar chart has
-            # no gaps; net > 0 is a surplus week, net < 0 a deficit.
+            # Weekly net (in − out) by ISO week; empty weeks zero-fill so the bar chart has no gaps.
             marks = ",".join("?" * len(SPEND_EXCLUDED_CATEGORIES))
             rows = con.execute(
                 f"SELECT t.day,"
@@ -593,9 +503,7 @@ def get(rng: Range, metric: str | None = None) -> dict:
             return {"metric": metric, "data": data, "refreshed_at": refreshed}
 
         if metric == "networth":
-            # Time series from fin_balance_history — starts accumulating the
-            # first time the poller snapshots, so ranges before then come back
-            # empty (no way to backfill overwritten balances).
+            # fin_balance_history only exists from the first snapshot; earlier ranges are empty.
             rows = con.execute(
                 "SELECT day, assets, liabilities, net_worth"
                 " FROM fin_balance_history"

@@ -1,8 +1,6 @@
-"""Which zone a date renders in (app/tz.py), and that the calendar uses it.
+"""Which zone a date renders in (app/tz.py) and that the calendar uses it: a slice of calendar must not change frame partway down.
 
-The bug these guard against isn't a wrong instant — instants were always right.
-It's a slice of calendar that changes frame halfway down, so 9:00 AM Pacific and
-8:30 PM Eastern sit next to each other looking three hours apart.
+Design: DESIGN.md → `tests/test_tz.py`.
 """
 
 from datetime import date
@@ -13,8 +11,7 @@ import pytest
 from app import tz
 from app.providers import calendar
 
-# Structural tests run against a fixture timeline, not the real one, so editing
-# a flight date in tz.py doesn't break them.
+# Structural tests use a fixture timeline so editing a flight date in tz.py doesn't break them.
 FAKE = [("2026-08-17", "America/Los_Angeles"),
         ("2026-11-25", "America/New_York"),
         ("2026-11-29", "America/Los_Angeles")]
@@ -46,8 +43,7 @@ def test_zone_on_each_side_of_every_transition(timeline, day, zone):
 
 
 def test_short_trip_flips_the_zone_and_flips_back(timeline):
-    """The Thanksgiving window is four days wide; a rule that only tracked
-    'where do they live now' would render all of it Pacific."""
+    """The Thanksgiving window is four days wide; a 'where do they live now' rule would render it all Pacific."""
     week = [f"2026-11-{d}" for d in range(23, 31)]
     assert [tz.label(d) for d in week] == \
         ["PT", "PT", "ET", "ET", "ET", "ET", "PT", "PT"]
@@ -81,8 +77,7 @@ def test_to_local_passes_all_day_values_through(timeline):
 
 
 def test_real_timeline_is_sorted_and_uses_valid_zones():
-    """The configured timeline is hand-edited; zone_on walks it in order and
-    would silently skip an out-of-order entry."""
+    """The timeline is hand-edited and zone_on would silently skip an out-of-order entry."""
     keys = [k for k, _ in tz.TIMELINE]
     assert keys == sorted(keys)
     for key, zone in tz.TIMELINE:
@@ -96,8 +91,7 @@ def _row(start, end, all_day=False):
 
 
 def test_days_covered_uses_the_users_zone_not_the_machines(timeline):
-    """A 1am Eastern event in September is a 10pm Pacific event the night
-    before — the day it's filed under has to be the day the user lives in."""
+    """A 1am Eastern September event is a 10pm Pacific event the night before; file it under the user's day."""
     assert calendar.days_covered(
         _row("2026-09-02T01:00:00-04:00", "2026-09-02T02:00:00-04:00")) \
         == ["2026-09-01"]
@@ -124,8 +118,7 @@ def test_brief_line_names_the_zone(timeline):
 
 
 def test_brief_line_falls_back_to_the_day_when_tz_is_absent(timeline):
-    """Pins and cached payloads predate the `tz` field; they still get a
-    label rather than an unmarked clock time."""
+    """Pins and cached payloads predate the `tz` field; they still get a label."""
     ev = {"day": "2026-09-04", "summary": "Rush", "location": None,
           "calendar": "Chess Club", "all_day": False,
           "start": "2026-09-04T19:00:00-07:00",
@@ -134,9 +127,7 @@ def test_brief_line_falls_back_to_the_day_when_tz_is_absent(timeline):
 
 
 def test_console_prompt_states_todays_zone(timeline, monkeypatch):
-    """The prompt told the console today's day-key but never which zone the
-    user was standing in, so the write path had nothing to anchor to. Any
-    placeholder left unfilled reaches the model as literal braces."""
+    """The prompt must tell the console which zone the user is in; an unfilled placeholder reaches the model as literal braces."""
     from app import console_prompt
     monkeypatch.setattr(console_prompt, "day_key", lambda dt=None: "2026-09-04")
 

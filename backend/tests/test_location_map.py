@@ -1,8 +1,6 @@
-"""location.trace() and the basemap tile cache — the two halves of the map.
+"""location.trace() and the basemap tile cache: the map must not invent a second answer.
 
-The rule under most of these is that the map must not invent a second answer:
-it reports the same places the `places` metric counts, breaks a path wherever
-the day metrics would stop counting dwell, and thins only what it draws.
+Design: DESIGN.md → `tests/test_location_map.py`.
 """
 
 from datetime import datetime, timedelta
@@ -46,8 +44,7 @@ def test_trace_groups_points_by_day_and_keeps_the_places(dbfile):
 
 
 def test_somewhere_only_passed_through_is_not_a_place(dbfile):
-    """The map's places are the provider's: same stay detection, same
-    three-minute floor. A map that drew its own would disagree with the card."""
+    """The map's places are the provider's: same stay detection, same three-minute floor."""
     con = db.connect()
     base = datetime(2026, 7, 23, 9, 0, 0)
     rows = _stay(base, 35.9000, -106.0500, 30)                  # a real stop
@@ -80,8 +77,7 @@ def test_two_mornings_in_one_room_are_two_visits_and_one_place(dbfile):
 
 
 def test_a_quiet_stretch_does_not_hand_a_place_the_afternoon(dbfile):
-    """Same gap ceiling the day metrics use: a fix followed by four hours of
-    silence books MAX_GAP_MIN, not four hours."""
+    """Same gap ceiling as the day metrics: a fix then four hours of silence books MAX_GAP_MIN."""
     con = db.connect()
     base = datetime(2026, 7, 23, 9, 0, 0)
     _seed(con, "2026-07-23", [
@@ -97,8 +93,7 @@ def test_a_quiet_stretch_does_not_hand_a_place_the_afternoon(dbfile):
 
 
 def test_the_path_is_thinned_but_the_places_are_not(dbfile, monkeypatch):
-    """Thinning is a drawing decision. Computing dwell over a thinned set would
-    quietly shorten every stay."""
+    """Thinning is a drawing decision; dwell computed over a thinned set would shorten every stay."""
     monkeypatch.setattr(location, "MAP_MAX_POINTS", 50)
     con = db.connect()
     base = datetime(2026, 7, 23, 0, 0, 0)
@@ -118,8 +113,7 @@ def test_a_range_with_no_fixes_answers_empty_rather_than_failing(dbfile):
 
 
 def test_home_travels_with_the_payload(dbfile):
-    """The map draws the home radius as a real distance, so it needs the real
-    numbers rather than a copy of them in the frontend."""
+    """The map draws the home radius as a real distance, so it takes the real numbers, not a frontend copy."""
     got = location.trace(parse_range("2026-07-23"))
     assert got["home"]["lat"] == HOME_LAT and got["home"]["lon"] == HOME_LON
     assert got["home"]["radius_m"] == HOME_RADIUS_M
@@ -138,8 +132,7 @@ def test_a_tile_is_fetched_once_and_then_served_from_the_cache(dbfile, monkeypat
 
 
 def test_an_unreachable_tile_server_is_a_missing_tile_not_an_error(dbfile, monkeypatch):
-    """The map degrades to the vector-only rendering — which was the other
-    option in the first place — rather than the sheet failing."""
+    """The map degrades to vector-only rendering rather than the sheet failing."""
     monkeypatch.setattr(tiles, "_fetch", lambda z, x, y: None)
 
     assert tiles.tile(15, 5636, 13081) is None
@@ -159,14 +152,7 @@ def test_tiles_off_the_map_are_refused_without_asking_upstream(dbfile, monkeypat
 
 
 def test_one_building_straddling_a_grid_line_is_one_place(dbfile):
-    """The regression the stay rewrite exists for.
-
-    These fixes are a single stationary hour scattered by ordinary GPS error
-    across the 35.900/35.901 and -106.050/-106.051 boundaries. Grid clustering
-    filed them as up to four places; measured on the real vault it turned one
-    campus building into three and one flat into twelve. A stay is cut on
-    distance from its own running centroid, so where the grid lines fall stops
-    mattering."""
+    """One stationary hour of GPS scatter across the 35.900/35.901 and -106.050/-106.051 grid lines is one stay: stays cut on distance from their running centroid, not a grid."""
     con = db.connect()
     base = datetime(2026, 7, 23, 9, 0, 0)
     # ~40m of jitter around a boundary corner — well inside STAY_RADIUS_M.
@@ -185,8 +171,7 @@ def test_one_building_straddling_a_grid_line_is_one_place(dbfile):
 
 
 def test_a_declared_place_holds_together_what_scatter_would_split(dbfile, monkeypatch):
-    """Declared places outrank clustering: a flat whose own fixes spread wider
-    than STAY_RADIUS_M is still one place, and it is named."""
+    """Declared places outrank clustering: a flat whose fixes spread wider than STAY_RADIUS_M is still one named place."""
     import json, sqlite3
     from contextlib import contextmanager
     from app import indexer

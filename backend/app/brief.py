@@ -1,14 +1,8 @@
-"""Daily brief: one short morning brief per day_key,
-generated lazily on the first GET of the day and cached in app.db
-(`daily_brief`). DB-only — never written into the vault. The row is also the
-generation lock: an atomic upsert claims it by flipping status to
-'generating', which works across backend restarts and terminal-skill callers
-(WAL + busy_timeout). The /daily-brief skill is a thin wrapper over these
-routes.
-
-Not a provider: no range/metric axis, no external source, nothing for the
-poller to refresh. Model call mirrors providers/email_triage.py — the Claude
-Code CLI on the subscription login, never the raw API.
+"""Daily brief: one morning brief per day_key, generated on the first GET and
+cached in app.db (`daily_brief`), never in the vault. The row is the generation
+lock (atomic upsert to 'generating'; works across restarts and terminal skills).
+Not a provider. Model call mirrors providers/email_triage.py (CLI, never raw API).
+Design: DESIGN.md → Daily brief.
 """
 
 import asyncio
@@ -41,9 +35,7 @@ SYSTEM = (
     "6 or higher, add a short sunscreen reminder. Then ## sections, chosen "
     "and ordered by what actually matters today, drawn from: "
     "Calendar, Tasks, Habits, Inbox, Travel, People, Health, Spending, World. "
-    # Every section every day, each with a filler line when it had nothing,
-    # made the brief a wall to skim past instead of read. Sections are earned
-    # now: a quiet day should produce a short brief.
+    # Sections are earned: filler for every section made the brief a wall.
     "Include a section only when it has something the reader would act on or "
     "be glad to know; drop the rest entirely rather than writing a "
     "'nothing to report' line, and never pad to reach a section count. "
@@ -89,10 +81,8 @@ SYSTEM = (
 )
 
 
-# The plan view's brief bar (the line): not the morning brief above — that
-# stays whole for the /daily-brief skill and the "Morning brief" view — but one
-# line over a "needs you" list the reader is already looking at. So it may
-# only say what the list can't.
+# The plan view's brief bar: one line over a "needs you" list the reader
+# already sees, so it may only say what the list can't.
 LINE_SYSTEM = (
     "You write one line for the top of a personal dashboard. The reader is "
     "already looking at `asks`, the rows of their 'needs you' list (what, "
@@ -108,8 +98,7 @@ LINE_SYSTEM = (
     "invent anything that isn't in the JSON."
 )
 
-# (day, signature of the asks) -> line. Derived and in-memory: a restart
-# costs one regeneration, and yesterday's entries are dropped as today's land.
+# (day, signature of the asks) -> line. In-memory; a restart costs one regeneration.
 _lines: dict[tuple[str, str], str] = {}
 
 
@@ -122,16 +111,9 @@ def _tomorrow_first() -> dict | None:
 
 
 def _event_weather(events: list[dict], day: str) -> list[dict]:
-    """Today's events with a location string -> {event, forecast}, skipping
-    ones that name no physical place, don't geocode, or whose forecast fails —
-    degrade, never fail.
-
-    The is_virtual() guard is leave.py's, reused rather than recopied: geocoders
-    resolve a junk location confidently, so a "TBD" event was quoting the
-    forecast at (2.77, -77.67) — open Pacific off Colombia, where the day is
-    always a thunderstorm at 100% — and a Zoom URL was quoting the campus
-    centroid, which reads plausible enough never to be questioned.
-    """
+    """Today's events with a location -> {event, forecast}, skipping virtual
+    or ungeocodable places and failed forecasts. is_virtual() is leave.py's:
+    geocoders resolve junk ("TBD", a Zoom URL) confidently."""
     out = []
     for ev in events:
         loc = ev.get("location")
@@ -185,12 +167,9 @@ def _gather(day: str) -> dict:
 
 
 def _generate(day: str) -> None:
-    """Sync worker; only ever call via _spawn (asyncio.run inside would blow
-    up on the event-loop thread). Same shape as email_triage under the
-    poller."""
+    """Sync worker; call only via _spawn (asyncio.run would blow up on the event-loop thread)."""
     if (why := agent.blocked()) is not None:
-        # Usage window spent: the call would be refused, so don't gather two
-        # dozen sources for it. Same error row a refused call would leave.
+        # Window spent: skip gathering; leave the error row a refused call would.
         log.warning("brief generation failed for %s: %s", day, why)
         with db.session() as con, con:
             con.execute("UPDATE daily_brief SET status='error', error=?"
@@ -199,8 +178,7 @@ def _generate(day: str) -> None:
     gathered = _gather(day)
     sources = json.dumps({"loaded": sorted(gathered["context"]),
                           "failed": gathered["failed"]})
-    # A connection per write, not one held open across the multi-second model
-    # call.
+    # A connection per write, not one held across the model call.
     try:
         body = asyncio.run(agent.ask(
             json.dumps(gathered, default=str),
@@ -225,9 +203,8 @@ def _generate(day: str) -> None:
 
 def _claim(day: str, force: bool) -> bool:
     """Atomically move today's row to 'generating'. True = we own generation.
-    Without force, only a missing row or a stale 'generating' row (backend
-    died mid-run) is claimed — ready/error rows return as-is, so a failed
-    brief never retries on its own dime."""
+    Without force, only a missing row or a stale 'generating' one (backend
+    died mid-run) is claimed; a failed brief never retries by itself."""
     now = datetime.now()
     stale = (now - timedelta(seconds=BRIEF_STALE_GENERATING_SECONDS)
              ).isoformat(timespec="seconds")
@@ -293,8 +270,7 @@ def _clip(n: int):
 
 
 class Ask(BaseModel):
-    # Clipped, not rejected: a 422 here hid the whole bar (8 times in the
-    # log), and a row's `why` grows on its own (the Messages-broken suffix).
+    # Clipped, not rejected: a 422 hid the whole bar, and a row's `why` grows on its own.
     title: Annotated[str, BeforeValidator(_clip(300))]
     why: Annotated[str, BeforeValidator(_clip(300))] = ""
     card: Annotated[str | None, BeforeValidator(_clip(40))] = None

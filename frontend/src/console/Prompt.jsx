@@ -1,30 +1,20 @@
-// The two cards that stop a turn to ask the user something: tool approval and
-// AskUserQuestion. Both copy the terminal's prompt, because that UX is already
-// in everyone's fingers — ↑/↓ moves, a digit jumps straight to a row, enter
-// takes it, esc backs out — and because a keyboard answer beats hunting for a
-// button in a transcript that is still scrolling.
+// The two cards that stop a turn to ask: tool approval and AskUserQuestion. Both copy the terminal's
+// prompt (↑/↓, a digit jumps to a row, enter takes it, esc backs out): a keyboard answer beats hunting a scrolling transcript.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ShellCode } from "../lib/shell.jsx";
 import { toolLabel } from "../plan/StatusBar.jsx";
 
-// Free text is the escape hatch on every prompt: the terminal lets you answer
-// a question with something nobody listed, and deny a tool with a sentence
-// about what to do instead. Both land in the same row at the bottom.
+// Free text is the escape hatch on every prompt (an unlisted answer, or a deny with instructions), in one bottom row.
 const OTHER = "__other__";
 
-// The card owns the keyboard while it's up. Capture phase, because the
-// composer's textarea has its own onKeyDown and would otherwise eat the digits
-// and the enter before this ever ran.
+// The card owns the keyboard while up. Capture phase: the composer's onKeyDown would eat digits and enter first.
 function useCardKeys(active, handler) {
   const held = useRef(handler);
   held.current = handler;
   useEffect(() => {
     if (!active) return;
     const onKey = (e) => {
-      // The card takes focus when it appears, so this is the default path.
-      // Someone who clicks into the composer anyway means to write there —
-      // swallowing their digits and their enter would strand them with a
-      // half-typed message and no way to send it.
+      // Someone who clicks into the composer means to write there: swallowing their digits/enter would strand a half-typed message.
       const t = e.target;
       if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement
           || t?.isContentEditable) return;
@@ -35,9 +25,7 @@ function useCardKeys(active, handler) {
   }, [active]);
 }
 
-// Taking focus is what makes the card feel like the terminal's prompt rather
-// than a widget floating in the log: the composer goes quiet, and the answer
-// is one keystroke away without clicking first.
+// The card takes focus on appearing (the composer goes quiet; the answer is one keystroke away).
 function useClaimFocus(active, ref) {
   useLayoutEffect(() => {
     if (active) ref.current?.focus({ preventScroll: true });
@@ -78,8 +66,7 @@ function Choices({ options, cursor, onCursor, isOn, multi, onPick }) {
   );
 }
 
-// One free-text row, shared by "Other" and by the deny reason. Enter commits,
-// escape goes back to the list — the same two keys as everywhere else.
+// One free-text row for "Other" and the deny reason: Enter commits, escape goes back.
 function FreeText({ label, value, onChange, onCommit, onCancel, placeholder }) {
   const ref = useRef(null);
   // Caret at the end: the box can open holding the letter that opened it.
@@ -152,12 +139,8 @@ export function AskCard({ entry, active, onAnswer }) {
     if (e.key === " " && multi) { stop(); pick(cursor); return; }
     if (e.key === "Enter") {
       stop();
-      // In a multi-select, enter is "done with this question" — but an empty
-      // answer is worse than no answer, so it takes the row under the cursor
-      // instead of committing nothing. That has to commit it outright: routing
-      // through pick() only *toggles* in multi mode, so the question sat there
-      // needing a second enter that looked like the first one did nothing.
-      // "Other" still goes through pick(), which opens the free-text row.
+      // Multi-select enter with nothing picked commits the row under the cursor outright (pick() only
+      // toggles in multi mode, so a second enter looked like the first did nothing); "Other" still uses pick().
       if (multi && multiPick.length > 0) commit(multiPick);
       else if (multi && rows[cursor].key !== OTHER) commit([rows[cursor].label]);
       else pick(cursor);
@@ -228,19 +211,14 @@ export function AskCard({ entry, active, onAnswer }) {
   );
 }
 
-// One call, as the thing it acts on rather than as its arguments. The backend
-// resolved the ids (console_preview.py); this is the shape it hands over —
-// title, when, label/value rows, a body, and the one warning that changes the
-// answer. Every field is optional, and an absent one renders nothing: a row
-// reading "where —" next to a delete button says the event has no location
-// when it may only mean the cache didn't have one.
-// Past this many lines a command folds to its first few, with the rest a
-// click away: a 60-line heredoc pushed the answer rows off the screen.
+// One call as the thing it acts on (backend console_preview.py resolves ids): title, when, label/value
+// rows, body, one warning. Every field optional and absent renders nothing (a "where —" row would
+// claim no location when the cache just lacked one).
+// A command folds past this many lines (a 60-line heredoc pushed the answer rows off screen).
 const CMD_FOLD_LINES = 8;
 const CMD_FOLDED_LINES = 5;
 
-// A shell command on the card: Claude's sentence for it first, then the
-// command, highlighted, folded when long.
+// A shell command: Claude's sentence, then the highlighted command, folded when long.
 function CommandBlock({ lead, command }) {
   const lines = command.split("\n");
   const long = lines.length > CMD_FOLD_LINES;
@@ -268,8 +246,7 @@ function CallPreview({ call }) {
         ? <CommandBlock lead={call.lead} command={call.title} />
         : call.title && <div className="perm-call-title">{call.title}</div>}
       {call.when && <div className="perm-call-when">{call.when}</div>}
-      {/* The id resolved to nothing. Said out loud, because the alternative is
-          a card that looks thin for no stated reason. */}
+      {/* The id resolved to nothing: said so, or the card looks thin for no reason. */}
       {call.unresolved && <div className="perm-call-miss">{call.unresolved}</div>}
       {rows.length > 0 && (
         <dl className="perm-call-rows">
@@ -298,9 +275,7 @@ export function PermCard({ entry, active, onAnswer }) {
 
   const rows = [
     { key: "yes", label: isPlan ? "Yes, start executing" : "Yes" },
-    // A plan is approved one plan at a time; "don't ask again" would be a
-    // standing yes to plans nobody has read yet, so the backend withholds the
-    // label and the row disappears with it.
+    // No "don't ask again" for plans (a standing yes to unread plans): the backend withholds the label, so the row goes.
     ...(entry.alwaysLabel
       ? [{ key: "always", label: "Yes, and don't ask again",
            // a Chrome card's label already says "until this turn ends"
@@ -324,9 +299,7 @@ export function PermCard({ entry, active, onAnswer }) {
     if (e.key === "ArrowUp") { stop(); setCursor((c) => (c - 1 + rows.length) % rows.length); return; }
     if (e.key === "Escape") { stop(); pick(rows.length - 1); return; }
     if (e.key === "Enter") { stop(); pick(cursor); return; }
-    // The raw arguments, without reaching for the mouse. A letter rather than
-    // a digit so it can't collide with the answer rows, which are the keys
-    // this card exists to be answered with.
+    // Raw arguments by key; a letter so it can't collide with the digit answer rows.
     if (e.key === "r" && entry.preview?.length) { stop(); setRaw((v) => !v); return; }
     const d = digit(e);
     if (d >= 0 && d < rows.length) { stop(); pick(d); return; }
@@ -354,9 +327,7 @@ export function PermCard({ entry, active, onAnswer }) {
     );
   }
 
-  // The backend folds one turn's parallel calls to the same tool into a
-  // single card (see console.py, `bursts`), so the card has to be able to
-  // show more than one input — the answer applies to all of them.
+  // The backend folds a turn's parallel calls to one tool into one card (console.py `bursts`); the answer applies to all inputs.
   const calls = entry.inputs?.length ? entry.inputs : [entry.input];
 
   return (
@@ -368,23 +339,17 @@ export function PermCard({ entry, active, onAnswer }) {
             ? `Allow ${calls.length} ${toolLabel(entry.tool)} calls?`
             : `Allow ${toolLabel(entry.tool)}?`}
       </div>
-      {/* Only auto mode sets this, and only for the calls it won't make on
-          its own. Without it the card is inexplicable: prompting was
-          supposed to be off. */}
+      {/* Only auto mode sets this, for calls it won't make itself (else the card is inexplicable). */}
       {entry.guard && (
         <div className="perm-guard">
           paused — it would {entry.guard}
         </div>
       )}
-      {/* Shown in every mode, unlike the guard line above it: "ask" mode was
-          rendering a delete and a rename in the same neutral card, and the
-          word that separates them was nowhere on screen. */}
+      {/* Every mode, unlike the guard: a delete and a rename must not look alike. */}
       {!entry.guard && entry.danger && (
         <div className="perm-danger">this will {entry.danger}</div>
       )}
-      {/* Claude's own sentence for why, taken from what it wrote immediately
-          before asking. Quoted, not paraphrased — it is evidence about the
-          call, and the user is being asked to weigh it. */}
+      {/* Claude's own sentence from just before asking, quoted: evidence for the user to weigh. */}
       {entry.why && !isPlan && <div className="perm-why">{entry.why}</div>}
       {isPlan && entry.plan
         ? <pre className="perm-plan">{entry.plan}</pre>
@@ -395,10 +360,7 @@ export function PermCard({ entry, active, onAnswer }) {
           : <pre className="perm-input">
               {JSON.stringify(calls.length > 1 ? calls : entry.input, null, 2)}
             </pre>}
-      {/* The arguments are still one click away. The preview is a reading of
-          them, and a reading can be wrong — an unfamiliar tool, an id that
-          resolved to the wrong row — so the thing being approved stays
-          reachable. */}
+      {/* The raw arguments stay one click away: a preview can be wrong (unfamiliar tool, id resolved to the wrong row). */}
       {!isPlan && entry.preview?.length > 0 && (
         <button type="button" className="perm-raw-toggle" tabIndex={-1}
                 onClick={() => setRaw((r) => !r)}>

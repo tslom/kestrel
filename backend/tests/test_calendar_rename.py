@@ -1,11 +1,7 @@
 """Renaming a calendar in Google, and the cache catching up by itself.
 
-The name used to live only as a copy on each cached event row, so renaming
-"Gym/Sports" to "Gym/Workouts" reached the rows inside refresh()'s
-[today-7, today+35] window and nothing else. Every colder row kept the old
-name — `calendar_ids` listed both against one id — and the only fix was an
-UPDATE typed by hand. The `calendars` table is the name's home now, and each
-sync drags the copies along with it.
+The `calendars` table is the name's home; each sync drags the per-row copies along (refresh()'s
+[today-7, today+35] window alone left colder rows with the old name).
 """
 
 from datetime import date
@@ -64,9 +60,7 @@ def _names():
 
 
 def test_a_rename_reaches_rows_the_sync_never_pulled(dbfile, google):
-    """The bug, in one test: an event six months out is not in any refresh
-    window, so nothing would ever re-fetch the row that holds its calendar's
-    name."""
+    """An event six months out (in no refresh window) still gets its calendar's new name."""
     _sync()
     with db.session() as con, con:
         con.execute(
@@ -89,9 +83,7 @@ def test_a_rename_reaches_rows_the_sync_never_pulled(dbfile, google):
 
 
 def test_the_calendar_list_survives_a_calendar_with_no_events(dbfile, google):
-    """'Fun' has nothing cached, so a SELECT DISTINCT over event rows could
-    not see it — and an empty calendar is exactly the one you need named
-    before you can file anything onto it."""
+    """An empty calendar is listed (a DISTINCT over event rows can't see it)."""
     _sync()
     assert _names()["fun@g"] == "Fun"
 
@@ -104,9 +96,7 @@ def test_an_unsubscribed_calendar_stops_being_offered(dbfile, google):
 
 
 def test_a_pinned_subset_never_prunes_the_rest(dbfile, google, monkeypatch):
-    """With GOOGLE_CALENDAR_IDS set, the pull is a subset by configuration,
-    not by unsubscription — pruning to it would empty the table down to the
-    pinned few on every sync."""
+    """With GOOGLE_CALENDAR_IDS set the pull is a subset by configuration: don't prune the table to it."""
     _sync()
     monkeypatch.setattr(cal, "GOOGLE_CALENDAR_IDS", ["fun@g"])
     google["calendars"] = [("fun@g", "fun@g")]
@@ -115,8 +105,7 @@ def test_a_pinned_subset_never_prunes_the_rest(dbfile, google, monkeypatch):
 
 
 def test_the_sync_keeps_what_an_event_says(dbfile, google):
-    """The description is what tells one 'Lift' from another on an approval
-    card, and _normalize used to drop it on the floor."""
+    """_normalize keeps the description (it tells two 'Lift' calendars apart on an approval card)."""
     _sync()
     with db.session() as con:
         row = con.execute("SELECT description FROM events WHERE event_id='ev0'"

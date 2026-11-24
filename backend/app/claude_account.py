@@ -1,24 +1,13 @@
 """Which Claude account this machine is signed in to, and the way to change it.
 
-There is one login: the Claude Code CLI's, which the console, `agent.ask` and
-your terminal all share. So switching here switches everywhere, and that's the
-intent. Per-account `CLAUDE_CONFIG_DIR`s would keep several signed in at once,
-but they'd also split the transcripts, skills, hooks and memory that live under
-~/.claude, which is most of what makes a tab worth resuming.
-
-Kestrel never sees a credential. It runs the CLI's own commands and reads back
-named fields:
-
-- `GET /api/console/account` — `claude auth status`, plus how a sign-in is going.
-- `POST /api/console/account/login` — `claude auth login`, which opens the
-  browser and waits on a localhost callback (seen in a throwaway config
-  dir). One at a time, and it gives up after LOGIN_LIMIT_S. Not established:
-  what a cancelled sign-in leaves behind when one was already signed in, which
-  only a real switch can show.
-- `POST /api/console/account/login/cancel` — stop waiting.
+One login, the CLI's, shared by the console, `agent.ask` and the terminal. Kestrel never
+sees a credential: it runs `claude auth status` / `claude auth login` and reads named
+fields. Several accounts are kept by claude_accounts.py; a sign-in here adds one.
+Design: DESIGN.md → `app/claude_cli.py`, `app/claude_account.py`, `app/session_digest.py`: console CLI, login, session digests.
 """
 
 import json
+import logging
 import re
 import subprocess
 import threading
@@ -26,8 +15,10 @@ import threading
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from . import claude_accounts
 from .config import CONSOLE_CLI_PATH
 
+log = logging.getLogger(__name__)
 router = APIRouter()
 
 LOGIN_LIMIT_S = 5 * 60
@@ -44,8 +35,7 @@ class _Login:
 
 
 def _status() -> dict:
-    """What the CLI says about the login, by name: nothing else it prints gets
-    passed along."""
+    """The CLI's login status, by named fields only."""
     try:
         run = subprocess.run([str(CONSOLE_CLI_PATH), "auth", "status"], text=True,
                              capture_output=True, timeout=STATUS_TIMEOUT_S)
@@ -83,6 +73,11 @@ def _watch(proc: subprocess.Popen) -> None:
             _Login.state, _Login.error = "done", None
         else:
             _Login.state, _Login.error = "failed", _failure(out or "", proc.returncode)
+            return
+    try:
+        claude_accounts.after_login()
+    except Exception:   # the sign-in worked; saving it is the next tick's job too
+        log.exception("couldn't save the new login as an account")
 
 
 def _login_state() -> dict:
@@ -107,6 +102,11 @@ def post_login(body: LoginIn) -> dict:
     if not CONSOLE_CLI_PATH.exists():
         raise HTTPException(404, f"no claude CLI at {CONSOLE_CLI_PATH}")
     argv = [str(CONSOLE_CLI_PATH), "auth", "login", *(["--email", email] if email else [])]
+    # The sign-in overwrites the slot: stash the current account first so it stays switchable.
+    try:
+        claude_accounts.before_login()
+    except claude_accounts.KeychainError as e:
+        raise HTTPException(500, f"Couldn't save the current login before signing in: {e}")
     with _Login.lock:
         if _Login.proc is not None:
             raise HTTPException(409, "A sign-in is already waiting on the browser.")

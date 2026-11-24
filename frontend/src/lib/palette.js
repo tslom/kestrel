@@ -1,31 +1,12 @@
-// What ⌘K can reach. Kept out of App.jsx so the desk file stays about the
-// desk, and so the list is one flat thing to read when you're asking "can I
-// get there from the keyboard yet?".
-//
-// One command per subject, which is the rule that keeps this list short. The
-// first draft offered "open the Calendar panel" and "jump to the Calendar
-// card" as separate rows, and nine of the eleven panels picked up a
-// near-duplicate that way — two rows with the same name, tying on score,
-// where the panel is strictly the better answer. So a subject with a panel
-// offers the panel, and only the cards without one offer the jump. The pairing
-// is derived from DESK rather than listed again here, so a new card can't
-// silently miss out.
-//
-// Deliberately not in here: the console's slash commands. Those are a
-// different namespace with a different owner (backend `commands.py` scans the
-// vault's .claude dirs and the SDK reports what a live session actually
-// loaded), they're typed into the composer against its own autocomplete, and
-// they address the agent rather than the dashboard. Two lists that look alike
-// but resolve differently is the confusion worth avoiding — ⌘K drives the
-// desk, `/` drives the agent.
+// What ⌘K can reach: one flat list. One command per subject: a subject with a panel offers the panel, only
+// panel-less cards offer a jump (derived from DESK, so a new card can't miss out). Console slash commands are
+// deliberately absent: ⌘K drives the desk, `/` drives the agent.
 
 import { useEffect } from "react";
 import { commandRun } from "./usage";
 import { isDark, setTheme } from "./theme";
 
-// ⌘K / Ctrl+K toggles the palette. Free on both platforms here: the console's
-// own hotkeys are Ctrl+Shift+Space (push-to-talk) and plain typing, and the
-// permission card's global handler ignores anything with a modifier.
+// ⌘K / Ctrl+K toggles; free here (the console uses Ctrl+Shift+Space and plain typing, the permission card ignores modifiers).
 export function usePaletteKey(setOpen) {
   useEffect(() => {
     const onKey = (e) => {
@@ -38,8 +19,7 @@ export function usePaletteKey(setOpen) {
   }, [setOpen]);
 }
 
-// Desk card id → the slide-over that supersedes it. `music` opens under the
-// provider's own name, which is the one mismatch worth hard-coding.
+// Desk card id → the slide-over that supersedes it (`music` opens as `spotify`).
 export const PANEL_FOR = {
   calendar: "calendar", health: "health", trends: "trends", finance: "finance",
   email: "email", people: "people", music: "spotify",
@@ -47,8 +27,7 @@ export const PANEL_FOR = {
   food: "food",
 };
 
-// Other names for a card, so the palette answers the word you reached for
-// rather than the one on the label. Matched as substrings — see fuzzy.rank.
+// Other names for a card, matched as substrings (fuzzy.rank).
 const KEYWORDS = {
   calendar: "events schedule agenda meetings",
   health: "fitbit sleep steps azm heart",
@@ -86,21 +65,13 @@ const LOOSE_PANELS = [
 ];
 
 /**
- * Build the command list.
- *
- * @param {Array<[string, string]>} desk  DESK from widgets/cards.js — [id, title] pairs, so
- *   the commands can't drift out of sync with what's actually on the desk.
- * @param {(key: string) => void} openPanel   a PANEL_FOR value, or a LOOSE_PANELS key.
- * @param {(id: string) => void} jumpTo       desk card id.
- * @param {() => void} refreshAll
- * @param {() => void} focusConsole
+ * Build the command list. `desk` is DESK from widgets/cards.js ([id, title] pairs, so commands can't drift);
+ * `openPanel` takes a PANEL_FOR value or LOOSE_PANELS key; `jumpTo` a desk card id.
  * @returns {Array<{id, title, group, hint, keywords, accent?, run}>}
  */
 export function buildCommands({ desk, openPanel, jumpTo, refreshAll, focusConsole, openLookLab }) {
   const dark = isDark();
-  // Counting at the definition, not at the two call sites in CommandPalette:
-  // a command added later can't forget to be counted, and Enter and click
-  // can't drift apart. Same reasoning as deriving the card list from DESK.
+  // Counted here so a new command can't forget it and Enter and click can't drift.
   const counted = (list) => list.map((c) => ({
     ...c, run: () => { commandRun(c.id); c.run(); },
   }));
@@ -118,8 +89,7 @@ export function buildCommands({ desk, openPanel, jumpTo, refreshAll, focusConsol
   });
 
   return counted([
-    // Panels first: they hold more than the card does, so they're the more
-    // likely destination when both would match.
+    // Panels first: they hold more than the card.
     ...cards.filter((c) => c.group === "Open"),
     ...LOOSE_PANELS.map(([key, title, keywords]) => ({
       id: `open:${key}`,
@@ -137,9 +107,7 @@ export function buildCommands({ desk, openPanel, jumpTo, refreshAll, focusConsol
       group: "Actions",
       hint: "re-read the caches",
       keywords: "reload update refetch",
-      // Not a sync: this re-reads what app.db already has. Pulling fresh data
-      // from the sources is the strip's sync button, which has the per-source
-      // progress this list has nowhere to put.
+      // Not a sync: re-reads app.db; fetching from sources is the strip's sync button.
       run: refreshAll,
     },
     {
@@ -148,14 +116,12 @@ export function buildCommands({ desk, openPanel, jumpTo, refreshAll, focusConsol
       group: "Actions",
       hint: "write to the agent",
       keywords: "prompt ask chat claude composer message",
-      // The one command that is a you-and-agent moment, so the one that takes
-      // the amber thread. Everything else here just moves the desk around.
+      // The one you-and-agent command takes the amber thread.
       accent: true,
       run: focusConsole,
     },
     {
-      // Built fresh each time the palette opens (PlanApp memoises on it), so
-      // it always offers the other one.
+      // Built fresh each time the palette opens, so it offers the other theme.
       id: "act:theme",
       title: dark ? "Use the light theme" : "Use the dark theme",
       group: "Actions",

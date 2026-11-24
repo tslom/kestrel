@@ -1,11 +1,8 @@
 """The Brain: what survives the checks, what a verdict does, what a rebuild
 keeps, and what the console is shown.
 
-The checks are the point of most of this. Ingest hands the model a year of
-someone's texts and takes back proposals, and the only thing standing between
-a hallucinated fact and a page Kestrel reads every session is `apply_ops`:
-the cited line must be in the batch, the quote must really be in that line,
-and a claim the user already rejected never comes back.
+Mostly `apply_ops`, the only guard between a hallucinated fact and a page read every session:
+the cited line is in the batch, the quote is in that line, a rejected claim never returns.
 """
 
 import asyncio
@@ -295,8 +292,7 @@ def _console_options():
 
 
 def test_console_sessions_have_one_memory_not_two():
-    """Claude Code's auto-memory and the Brain would drift apart — it already
-    held a timezone rule the app had made false."""
+    """Claude Code's auto-memory must stay off, or it drifts from the Brain (it held a stale timezone rule)."""
     assert _console_options().env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] == "1"
 
 
@@ -359,9 +355,7 @@ def test_brain_note_replaces_and_verdict_rejects(con, no_render):
 
 
 def test_fact_ids_pass_the_schema_as_printed(con, no_render):
-    """The <brain> block prints facts as [f815] and the model passes "f815";
-    an integer-only schema refused brain_verdict before its handler (which
-    already stripped the f) ran. Every fact-id parameter takes both forms."""
+    """Every fact-id parameter takes "f815" and 815 (an integer-only schema refused brain_verdict before its handler ran)."""
     import jsonschema
     for fn, key, wrap in ((ct.brain_verdict, "fact_id", False),
                           (ct.brain_note, "replaces", False),

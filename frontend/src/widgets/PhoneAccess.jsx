@@ -2,14 +2,9 @@ import { useState } from "react";
 import { fetchJSON, postJSON } from "../lib/api";
 import { useWidgetData } from "../lib/refresh.js";
 
-// Settings → Phone: the phone door (backend app/phone.py). Answer a waiting
-// card from the phone, over your own tailnet. Off until switched on here;
-// on, the backend opens a second listener on 127.0.0.1:8791 that Tailscale
-// Serve is pointed at. The main app is never exposed.
-//
-// Three things have to be true, and each is a row that says so: Tailscale is
-// up, Serve points at the door, and a phone is paired. The Serve command is
-// yours to run: this app doesn't change Tailscale's configuration.
+// Settings → Phone: the phone door (app/phone.py), off until switched on; the main app is never
+// exposed. Three rows must be true (Tailscale up, Serve points at the door, a phone paired). The
+// Serve command is the user's to run: this app never changes Tailscale's configuration.
 
 const when = (iso) => (iso ? new Date(iso).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "never");
 const EVENT = { paired: "paired", allowed: "allowed", denied: "denied", pushed: "notified", revoked: "removed",

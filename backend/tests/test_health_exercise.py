@@ -1,7 +1,7 @@
-"""health._auto_exercise — the AZM-driven Exercise auto-check-in leg of
-refresh(). Seeds health_days directly (the sync half is Google-API-bound and
-tested elsewhere) and asserts both gates (AZM volume + peak HR) and the
-one-per-qualifying-day fill."""
+"""health._auto_exercise — the AZM Exercise auto-check-in: both gates (AZM volume, peak HR), one per day.
+
+Design: DESIGN.md → `app/health.py`: refresh failure modes, test-pinned.
+"""
 
 from datetime import date
 
@@ -10,9 +10,7 @@ from app.providers import health
 
 
 def _seed_azm(con, rows, hr_max=190):
-    """Seed AZM per day, plus an hr_max that clears the peak gate by default.
-    Pass `hr_max=None` to seed no peak at all, or a per-row (day, azm, hr)
-    triple to vary it."""
+    """Seed AZM per day with an hr_max that clears the peak gate; `hr_max=None` seeds none, a (day, azm, hr) triple varies it."""
     for row in rows:
         day, azm, hr = (*row, hr_max)[:3]
         con.execute(
@@ -43,9 +41,7 @@ def test_auto_exercise_checks_only_days_over_threshold(dbfile, frozen_day,
 
 
 def test_auto_exercise_requires_peak_hr(dbfile, frozen_day, monkeypatch):
-    """Volume alone is not a workout: a long stretch of merely-elevated HR can
-    bank more AZM than a real session (alcohol, illness, stress). Only the day
-    that actually peaked counts."""
+    """AZM volume alone is not a workout; only the day that peaked counts."""
     monkeypatch.setattr(health, "EXERCISE_AZM_THRESHOLD", 30.0)
     monkeypatch.setattr(health, "EXERCISE_HR_MAX_THRESHOLD", 180.0)
     db.create_habit("Exercise")
@@ -61,8 +57,7 @@ def test_auto_exercise_requires_peak_hr(dbfile, frozen_day, monkeypatch):
 
 
 def test_auto_exercise_skips_days_missing_peak_hr(dbfile, monkeypatch):
-    """The gate is a requirement, not a tiebreak — no hr_max cached means no
-    check-in, rather than falling back to AZM alone."""
+    """No cached hr_max means no check-in."""
     monkeypatch.setattr(health, "EXERCISE_AZM_THRESHOLD", 30.0)
     monkeypatch.setattr(health, "EXERCISE_HR_MAX_THRESHOLD", 180.0)
     db.create_habit("Exercise")
@@ -73,8 +68,7 @@ def test_auto_exercise_skips_days_missing_peak_hr(dbfile, monkeypatch):
 
 
 def test_auto_exercise_peak_gate_disabled_at_zero(dbfile, monkeypatch):
-    """Zeroing the peak threshold drops the gate back to AZM-only, including
-    for days with no hr_max cached at all."""
+    """A zero peak threshold makes the gate AZM-only."""
     monkeypatch.setattr(health, "EXERCISE_AZM_THRESHOLD", 30.0)
     monkeypatch.setattr(health, "EXERCISE_HR_MAX_THRESHOLD", 0.0)
     db.create_habit("Exercise")

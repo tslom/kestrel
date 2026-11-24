@@ -1,13 +1,7 @@
-"""Deliveries + travel routes — the typed face of
-providers/email_extract.py. Extraction/refresh happens implicitly inside
-email.refresh()'s cadence, so the GETs are read-only like every provider GET.
-
-The two package writers are the exception, and deliberate: `packages` is not
-a derived cache but the only record of order state this app keeps, and until
-now the only hands on it were the extractor and the console. That left the
-card read-only for the two corrections it most often needs — this arrived,
-and this was never a real parcel — with the console the only way to make
-either, which is a lot of ceremony for one button.
+"""Deliveries + travel routes, the typed face of providers/email_extract.py.
+GETs are read-only (extraction runs inside email.refresh()). The two package
+writers are deliberate: `packages` is the only record of order state, and the
+card needs "this arrived" / "never a real parcel" without a console round trip.
 """
 
 from fastapi import APIRouter, HTTPException
@@ -17,10 +11,7 @@ from ..providers import email_extract
 
 router = APIRouter(prefix="/api")
 
-# A year out. The brief asks "am I flying tomorrow?" and 48h answers that;
-# a card asks "what's booked?", and at 48h a flight bought four months ahead
-# is invisible until the night before — which is exactly when a card telling
-# you about it has stopped being useful.
+# A year out for the card ("what's booked?"); the brief keeps its own 48h horizon.
 WIDGET_TRIP_HOURS = 24 * 365
 MAX_TRIP_HOURS = 24 * 730
 

@@ -1,13 +1,8 @@
-/* Round 3's accent line-up: the round-2 system exactly, one variable moved —
-   the accent hue — like amber.css. Each is OKLCH at the blue's lightness and
-   roughly its chroma, so the vote is about hue, not weight:
+/* Accent-hue looks: only the accent moves, at the blue's lightness and chroma.
      light desk  L 0.52-0.55, >= 4.9:1 on white, white text on a fill
      console ink L 0.72,      >= 6.5:1 on #1A1A1C
      dark desk   L 0.70,      >= 6:1 on the dark raise, dark text on a fill
-   Watch: green sits on top of --good and rose next to --bad, so in those
-   looks a primary button and a status colour read alike. That is part of
-   what's being judged. Hexes, not oklch(), because the map's canvas reads
-   these with hexToRgb. */
+   Hexes, not oklch(): the map's canvas reads these with hexToRgb. */
 
 :root[data-look="green"] {
   --accent: #0A7E3A;       /* oklch(0.52 0.14 150) 5.2:1 on white */

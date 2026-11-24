@@ -3,16 +3,9 @@
     python -m app.webshot <url> <out.png> [--width 1200] [--height 900]
                           [--scheme dark|light] [--ready <js expression>]
 
-The theme tool (looks.py, console_tools.theme_set) hands its result to the
-model as a picture rather than as "applied": the lesson it was built on is an
-agent that changed colours, never looked, and said it was fixed. WebKit
-because the .app is a WKWebView, so this is the engine the user sees.
-
-A subprocess of its own, not a thread in the server: AppKit wants the main
-thread and a run loop, and uvicorn has both. `shoot()` is the way in.
-
-Loopback only. This loads a URL in a real browser engine with the user's
-network access, so it refuses anything that isn't this machine.
+Runs as its own subprocess (AppKit wants the main thread; use `shoot()`).
+Loopback URLs only: it is a real browser engine with the user's network access.
+Design: DESIGN.md → Themes Kestrel makes.
 """
 from __future__ import annotations
 
@@ -67,8 +60,7 @@ def _run(url: str, out: Path, width: int, height: int, scheme: str,
                         WKWebViewConfiguration, WKWebsiteDataStore)
 
     app = NSApplication.sharedApplication()
-    # No Dock icon, no menu bar, never frontmost: this must not take focus
-    # from the window the user is typing in.
+    # No Dock icon, never frontmost: must not take focus from the user's window.
     app.setActivationPolicy_(NSApplicationActivationPolicyProhibited)
     state = {"code": 1, "loaded": False, "waited": 0.0}
 
@@ -92,8 +84,7 @@ def _run(url: str, out: Path, width: int, height: int, scheme: str,
 
     def snap() -> None:
         conf = WKSnapshotConfiguration.alloc().init()
-        # One pixel per point: on a Retina machine the default is twice the
-        # bytes for a picture a model reads no better.
+        # One pixel per point: Retina default doubles bytes for no gain to a model.
         conf.setSnapshotWidth_(width / (window.backingScaleFactor() or 1))
 
         def done(image, error):

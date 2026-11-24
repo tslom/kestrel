@@ -1,16 +1,9 @@
 """What the change classifier records, and what it refuses to do unattended.
 
-Two things are being pinned here. The first is coverage: a write tool that
-`classify()` doesn't know is a change no summary mentions, and the registry
-loop that adds one to `console_tools.WRITE_TOOLS` and forgets this table is
-the bug this file exists to fail on.
-
-The second is the guard list — which calls still stop for a click in auto
-mode. Those cases are written as the sentences they defend: sending mail is
-not undoable, `rm` does not move anything to the trash, a DELETE is not an
-edit. Anything else is allowed to run unattended on purpose, so the tests for
-the unguarded side matter as much: a guard list that grows by accident turns
-auto mode back into the thing it replaced.
+Coverage: a write tool `classify()` doesn't know is a change no summary mentions
+(a WRITE_TOOLS addition that forgets the table). Guard list: which calls still
+stop for a click in auto mode; the unguarded side matters as much, since a guard
+list that grows by accident undoes auto mode.
 """
 
 import re
@@ -26,8 +19,7 @@ from app.console_changes import classify
 
 
 def test_every_write_tool_is_a_change():
-    """Each tool on console_tools.WRITE_TOOLS records something — except
-    file_read, which is on that list for its cost, not for writing."""
+    """Each WRITE_TOOLS tool records something, except file_read (listed for its cost)."""
     missed = []
     for spec in console_tools.WRITE_TOOLS:
         name = f"mcp__{console_tools.SERVER_NAME}__{spec.name}"
@@ -43,8 +35,7 @@ def test_every_write_tool_is_a_change():
 
 
 def test_read_tools_are_not_changes():
-    """Except theme_set, which is on that list for needing no card (colour
-    roles only, undone from the Look lab), and still changes the window."""
+    """Read tools record nothing, except theme_set (no card, but it changes the window)."""
     for spec in console_tools.READ_TOOLS:
         name = f"mcp__{console_tools.SERVER_NAME}__{spec.name}"
         if spec.name == "theme_set":
@@ -74,8 +65,7 @@ def test_write_says_whether_it_replaced_something(tmp_path):
 
 
 def test_a_file_edit_never_asks():
-    """The vault is on disk and in the log; editing it is what auto mode is
-    for. If this ever gains a guard, auto mode is worth nothing."""
+    """Editing the vault is what auto mode is for; a guard here defeats it."""
     assert classify("Edit", {"file_path": "/x/y.md"}).guard is None
     assert classify("Write", {"file_path": "/x/y.md"}).guard is None
 
@@ -182,8 +172,7 @@ def test_a_db_write_reads_as_db_not_shell():
 
 
 def test_an_unparseable_command_asks():
-    """shlex can't read it, so neither can the guard scan. One card beats one
-    unattended unknown."""
+    """shlex can't read it, so the guard scan can't: one card beats an unattended unknown."""
     change = classify("Bash", {"command": 'echo "unbalanced'})
     assert change is not None and change.guard
 
@@ -208,10 +197,7 @@ def test_a_change_serializes_to_the_four_columns_the_card_reads():
 
 
 def test_guard_reasons_are_sentences():
-    """Each one is rendered as 'auto mode paused — it would <guard>', so it
-    has to read as the tail of that sentence: lower case, no full stop, and
-    no dash of its own — a second one inside the card's reads as a stutter,
-    which is what 'delete files — nothing here moves them' did on screen."""
+    """Each renders as 'auto mode paused — it would <guard>': lower case, no full stop, no dash of its own."""
     guards = [g for table in (console_changes._VAULT, console_changes._GMAIL,
                               console_changes._CALENDAR)
               for row in table.values() if row for g in [row[2]] if g]
@@ -225,8 +211,7 @@ def test_guard_reasons_are_sentences():
 
 
 def test_scheduling_a_send_cards_even_in_auto_mode():
-    """email_schedule is the one vault tool that makes mail leave with no
-    further human look, so its approval is the last check it gets."""
+    """email_schedule sends mail with no further look, so its card is the last check."""
     from app import console_changes
     c = console_changes.classify("mcp__vault__email_schedule",
                                  {"send_at": "2026-10-24T08:00", "body": "x"})
@@ -239,16 +224,14 @@ def test_scheduling_a_send_cards_even_in_auto_mode():
 
 
 def test_every_scope_says_which_cards_it_moves():
-    """A tool in the tables with no row in _CARD_TOPICS is a write whose card
-    stays stale until the next poll, with nothing to say why."""
+    """A tool with no row in _CARD_TOPICS leaves its card stale until the next poll."""
     scopes = {row[1] for row in console_changes._TABLE.values() if row}
     missed = scopes - console_changes._CARD_TOPICS.keys()
     assert not missed, f"add these to console_changes._CARD_TOPICS: {missed}"
 
 
 def test_every_topic_has_something_listening():
-    """The two sides share only a string, so a typo on either is a refresh
-    that quietly goes nowhere. A source's sheet subscribes under its own name."""
+    """Topics are a shared string: a typo on either side is a refresh that goes nowhere."""
     src = Path(__file__).parents[2] / "frontend" / "src"
     code = "\n".join(p.read_text() for p in src.rglob("*.js*"))
     for topic in console_changes._EVERY_CARD:

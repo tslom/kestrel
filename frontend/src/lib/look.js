@@ -1,9 +1,5 @@
-// Which look lab variants are on (looks/index.js), and the A/B pair being
-// compared. Per browser, like the theme (lib/theme.js), as attributes on
-// <html>: `data-look` (colour), `data-layout` (the desk: rooms, or classic),
-// `data-map` (the map's ground) and `data-agents` (the agent visualizer).
-// ⌥⇧L flips the A/B pair of layouts; ⌥⇧M steps the map grounds, ⌥⇧A the
-// agent styles.
+// Which look lab variants are on and the A/B pair compared, per browser, as <html> attributes: `data-look`
+// (colour), `data-layout`, `data-map` (map ground), `data-agents`. ⌥⇧L flips the layout pair, ⌥⇧M steps grounds, ⌥⇧A agent styles.
 import { useEffect, useState } from "react";
 import { fetchJSON, postJSON } from "./api.js";
 import { AGENT_STYLES, GROUNDS, LAYOUTS, LOOKS, agentsById, groundById, layoutById,
@@ -11,8 +7,7 @@ import { AGENT_STYLES, GROUNDS, LAYOUTS, LOOKS, agentsById, groundById, layoutBy
 
 const KEY = "look";
 const PAIR = "look_pair_r6";   // a new key per round, so last round's pair doesn't hide this one's
-// A new key when the default changed (rooms over classic): the old one
-// still held whichever round-4/5 layout was last flipped to.
+// New key when the default layout changed (rooms over classic): the old one held a stale layout.
 const LAYOUT = "desk_layout";
 const GROUND = "map_ground";
 const AGENTS = "look_agents";
@@ -22,20 +17,14 @@ const read = (k) => { try { return localStorage.getItem(k); } catch { return nul
 const write = (k, v) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch { /* private mode */ } };
 const announce = (detail) => window.dispatchEvent(new CustomEvent(LOOK_EVENT, { detail }));
 
-// One attribute per axis; the first entry of each list is the default and
-// leaves its attribute off, so the baseline CSS applies untouched. Except
-// the layout, which is always set: the default (rooms) is the one with CSS.
+// One attribute per axis; the default leaves its attribute off so baseline CSS applies (except layout, always set: rooms has the CSS).
 function setAttr(name, id, dflt) {
   const root = document.documentElement;
   if (id === dflt) delete root.dataset[name]; else root.dataset[name] = id;
 }
 
-// Themes: colour looks Kestrel made when asked (backend app/looks.py, the
-// console's theme_set tool). Data, unlike the looks above: role -> #RRGGBB
-// per scheme, fetched from /api/looks/themes and written here as CSS on the
-// role's token. Which one is on is the server's to say (`active`), so the one
-// Kestrel just set is the one showing; the last answer is kept per browser so
-// the next launch paints in it before the fetch lands.
+// Themes: colour looks Kestrel made (app/looks.py, theme_set tool): role -> #RRGGBB per scheme, written as CSS on
+// the role's token. The server owns `active`; the last answer is kept per browser to paint before the fetch lands.
 const THEMES = "look_themes";
 const HEX = /^#[0-9A-Fa-f]{6}$/;
 const THEME_ID = /^theme-[a-z0-9-]+$/;
@@ -43,14 +32,12 @@ const TOKEN = /^--[a-z0-9-]+$/;
 const NONE = { themes: [], active: null, roles: {} };
 let themeState = NONE;
 
-// The server's words are still checked before they become CSS: a value that
-// isn't a hex, or a name that isn't a token, is dropped, not written.
+// Server values are still validated before becoming CSS: a non-hex value or non-token name is dropped.
 function themeRules(t, roles) {
   const decls = (scheme) => Object.entries(t[scheme] || {})
     .filter(([role, v]) => TOKEN.test(roles[role] || "") && HEX.test(v))
     .map(([role, v]) => `${roles[role]}:${v};`).join("");
-  // :root twice, so a theme outranks the base palettes whatever order the
-  // sheets load in; each scheme scoped the way styles.css scopes its own.
+  // :root twice so a theme outranks the base palettes whatever the sheet order; schemes scoped as styles.css does.
   const sel = `:root:root[data-look="${t.id}"]`;
   const [dark, light] = [decls("dark"), decls("light")];
   return [
@@ -76,7 +63,7 @@ export function writeThemes(state) {
 
 export const lookThemes = () => themeState.themes;
 const themeById = (id) => themeState.themes.find((t) => t.id === id);
-// A theme reads like a look everywhere a look is named (the lab, a vote).
+// A theme reads like a look everywhere a look is named.
 export const anyLookById = (id) => {
   const t = themeById(id);
   return t ? { id: t.id, name: t.name, question: t.note || "A theme Kestrel made.", theme: true } : lookById(id);
@@ -89,8 +76,7 @@ function restoreThemes() {
   try { writeThemes(JSON.parse(read(THEMES)) || NONE); } catch { writeThemes(NONE); }
 }
 
-// From the server: at load, and whenever a console turn sets a theme (the
-// "looks" topic, wired in main.jsx).
+// From the server at load and whenever a console turn sets a theme (the "looks" topic, wired in main.jsx).
 export async function loadThemes() {
   const r = await fetchJSON("/api/looks/themes").catch(() => null);
   if (!r) return;   // offline or an old server: keep what's painted
@@ -114,7 +100,6 @@ export function currentLayout() { return layoutById(read(LAYOUT) || LAYOUTS[0].i
 export function currentGround() { return groundById(read(GROUND) || GROUNDS[0].id).id; }
 export function currentAgents() { return agentsById(read(AGENTS) || AGENT_STYLES[0].id).id; }
 
-// The stepped axes share one shape: a list, a key, an attribute.
 const STEPPED = {
   agents: { list: AGENT_STYLES, key: AGENTS, current: currentAgents },
 };
@@ -136,14 +121,13 @@ export function applyLook() {
   setAttr("look", currentLook(), "baseline");
   document.documentElement.dataset.layout = currentLayout();
   setAttr("map", currentGround(), GROUNDS[0].id);
-  delete document.documentElement.dataset.needs;   // round 5's Needs-you takes, retired
+  delete document.documentElement.dataset.needs;   // retired
   setAttr("agents", currentAgents(), AGENT_STYLES[0].id);
   delete document.documentElement.dataset.lookApple;   // round 1 only; clears a stale attribute
 }
 
 export function setLook(id) {
-  // A theme goes on over whichever built-in look was picked, and comes off
-  // back to it; picking a built-in look takes any theme off.
+  // A theme goes over the picked built-in look and comes off back to it; picking a built-in takes any theme off.
   const theme = themeById(id);
   if (theme || themeState.active) {
     themeState = { ...themeState, active: theme ? theme.id : null };
@@ -178,8 +162,7 @@ export function stepGround(by = 1) {
 }
 
 export function lookPair() {
-  // A pair saved in an earlier round can name a retired variant; fall back
-  // rather than flip between two things that both resolve to the default.
+  // A saved pair may name a retired variant: fall back rather than flip between two defaults.
   const known = (id) => LAYOUTS.some((l) => l.id === id);
   try { const p = JSON.parse(read(PAIR)); if (Array.isArray(p) && p.length === 2 && p.every(known)) return p; } catch { /* unset */ }
   return ["hybrid", "classic"];   // the desk vs the one before it

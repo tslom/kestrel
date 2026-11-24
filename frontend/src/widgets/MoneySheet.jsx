@@ -11,28 +11,12 @@ import { useEffect, useRef, useState } from "react";
 import { fetchJSON, postJSON } from "../lib/api";
 import { useWidgetData, broadcastRefresh } from "../lib/refresh";
 
-// The Money sheet — the first expansion written for its subject rather than
-// for the provider behind it.
-//
-// What it replaces: `finance` used to render through the generic provider
-// panel, which meant a chip row of metric names (`networth`, `bills_due`,
-// `recurring`) and one view at a time. But those aren't seven questions — they
-// are seven halves of one question, and answering "how is money doing" needed
-// four clicks and a memory of what the last chip said. They're sections now,
-// down one sheet, in the order the question gets asked: what I have, what's
-// moving, what's owed, where it went, and then the receipts.
-//
-// Five reads per range, in parallel. `finance.get()` makes no API calls — the
-// cursor model means the cache is complete up to `last_synced_at` — so these
-// are SQLite reads against app.db and cost about what one did.
+// The Money sheet: bands in the order the question is asked (have, moving, owed, where it went,
+// receipts). Reads are SQLite only; `finance.get()` makes no API calls.
+// Design: DESIGN.md → Sheets are written to the subject, not the provider.
+// Plaid stores money leaving as positive; callers flip the sign before fmtMoney (lib/units).
 
-// Money is fmtMoney (lib/units), shared with the card. Plaid stores a
-// positive amount for money leaving, and this app shows outflows as negative,
-// so every display of a transaction amount goes through it with the sign
-// already flipped by its caller.
-
-// Compact signed money for chart labels: +$80, −$1.2k. Uses a true minus
-// sign (−) so deficits read as clearly negative, not hyphenated.
+// Compact signed money for chart labels: +$80, −$1.2k (true minus sign).
 function compactMoney(v) {
   const a = Math.abs(v);
   const n = a >= 1000 ? `${(a / 1000).toFixed(a >= 10000 ? 0 : 1)}k` : Math.round(a);
@@ -40,32 +24,21 @@ function compactMoney(v) {
 }
 
 
-// Plaid's personal-finance categories arrive as FOOD_AND_DRINK. The panel's
-// job is to say where the money went, and it can't do that in schema.
+// Plaid categories arrive as FOOD_AND_DRINK.
 function prettyCategory(c) {
   if (!c) return "Uncategorized";
   const words = c.replace(/_/g, " ").toLowerCase();
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-// Mirrors SPEND_EXCLUDED_CATEGORIES in providers/finance.py, which is what
-// `spend` and `cashflow` are already computed without: money moved between
-// your own accounts is not spending, and a card payment would otherwise be
-// counted once as the purchase and again as the payment. The breakdown below
-// is grouped in the browser from the transaction rows, so if this list ever
-// drifts from the backend's, the bars stop adding up to the totals above them
-// — which is the visible failure, and the reason they sit on the same screen.
+// Mirrors SPEND_EXCLUDED_CATEGORIES in providers/finance.py; drift shows as bars that don't sum to the totals.
 const NOT_SPENDING = ["TRANSFER_IN", "TRANSFER_OUT", "LOAN_PAYMENTS"];
 
-// Assets vs debts, by Plaid account `type` — the same split net worth is
-// snapshotted with (NET_WORTH_ASSET_TYPES in providers/finance.py). `current`
-// on a credit or loan account is the positive amount owed.
+// Mirrors NET_WORTH_ASSET_TYPES in providers/finance.py; `current` on credit/loan is the amount owed.
 const ASSET_TYPES = ["depository", "investment", "brokerage"];
 
 
-// Net worth over time: a single blue (--data) line. History only accrues from
-// the first snapshot, so a lone point renders as a hero stat with a note
-// rather than a degenerate one-point "line".
+// Net worth over time (--data line); a lone first snapshot renders as a hero stat, not a line.
 function NetWorthChart({ data }) {
   const [box, W] = useChartWidth(320);
   if (data.length === 0)
@@ -115,10 +88,7 @@ function NetWorthChart({ data }) {
   );
 }
 
-// Weekly net cashflow as diverging bars off a zero baseline: surplus weeks
-// green (--good), deficit weeks red (--bad). The sign + a direct value label
-// carry polarity, so color is never the only cue. Native <title> gives the
-// in/out breakdown on hover.
+// Weekly net cashflow as diverging bars; sign and value label carry polarity (colour is not the only cue).
 function CashflowChart({ data }) {
   const [box, W] = useChartWidth(320);
   if (data.length === 0) return <p className="widget-empty">No cashflow in this range.</p>;
@@ -155,9 +125,7 @@ function CashflowChart({ data }) {
   );
 }
 
-// Daily spending as vertical bars off a bottom baseline (value = outflow,
-// always >=0, zero-filled to today), with a dotted line at the daily average.
-// Day ticks are thinned so a month-long range doesn't crowd the axis.
+// Daily spending bars (outflow >=0, zero-filled to today) with a dotted daily-average line.
 function SpendChart({ data }) {
   const [box, W] = useChartWidth(320);
   if (data.length === 0) return <p className="widget-empty">No spending in this range.</p>;
@@ -224,10 +192,7 @@ function BillsDueSlice({ data }) {
   );
 }
 
-// What you have, split the way net worth is: balances that are yours, then
-// balances you owe. Both sides show the account's own currency, and the
-// section header carries the two totals so the split is readable without
-// adding them up by eye.
+// Balances split as net worth is: yours, then owed, each in the account's own currency.
 function Accounts({ data }) {
   if (data.length === 0) return <p className="widget-empty">No accounts connected.</p>;
   const side = (types, want) => data.filter((a) => types.includes(a.type) === want);
@@ -261,11 +226,7 @@ function Accounts({ data }) {
   </>;
 }
 
-// Where the money went, grouped from the transaction rows themselves rather
-// than from a metric of its own — there is no per-category endpoint, and the
-// rows are already on screen below. Bars are proportional to the largest
-// category, so the top one always fills, and the amount is written out beside
-// each: the bar is the comparison, the number is the fact.
+// Grouped from the transaction rows (no per-category endpoint); bars scale to the largest category.
 function Breakdown({ txns }) {
   const spend = txns.filter((t) => t.amount > 0 && !NOT_SPENDING.includes(t.category));
   if (spend.length === 0) return <p className="widget-empty">Nothing spent in this range.</p>;
@@ -276,8 +237,7 @@ function Breakdown({ txns }) {
     by.set(k, (by.get(k) || 0) + t.amount);
   }
   const rows = [...by.entries()].sort((a, b) => b[1] - a[1]);
-  // Past eight the bars are hairlines and the labels are noise; the tail is
-  // still counted, just counted together.
+  // Past eight the bars are hairlines; the tail is counted together.
   const shown = rows.slice(0, 8);
   const tail = rows.slice(8);
   if (tail.length) shown.push([`${tail.length} smaller categories`, tail.reduce((s, r) => s + r[1], 0)]);
@@ -289,10 +249,8 @@ function Breakdown({ txns }) {
   );
 }
 
-// The claim control at a transaction row's edge (ExpensesWidget has the rest
-// of the flow). A charge that's already claimed says so, and says how far it
-// got. Only a claim still waiting can be taken back from here, because a
-// sent one has to keep matching the spreadsheet already sent.
+// The claim control at a row's edge (flow in ExpensesWidget). Only a waiting claim can be taken
+// back: a sent one must keep matching the spreadsheet already sent.
 function ClaimButton({ t, claim, onClaim, onUnclaim }) {
   if (claim) {
     const part = claim.amount < t.amount ? ` ${fmtMoney(claim.amount, t.currency)}` : "";
@@ -307,8 +265,7 @@ function ClaimButton({ t, claim, onClaim, onUnclaim }) {
       </span>
     );
   }
-  // Money in isn't an expense. A pending charge is fine: when it posts, the
-  // sync moves the claim onto the posted charge (expenses.follow_posted).
+  // Pending is fine: the sync moves the claim to the posted charge (expenses.follow_posted).
   if (t.amount <= 0) return null;
   return (
     <button className="txn-claim" onClick={() => onClaim(t.id)}
@@ -318,24 +275,10 @@ function ClaimButton({ t, claim, onClaim, onUnclaim }) {
   );
 }
 
-// The receipts, newest day first — the one place in the sheet where a single
-// purchase is visible, so it keeps every enrichment Plaid hands over (logo,
-// merchant site, location, pending flag).
-//
-// `marks` draws the expense claims and the reviewed line. The line sits above
-// the newest charge you've been through (reviewed = on screen at your last
-// expenses export, or when you last said there was nothing to claim). A charge
-// below it that isn't reviewed posted late: Plaid dates a charge by when the
-// card was swiped, not when it posted, so it can land under the line without
-// anyone having seen it. Those rows get a dot, and within a day the
-// unreviewed rows sort first, so the line splits days cleanly wherever it can.
-// Which transaction row the pointer is over, tracked in JS rather than read
-// off CSS :hover. The desktop app's WKWebView left :hover stuck on a row.
-// WebKit doesn't recompute hover when the list scrolls under a still
-// cursor, and a native window can miss the pointer leaving. So this
-// re-asks the document what's under the last pointer position on every
-// scroll, and forgets the row when the pointer leaves the page or the
-// window loses focus. One rAF-throttled elementFromPoint per frame at most.
+// The receipts, newest day first, keeping every Plaid enrichment. `marks` draws claims and the
+// reviewed line; unreviewed rows under it posted late (Plaid dates by swipe) and get a dot.
+// Hovered row is tracked in JS, not CSS :hover: WKWebView leaves :hover stuck on scroll or window
+// blur, so we re-ask elementFromPoint (rAF-throttled) on scroll and clear on leave/blur.
 function useHoveredRow(ref) {
   const [id, setId] = useState(null);
   useEffect(() => {
@@ -428,20 +371,15 @@ function TxnDays({ data, marks, onClaim, onUnclaim }) {
   ))}</div>;
 }
 
-// The reads the sheet is made of. `balances` and `bills_due` ignore the range
-// (they're snapshots of now), and asking for them anyway keeps one code path
-// for six reads instead of two paths for three each.
+// `balances` and `bills_due` ignore the range (snapshots of now); asked anyway for one code path.
 const VIEWS = ["balances", "networth", "cashflow", "spend", "transactions", "bills_due"];
 
 export default function MoneySheet({ onPin }) {
-  // A month is the range money is actually lived in — rent, statements and
-  // paychecks all land on it — where every other provider's default is today.
+  // A month: rent, statements and paychecks land on it.
   const { ranges, range, pickRange, rows, refreshedAt, error, loading, payloads, reload }
     = useSheetData("finance", VIEWS, "this-month");
 
-  // Expense claims and the reviewed line for this range. Its own read, on
-  // the "expenses" topic, so a claim made here or on the Expenses card
-  // redraws both. A failure only costs the claim buttons, never the sheet.
+  // Own read on the "expenses" topic so both cards redraw; failure costs only the claim buttons.
   const { data: marks, reload: reloadMarks } = useWidgetData(
     () => fetchJSON(`/api/expenses/marks?range=${encodeURIComponent(range)}`)
       .catch(() => null),
@@ -459,8 +397,7 @@ export default function MoneySheet({ onPin }) {
   const net = inflow - outflow;
   const txns = rows("transactions");
 
-  // The chart that fits the span: daily bars while a day is still a readable
-  // slot, weekly net once it isn't. A quarter of daily bars is a comb.
+  // Daily bars up to 31 days, weekly net beyond (a quarter of daily bars is a comb).
   const daily = rows("spend").length > 0 && rows("spend").length <= 31;
 
   const pinLabel = `money · ${range}`;

@@ -1,31 +1,10 @@
 """A console session's line to the page, outliving any one socket.
 
-A reload (⌘R) used to end every turn in flight: the session lived inside the
-websocket handler, and the handler's `finally` denied the cards waiting and
-disconnected the CLI the moment the socket closed. Now the session talks to a
-`Link` instead, registered by its tab's id. The socket of the moment attaches
-to it; when that socket goes, the session keeps working with nobody listening
-and the next page to open the same tab attaches and carries on.
-
-What a page that just arrived needs, and why a Link records it:
-
-  * **The current turn so far** (`turn`). Everything before the turn is on
-    disk in the session's transcript, so the Link notes how long that file
-    was when the turn began (`cut`) and keeps the turn's own events; the page
-    reads the transcript up to the cut and replays the events after it. No
-    overlap, nothing missing. Consecutive text deltas are joined as they're
-    recorded, so a long reply is one entry, not thousands.
-  * **The state messages a fresh start would have sent** (`sticky`): the
-    session id, the mode, the worktree, the command list, tasks, the agents
-    strip, the context size — the last of each.
-  * **Only the requests still open.** A card (or an open_tab / tabs request)
-    already answered stays answered; one still waiting is replayed and its
-    answer goes to the future that's been waiting all along.
-
-A detached session is ended once it's been idle (`busy()` false) for
-IDLE_GRACE_S, the way closing a socket used to end it at once — long enough
-for a reload, short enough that closing a browser tab doesn't leave a CLI
-running all evening. A busy one is left to finish, up to DETACHED_MAX_S.
+The session talks to a `Link` registered by tab id; the socket of the moment
+attaches to it, so a reload never ends a turn. A fresh page is caught up from
+`sticky` (last state messages), `turn` (events since `cut`, the transcript length
+at turn start) and the still-open requests. A detached idle session is reaped
+after IDLE_GRACE_S, a busy one after DETACHED_MAX_S. Design: DESIGN.md → `app/console_link.py`.
 """
 
 from __future__ import annotations
@@ -43,8 +22,7 @@ REAP_EVERY_S = 2.0
 # The last of each of these is what a fresh page is told on attach.
 STICKY = frozenset({"session", "session_info", "mode", "model", "worktree", "commands", "held",
                     "tasks", "agents", "context", "mcp", "shells"})
-# Never replayed: audio for words already in the log, and nudges that only
-# mean something the moment they're sent.
+# Never replayed: audio for words already logged, and momentary nudges.
 UNRECORDED = frozenset({"speech", "phase", "refresh"})
 
 # What changes whether a tab has work in flight (console_work).
@@ -70,8 +48,7 @@ class Link:
         self.transcript_at: Callable[[], tuple[str | None, int | None]] = lambda: (None, None)
         self.queued_text: dict[str, str] = {}
         self.matches: dict[str, Any] = {}     # profile / project it was started with
-        # Called when what the tab has in flight may have changed: a turn
-        # starting or ending, the agents strip moving (console_work.mark).
+        # Called when in-flight work may have changed (console_work.mark).
         self.on_work: Callable[[], None] = lambda: None
 
     # ------------------------------------------------------------ the session's side
@@ -93,8 +70,8 @@ class Link:
         return item
 
     def begin_turn(self, user: dict | None) -> None:
-        """A turn starts: note where the transcript ends, start its log. `user`
-        is your message, if you sent it (the stream doesn't echo it back)."""
+        """A turn starts: note where the transcript ends, start its log. `user` is the
+        message if the user sent it (the stream doesn't echo it)."""
         self.cut_session, self.cut = self.transcript_at()
         self.turn = [user] if user else []
         self._work()
@@ -117,8 +94,7 @@ class Link:
         mtype = msg.get("type")
         if mtype in STICKY:
             self.sticky[mtype] = msg
-            # A new session is named during its first turn: before that turn
-            # there was no transcript at all, so the whole of it is replay.
+            # A new session is named mid-first-turn; with no transcript yet, all of it is replay.
             if (mtype == "session" and self.turn is not None
                     and self.cut_session is None and msg.get("id")):
                 self.cut_session, self.cut = msg["id"], 0
@@ -136,7 +112,7 @@ class Link:
         else:
             self.turn.append(dict(msg))
         if mtype in ("result", "idle"):
-            # Over, and on disk: a page arriving now reads it all from there.
+            # Over and on disk: a page arriving now reads it from there.
             self.turn, self.cut, self.cut_session = None, None, None
 
     # ------------------------------------------------------------- the sockets' side
@@ -148,7 +124,7 @@ class Link:
             if rid and not self.open_request(rid):
                 continue
             if m.get("type") == "queued_in":
-                # The page that queued it is gone, and with it the text.
+                # The queuing page is gone, and the text with it.
                 text = self.queued_text.get(m.get("id") or "")
                 if text:
                     out.append({"type": "replay_user", "text": text, "queued": True})
@@ -157,11 +133,10 @@ class Link:
         return out
 
     async def attach(self, ws: WebSocket, *, resumed: bool) -> None:
-        """Make `ws` the socket this session talks through. `resumed`: a page
-        coming back to a live session, which is told so and caught up."""
+        """Make `ws` the session's socket. `resumed`: a page returning to a live session, caught up."""
         old, self.ws, self.detached_at = self.ws, ws, None
         if old is not None and old is not ws:
-            # Another page took this tab over. 4001 tells it not to retry.
+            # Taken over by another page; 4001 = don't retry.
             try:
                 await old.close(code=4001)
             except Exception:   # already gone
@@ -222,10 +197,8 @@ def reap_once(now: float) -> None:
 
 
 def register(link: Link) -> None:
-    """A new session for its tab. One already registered there is ended:
-    a start that didn't ask to attach is a deliberate new session (New
-    chat, another session, a model change), which used to replace the old
-    socket and its CLI with it."""
+    """A new session for its tab; one already registered there is ended (a start that
+    didn't ask to attach is deliberate: New chat, another session, a model change)."""
     if link.key is None:
         return
     old = links.get(link.key)

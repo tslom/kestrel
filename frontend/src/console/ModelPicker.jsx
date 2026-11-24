@@ -1,26 +1,10 @@
 import { useState } from "react";
 import BarMenu from "./BarMenu.jsx";
 import { effortsFor, findModel, modelChoices, prettyModel } from "../lib/consolePrefs.js";
+import { useModelsInfo } from "../lib/models.js";
 
-// The model choices every <select> offers (lib/consolePrefs.js modelChoices):
-// "default" and the aliases, then the pinned versions in their own group.
-export function ModelOptions({ choices }) {
-  return (
-    <>
-      {choices.main.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
-      {choices.pinned.length > 0 && (
-        <optgroup label="pinned versions">
-          {choices.pinned.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
-        </optgroup>
-      )}
-    </>
-  );
-}
-
-// What the tab is running, in the bar's words: "fable 5.2". The stream's own
-// word (`live`, a resolved id) first, since that's what's actually answering
-// (a /model mid-session included); before the first turn names it, what the
-// pick resolves to.
+// What the tab runs, in the bar's words ("fable 5.2"): the stream's `live` id first (it's answering,
+// /model mid-session included), before the first turn what the pick resolves to.
 export function runningName(models, { live, model, defaultModel }) {
   const picked = model === "default" ? defaultModel : model;
   const row = findModel(models, live) || (!live && findModel(models, picked));
@@ -28,12 +12,9 @@ export function runningName(models, { live, model, defaultModel }) {
   return name.toLowerCase();
 }
 
-// The bar's model · effort chip, and the picker it opens: the model (aliases,
-// the pinned versions folded) and the effort levels that model takes. Both
-// are fixed at session start, so a pick reconnects the tab (resume keeps the
-// conversation); mid-turn that would cut the turn, so it waits.
-// In a crowded status bar the version goes first ("opus 5.5" → "opus";
-// lib/barHost.js "model-short"), never the chip.
+// The bar's model · effort chip and its picker (aliases, pinned versions folded; the model's effort
+// levels). Both are fixed at session start, so a pick reconnects (resume keeps the conversation), and
+// waits mid-turn. When crowded the version goes first (lib/barHost.js "model-short"), never the chip.
 export function ModelChip({ models, model, defaultModel, effort, live, busy, onPick }) {
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState(null);
@@ -60,7 +41,8 @@ export function ModelChip({ models, model, defaultModel, effort, live, busy, onP
 }
 
 export function ModelMenu({ models, model, defaultModel, effort, busy, onPick }) {
-  const { main, pinned } = modelChoices(models, defaultModel, model);
+  const info = useModelsInfo();
+  const { main, pinned } = modelChoices(models, defaultModel, model, info);
   const [older, setOlder] = useState(() => pinned.some(([v]) => v === model));
   const efforts = effortsFor(models, model, defaultModel);
   // A model that doesn't take the effort in force drops it, in the same reconnect.
@@ -69,13 +51,16 @@ export function ModelMenu({ models, model, defaultModel, effort, busy, onPick })
     const ok = effortsFor(models, m, defaultModel);
     onPick(m, effort && ok.includes(effort) ? effort : "");
   };
-  const row = ([v, label]) => {
+  const row = ([v, label, refused]) => {
     const [alias, named] = label.includes(" · ") ? label.split(" · ") : [label, ""];
     return (
-      <button key={v} role="menuitemradio" aria-checked={v === model} disabled={busy}
-        className={`bm-item mp-row${v === model ? " on" : ""}`} onClick={() => pickModel(v)}>
-        <span className="mp-alias">{alias}</span>
-        {named && <span className="mp-named">{named}</span>}
+      <button key={v} role="menuitemradio" aria-checked={v === model} disabled={busy || !!refused}
+        title={refused ? `Not on the Claude account in use: ${refused}` : undefined}
+        className={`bm-item mp-row${v === model ? " on" : ""}${refused ? " mp-off" : ""}`}
+        onClick={() => pickModel(v)}>
+        <span className="mp-alias">{alias}{refused && named ? ` · ${named}` : ""}</span>
+        {refused ? <span className="mp-named mp-why">not on this account</span>
+          : named && <span className="mp-named">{named}</span>}
       </button>
     );
   };

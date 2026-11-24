@@ -1,8 +1,4 @@
-"""Time-to-leave. leave.py joins today's located timed events with a
-live traffic-aware route; the external seams (calendar, location fix, geocode,
-route) are all mocked here so these stay pure logic tests: leave_by math,
-origin selection (fresh fix vs HOME), the located/timed/future filter, and
-graceful degradation when the route can't be computed."""
+"""Time-to-leave logic with calendar, fix, geocode and route mocked: leave_by math, origin choice, event filter, degradation."""
 
 import http.client
 from datetime import datetime, timedelta
@@ -103,9 +99,7 @@ def test_no_api_key_returns_none_from_drive(monkeypatch):
 
 
 def test_the_day_argument_actually_selects_the_day(monkeypatch):
-    """It used to be assigned and dropped: the range was hardcoded to "today",
-    so brief.py's compute_leaves(day) answered about today whatever it asked
-    for. A caller that names a day must not be quietly told about another."""
+    """compute_leaves(day) answers for that day, not today."""
     seen = []
 
     def _get(rng):
@@ -118,8 +112,7 @@ def test_the_day_argument_actually_selects_the_day(monkeypatch):
 
 
 def test_strict_lets_a_calendar_outage_through(monkeypatch):
-    """The card wants [] and the alarm reconciler must not: an empty list reads
-    as "nothing to leave for", and that withdraws live alarms."""
+    """strict=True raises on a calendar outage: [] would withdraw live alarms (the card wants [])."""
     def _boom(rng):
         raise RuntimeError("no calendar auth")
 
@@ -130,8 +123,7 @@ def test_strict_lets_a_calendar_outage_through(monkeypatch):
 
 
 def _patch_geocode(monkeypatch, google: dict, *, context="", meteo=None):
-    """Mock both geocode backends. `google` maps an address string to coords;
-    anything absent is a miss. Returns the list of addresses Google was asked."""
+    """Mock both geocoders; `google` maps address to coords, absent is a miss. Returns addresses Google was asked."""
     asked = []
 
     def _g(address):
@@ -152,9 +144,7 @@ def _patch_geocode(monkeypatch, google: dict, *, context="", meteo=None):
     "Online through Web Registration",
 ])
 def test_virtual_locations_never_geocode(monkeypatch, loc):
-    """Google answers these confidently and wrongly — "TBD" is a spot in the
-    Pacific, a zoom URL is the USC campus — so a video call was earning a
-    drive time and an alarm. Nothing should even be looked up."""
+    """Virtual locations are never looked up (Google geocodes them confidently and wrongly)."""
     asked = _patch_geocode(monkeypatch, {}, context="USC")
     assert leave.geocode(loc) is None
     assert asked == []
@@ -167,15 +157,13 @@ def test_virtual_locations_never_geocode(monkeypatch, loc):
     "Remotely Green Cafe",
 ])
 def test_real_places_containing_a_marker_still_geocode(monkeypatch, loc):
-    """The markers match as a prefix word, not a substring, or every place
-    starting with "Na" would be read as "n/a"."""
+    """Virtual markers match as a prefix word, not a substring ("Na..." is not "n/a")."""
     _patch_geocode(monkeypatch, {loc: (1.0, 2.0)})
     assert leave.geocode(loc) == (1.0, 2.0)
 
 
 def test_bare_room_code_retries_with_context(monkeypatch):
-    """"KDC 240" is nothing to Google on its own; with the campus appended it
-    resolves. Without this those events got no leave_by at all."""
+    """A bare room code resolves only with the campus appended."""
     asked = _patch_geocode(
         monkeypatch,
         {"KDC 240, University of Southern California": (34.02, -112.28)},
@@ -192,7 +180,7 @@ def test_no_retry_when_the_location_already_resolves(monkeypatch):
 
 
 def test_no_retry_when_context_is_already_in_the_location(monkeypatch):
-    """Otherwise the campus gets appended to a string that already names it."""
+    """The campus is not appended to a string that already names it."""
     asked = _patch_geocode(monkeypatch, {}, context="Los Angeles, CA")
     assert leave.geocode("Trousdale Pkwy, los angeles, ca") is None
     assert asked == ["Trousdale Pkwy, los angeles, ca"]
@@ -217,8 +205,7 @@ def test_open_meteo_still_answers_before_the_retry(monkeypatch):
     ConnectionResetError(54, "Connection reset by peer"),
 ])
 def test_a_dropped_connection_degrades_instead_of_500ing(monkeypatch, exc):
-    """urlopen doesn't wrap these in URLError; they used to escape _http_json
-    and take /api/leave down with them."""
+    """Errors urlopen doesn't wrap in URLError are caught in _http_json."""
     def boom(req, timeout=None):
         raise exc
     monkeypatch.setattr(leave.urllib.request, "urlopen", boom)

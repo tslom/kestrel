@@ -1,13 +1,8 @@
 """Auto mode: no cards, except the ones that matter — and a receipt after.
 
-The mode is ours rather than the SDK's, so what it actually does has to be
-tested through the same two paths a real turn takes: `can_use_tool`, which is
-where the card is or isn't raised, and `_stream_messages`, which is where the
-summary is assembled from what the tools actually did.
-
-The second half is the one worth being strict about. A summary is only worth
-having if it is a record rather than a claim — so a call that the model asked
-for and never completed, or that came back an error, must not appear in it.
+Tested through the two real paths: `can_use_tool` (card raised or not) and
+`_stream_messages` (summary built from what the tools did). The summary is a
+record, not a claim: a call never completed or returning an error is not in it.
 """
 
 import asyncio
@@ -106,10 +101,7 @@ def test_auto_is_translated_for_an_sdk_that_has_never_heard_of_it():
 
 
 def test_auto_runs_under_the_mode_that_asks_us_about_everything():
-    """Not `acceptEdits`, which was the first thing tried: under it the CLI
-    settles in-workspace Bash writes on its own and `can_use_tool` is never
-    called, so `rm <vault>/…` ran unattended with the guard list looking on.
-    `default` is what routes every call through this backend."""
+    """Not `acceptEdits`: the CLI then settles in-workspace Bash writes itself and skips can_use_tool."""
     assert console.sdk_permission_mode("auto") == "default"
 
 
@@ -120,12 +112,7 @@ def test_never_ask_reaches_the_sdk_as_itself():
 
 
 def test_never_ask_keeps_the_approval_callback_for_switching_out():
-    """The CLI doesn't consult can_use_tool under bypassPermissions, so the
-    mode is unchanged by registering it. It has to be there anyway: the mode
-    switches live (test_console_mode_switch), and a CLI started without the
-    callback would deny every call once it left bypass. The summary doesn't
-    depend on it either way, being built from the tool stream (the ledger
-    tests below run with no can_use_tool at all)."""
+    """can_use_tool is registered under bypass anyway: the mode switches live, and a CLI without it denies every call after."""
     options = console.build_options(None, None, console.BYPASS_MODE,
                                     lambda *a: None, lambda *a: None)
     assert options.permission_mode == "bypassPermissions"
@@ -147,8 +134,7 @@ def test_a_retired_mode_string_still_starts_a_session():
 
 @pytest.mark.anyio
 async def test_auto_keeps_can_use_tool_wired(auto_socket):
-    """The tempting shortcut is bypassPermissions, which drops the approval
-    callback entirely — and with it the guard list and the ledger."""
+    """Not bypassPermissions: it drops the approval callback, the guard list and the ledger."""
     _, caught = auto_socket
     assert caught["sdk_mode"] != "bypassPermissions"
     options = console.build_options(None, None, "auto", caught["can_use_tool"],
@@ -360,8 +346,7 @@ async def test_a_turn_that_only_read_reports_nothing():
 
 @pytest.mark.anyio
 async def test_a_failed_call_is_not_a_change():
-    """The model asking to write is not the write. A denied card and a tool
-    that threw both come back as an error result, and neither happened."""
+    """A denied card and a tool that threw are error results; neither happened."""
     ws = await _run([
         _used("t1", "mcp__vault__task_create", {"title": "x"}),
         _returned("t1", is_error=True),
@@ -372,8 +357,7 @@ async def test_a_failed_call_is_not_a_change():
 
 @pytest.mark.anyio
 async def test_a_call_with_no_result_is_not_a_change():
-    """An interrupted turn leaves its last call unanswered — it may or may not
-    have run, and a summary that says it did is the wrong guess to make."""
+    """An interrupted turn's unanswered last call may not have run: the summary omits it."""
     ws = await _run([
         _used("t1", "mcp__vault__task_create", {"title": "x"}),
         _result(),

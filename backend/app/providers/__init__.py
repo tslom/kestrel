@@ -1,16 +1,9 @@
-"""Context providers — one module per external source, one shared
-interface, exposed three ways over the same code:
-
-  1. REST  GET /api/{source}?range=this-week&metric=bpm   (providers/api.py)
-  2. CLI   python -m app.providers {source} --range this-week --metric bpm
-  3. Cache rows in app.db, refreshed by the background poller (providers/poller.py)
-
-The external service is truth; app.db rows are a derived cache, safe to drop
-and re-pull. Never write back except through explicit actions.
-
-A provider module contributes: NAME, METRICS (tuple or None), DEFAULT_METRIC,
-ALLOW_FUTURE, get(rng: Range, metric) -> dict payload, and optionally
-refresh() -> dict for the poller. Register it in REGISTRY below.
+"""Context providers: one module per external source, exposed three ways over the same code:
+REST (providers/api.py), CLI (`python -m app.providers {source} --range this-week`), and
+cache rows in app.db refreshed by providers/poller.py. The service is truth; rows are a
+droppable cache. A provider contributes NAME, METRICS, DEFAULT_METRIC, ALLOW_FUTURE,
+get(rng, metric) and optionally refresh(); register it in REGISTRY.
+Design: DESIGN.md → Context providers (`app/providers/`).
 """
 
 from . import (athletics, attachments, calendar, coursework, email, features,
@@ -26,30 +19,24 @@ REGISTRY = {
     news.NAME: news,
     reddit.NAME: reddit,
     spotify.NAME: spotify,
-    # after spotify: enriches the artists in `plays`, so a just-synced artist
-    # can be tagged in the same cycle it first appears.
+    # after spotify: tags the artists in `plays` in the cycle they first appear.
     lastfm.NAME: lastfm,
     messages.NAME: messages,
     location.NAME: location,
     athletics.NAME: athletics,
     coursework.NAME: coursework,
     usc_dining.NAME: usc_dining,
-    # after messages/email: reads the attachment rows those two record.
+    # after messages/email: reads their attachment rows.
     attachments.NAME: attachments,
-    # features last: a denormalization of every source above, so it recomputes
-    # from whatever the others just refreshed (worst case one cycle stale).
+    # features last: it recomputes from what the others just refreshed.
     features.NAME: features,
 }
 
 
 def get(source: str, range_token: str = "today", metric: str | None = None,
         query: str | None = None) -> dict:
-    """The one entrypoint REST/CLI wrap. Raises ValueError on bad input.
-
-    `query` is a case-insensitive substring match against every string field
-    of each data item (e.g. summary/location for calendar, from/subject for
-    email) — filters within the range, after the cache read.
-    """
+    """The one entrypoint REST/CLI wrap; raises ValueError on bad input.
+    `query` is a case-insensitive substring match on every string field of each item, after the cache read."""
     mod = REGISTRY.get(source)
     if mod is None:
         raise ValueError(f"unknown source {source!r}; expected one of: {', '.join(REGISTRY)}")
@@ -62,8 +49,7 @@ def get(source: str, range_token: str = "today", metric: str | None = None,
     with offline.collect() as degraded:
         payload = mod.get(rng, metric)
     envelope = {}
-    # A read that couldn't reach the source still answers, from cache. Say so
-    # in the payload rather than raising: the numbers are real, just not new.
+    # An offline read answers from cache and says so rather than raising.
     if degraded:
         envelope["stale"] = True
         envelope["offline"] = degraded

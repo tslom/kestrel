@@ -5,8 +5,7 @@
 const fmt = (v) =>
   Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(1)}k` : +v.toFixed(1);
 
-// `last={false}` for a caller that prints the latest value itself, formatted
-// with its unit — SeriesRow did, and the row read "13.8 13.8 km".
+// `last={false}` when the caller prints the latest value itself (else "13.8 13.8 km").
 export default function Sparkline({ data, width = 180, height = 34, last = true }) {
   const vals = data
     .map((d) => d.value)

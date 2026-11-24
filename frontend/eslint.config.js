@@ -1,24 +1,10 @@
-// Not a style linter. Each rule is a correction that kept coming back, made
-// into a check:
-// - you-might-not-need-an-effect is an error: an effect that derives state,
-//   chains setters or relays an event is the pattern the next tab copies.
-//   Derive it in render, do it in the handler, key the component, or lift the
-//   state; an effect that really syncs with something outside React (the
-//   socket, a canvas, a timer) says so in its disable's reason. The count of
-//   useEffect calls is also a ratchet: scripts/lint-ratchet.mjs fails if it
-//   goes up (lint-baseline.json).
-// - raw fetch() outside lib/api.js is an error: fetchJSON/postJSON are where
-//   errors, JSON and the backend's {detail} get handled once.
-// - raw setTimeout/clearTimeout outside lib/timers.js is an error:
-//   a delay is how an agent papers over an ordering bug, so a wait on time
-//   goes through a named helper, and a wait on anything else waits on that.
-// - rules-of-hooks and exhaustive-deps are errors; a deps list that's
-//   deliberately short says why in its disable.
-// - an eslint-disable says why (`-- reason`), and one that disables nothing
-//   is an error (reportUnusedDisableDirectives), so suppressions can't pile up
-//   as unexplained clutter or outlive the code they excused.
-// The lint-on-edit hook (.claude/hooks/lint_on_edit.py) runs this on every
-// file a Claude Code session edits and blocks on errors, not warnings.
+// Not a style linter: each rule is a recurring correction made into a check.
+// - you-might-not-need-an-effect is an error (derive in render, act in the handler, key, lift; a real sync says
+//   so in its disable). useEffect count is a ratchet (scripts/lint-ratchet.mjs, lint-baseline.json).
+// - raw fetch() outside lib/api.js: fetchJSON/postJSON handle errors, JSON and {detail} once.
+// - raw setTimeout/clearTimeout outside lib/timers.js: a delay papers over an ordering bug.
+// - rules-of-hooks and exhaustive-deps are errors; an eslint-disable says why, and an unused one is an error.
+// The lint-on-edit hook (.claude/hooks/lint_on_edit.py) runs this on edited files and blocks on errors.
 import globals from "globals";
 import reactHooks from "eslint-plugin-react-hooks";
 import noEffect from "eslint-plugin-react-you-might-not-need-an-effect";

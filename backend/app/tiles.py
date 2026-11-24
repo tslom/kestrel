@@ -1,27 +1,9 @@
 """Basemap tiles, fetched backend-side and served from our own origin.
 
-The map sheet needs something under the dots or it is a scatter plot: a route
-across campus reads as a route only if the streets are there. The frontend
-cannot fetch them itself — image hosts outside the CDN allowlist are blocked,
-and this is a localhost app besides — so the backend is the only place the
-request can come from.
-
-That makes us a client of somebody else's tile server, so the manners are part
-of the design rather than a nicety:
-
-* **Cached forever, by (z, x, y).** A tile is only ever fetched once. Street
-  geometry does not move, and a map you pan back over must not re-ask. The
-  cache is derived and droppable like every other provider cache — dropping it
-  costs one re-fetch per tile you look at again.
-* **Identified.** A real User-Agent naming the app, as the OSM tile usage
-  policy requires. An anonymous scraper is what that policy exists to stop.
-* **Bounded.** Zoom is clamped to MIN_Z..MAX_Z and each request is one tile
-  from one viewport — no prefetching, no walking a bounding box, nothing that
-  turns a pan into a download of the county.
-* **Soft on failure.** An unreachable tile server returns 204 rather than an
-  error: the map draws without a basemap, which is the vector-only fallback.
-  It is a degraded map, not
-  a broken sheet.
+We are a client of someone else's tile server: cached forever by (z, x, y)
+(tile_cache, droppable), a real User-Agent, zoom clamped to MIN_Z..MAX_Z, one
+tile per request (no prefetch), and 204 on failure (map draws without basemap).
+Design: DESIGN.md → `app/tiles.py`.
 """
 
 import logging
@@ -37,16 +19,8 @@ log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
 
-# openstreetmap.org's own tiles: the one basemap that still serves anonymous
-# requests. Carto's light_all was the first choice — grey cartography meant to
-# sit under data, which is this map's job — and it now returns
-# tiles stamped "API KEY REQUIRED" instead of an error, so the map rendered
-# with a watermark across it rather than failing loudly. Checked by looking at
-# the pixels; a 200 proved nothing.
-#
-# The standard style is more colourful than the desk's paper palette wants, so
-# the sheet desaturates it at draw time (MapSheet's ctx.filter) rather than
-# reaching for a styled basemap that needs an account.
+# OSM's own tiles: the one basemap still serving anonymous requests (Carto
+# returns watermarked 200s). MapSheet desaturates at draw time (ctx.filter).
 TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 ATTRIBUTION = "© OpenStreetMap contributors"
 USER_AGENT = "vault-dashboard/1.0 (personal localhost dashboard)"
@@ -85,9 +59,7 @@ def tile(z: int, x: int, y: int) -> bytes | None:
     if png is None:
         return None
     try:
-        # `with con:` and not just the session: session() closes the connection
-        # but commits nothing, so without it every tile is re-fetched forever
-        # and the cache stays empty — which is what happened the first time.
+        # `with con:` commits; session() alone doesn't, so the cache stayed empty.
         with db.session() as con, con:
             con.execute(
                 "INSERT OR REPLACE INTO tile_cache (z, x, y, png, fetched_at)"
@@ -101,9 +73,7 @@ def tile(z: int, x: int, y: int) -> bytes | None:
 def get_tile(z: int, x: int, y: int):
     png = tile(z, x, y)
     if png is None:
-        # 204, not 404: the map asks for tiles it may not get (edges of the
-        # world, a dead network), and a console full of red 404s would make a
-        # working map look broken.
+        # 204, not 404: expected misses (world edge, dead network) shouldn't flood red 404s.
         return Response(status_code=204)
     return Response(content=png, media_type="image/png",
                     headers={"Cache-Control": "public, max-age=604800"})

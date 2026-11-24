@@ -1,16 +1,5 @@
-"""A spent usage window, seen from the callers of agent.ask.
-
-Before the breaker each of these hit the wall on its own clock: email triage
-every poller cycle (82 "email refresh FAILED" lines in one log, the status
-panel red while mail synced fine), the brain's lazy catch-up, the brief seven
-times in a row. Two things are pinned here:
-
-- a refused model call in the email refresh is *deferred work*, reported in
-  the info dict, not a failed source — and the deferred work stays pending;
-- while the breaker is open, callers skip their expensive set-up (body
-  fetches, the brief's source gathering, a brain run) instead of paying for
-  it and then being refused.
-"""
+"""A spent usage window, from the callers of agent.ask: a refused model call is deferred work (not a failed
+source, and stays pending), and callers skip expensive set-up while the breaker is open. Design: DESIGN.md → `app/agent.py`: one-shot model calls, breaker and budget gate."""
 
 import time
 
@@ -83,8 +72,7 @@ def test_the_poller_records_a_deferred_refresh_as_healthy(dbfile, synced,
 
 
 def test_a_refused_extraction_still_polls_flights(dbfile, monkeypatch):
-    """The flight poll and check-in tasks use no model; a spent window must
-    not freeze a gate change along with the extractors."""
+    """Model-free flight and check-in tasks still run in a spent window."""
     calls = []
     monkeypatch.setattr(email_extract, "_run_extraction",
                         lambda con, token, kind, *a, **k: calls.append(kind) or _refused())
@@ -100,8 +88,7 @@ def test_a_refused_extraction_still_polls_flights(dbfile, monkeypatch):
 
 def test_breaker_open_extraction_fetches_nothing_and_stays_pending(dbfile, spent,
                                                                    monkeypatch):
-    """Deferred, not dropped: a refused batch writes no email_extract row, so
-    the same candidate comes back next cycle."""
+    """A refused batch writes no email_extract row, so the candidate returns next cycle."""
     monkeypatch.setattr(email_triage, "body_excerpt",
                         lambda *a, **k: pytest.fail("fetched a body for a refused call"))
     cand = [{"msg_id": "m1", "from_addr": "a@b.c", "subject": "Your order shipped"}]

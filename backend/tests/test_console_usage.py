@@ -1,14 +1,8 @@
 """GET /api/console/usage — the percentages behind the console bar's chips.
 
-The chips used to read from rate_limit events alone, which carry a status but
-usually no utilization and only ever mention the window that is binding — so
-the bar said "5h —" and never mentioned the week. The numbers come from our
-own throttled fetch and from the cache the interactive CLI leaves in
-~/.claude.json. Whichever looked at the API last wins.
-
-What's worth pinning: the shapes that cache can be in when nothing has
-refreshed it lately (absent, half-written, old), because those are the ones
-that would otherwise put a confident wrong number on screen.
+Numbers come from our throttled fetch and the CLI's cache in ~/.claude.json; the
+latest look at the API wins. Pins the cache shapes that would show a confident
+wrong number (absent, half-written, old).
 """
 
 import json
@@ -53,14 +47,9 @@ def _iso_ago(seconds):
 
 @pytest.fixture
 def usage_client(tmp_path, monkeypatch):
-    # Once per test, not once per call: a test may call through twice to watch
-    # the live cache carry across, and may set its own token up front.
-    # Unsetting CLAUDE_CODE_OAUTH_TOKEN is no longer enough to keep this suite
-    # off the network — _oauth_token falls back to the login keychain, which on
-    # a developer's own machine really does answer. Keep the env branch (tests
-    # below set that var and expect it honoured) and sever only the keychain
-    # one, so "no token" means no token. The keychain's own tests call the real
-    # _oauth_token with a stubbed `security`.
+    # Once per test (a test may call twice to watch the live cache carry across).
+    # _oauth_token falls back to the login keychain, which answers on a dev machine: sever
+    # only that branch, keep the env one. Keychain tests call the real _oauth_token with a stubbed `security`.
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
     monkeypatch.setattr(claude_quota, "_oauth_token",
                         lambda: os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip())
@@ -78,8 +67,7 @@ def usage_client(tmp_path, monkeypatch):
                 cfg.write_text(payload)   # raw text, for the half-written case
         monkeypatch.setattr(claude_quota, "CLAUDE_CONFIG", cfg)
 
-        # Through console.router, as main.py mounts it: the route lives in
-        # claude_quota but rides the console's router.
+        # The route lives in claude_quota but rides console.router.
         from app import console
         app = FastAPI()
         app.include_router(console.router)
@@ -91,8 +79,7 @@ def test_windows_carry_percentages(usage_client):
     body = usage_client(json.loads(json.dumps(CACHE)))
     by_key = {w["key"]: w for w in body["windows"]}
 
-    # The keys match the rate_limit_type the stream uses, which is what lets a
-    # live event and a cached percentage merge onto one chip.
+    # Keys match the stream's rate_limit_type so live and cached merge onto one chip.
     assert by_key["five_hour"]["percent"] == 61
     assert by_key["five_hour"]["label"] == "5h"
     assert by_key["seven_day"]["percent"] == 63
@@ -130,8 +117,7 @@ def test_scoped_week_names_its_model(usage_client):
 
 
 def test_old_cache_is_marked_stale(usage_client):
-    # Only the interactive CLI refreshes this file, so an hour-old number is
-    # normal — it just must not be presented as current.
+    # An hour-old number is normal (only the interactive CLI refreshes it); never present it as current.
     body = usage_client(json.loads(json.dumps(CACHE)), age_seconds=3600)
     assert body["stale"]
     assert body["age_seconds"] == pytest.approx(3600, abs=5)
@@ -157,8 +143,7 @@ def test_never_fetched_cache_answers_empty(usage_client):
 
 # --- asking the API ourselves ------------------------------------------------
 #
-# The endpoint returns the same object the CLI caches under
-# cachedUsageUtilization.utilization, so these reuse CACHE's inner payload.
+# Same object the CLI caches under cachedUsageUtilization.utilization: reuses CACHE's inner payload.
 LIVE = CACHE["cachedUsageUtilization"]["utilization"]
 
 
@@ -173,8 +158,7 @@ def test_live_fetch_outranks_the_cache(usage_client, monkeypatch):
 
 
 def test_no_token_never_touches_the_network(usage_client, monkeypatch):
-    # The default state on a machine that has not run setup-token: the files
-    # must still answer, and nothing may be sent.
+    # No setup-token: the file still answers and nothing is sent.
     def explode(*a, **k):
         raise AssertionError("no token, so no request may be made")
     monkeypatch.setattr(claude_quota.urllib.request, "urlopen", explode)
@@ -234,8 +218,7 @@ def test_transient_failure_keeps_the_last_good_answer(usage_client, monkeypatch)
     live = claude_quota._live
     assert live.windows, "the first call should have populated the live cache"
 
-    # Offline on the next attempt: the previous answer stays on offer rather
-    # than the chips blanking out.
+    # Offline next time: the previous answer stays, chips don't blank.
     monkeypatch.setattr(claude_quota, "_fetch_usage", lambda: (None, 0.0))
     live.next_try = 0.0
     body = usage_client(None)
@@ -249,8 +232,7 @@ def test_fetch_is_throttled_between_polls(usage_client, monkeypatch):
         calls.append(1)
         return claude_quota._windows_from_utilization(LIVE), 0.0
 
-    # The console polls every 60s and two tabs double that; the API sees one
-    # request per interval regardless.
+    # Polls every 60s from each tab; the API sees one request per interval.
     monkeypatch.setattr(claude_quota, "_fetch_usage", once)
     live = claude_quota._LiveUsage()
     monkeypatch.setattr(claude_quota, "_live", live)
@@ -262,8 +244,7 @@ def test_fetch_is_throttled_between_polls(usage_client, monkeypatch):
 
 
 def test_stale_live_answer_loses_to_a_fresh_file(usage_client, monkeypatch):
-    # Our fetch is not privileged, only usually freshest. An hour-old success
-    # must not outrank a cache the CLI wrote a minute ago.
+    # Our fetch is not privileged: an hour-old success must not outrank a minute-old CLI cache.
     monkeypatch.setattr(claude_quota, "_fetch_usage", lambda: (None, 0.0))
     live = claude_quota._LiveUsage()
     live.windows = claude_quota._windows_from_utilization(LIVE)
@@ -293,10 +274,8 @@ def test_api_flat_window_shape_still_parses(usage_client, monkeypatch):
 
 # --- where the credential comes from ------------------------------------------
 #
-# A `claude setup-token` token cannot answer this endpoint at all: it has no
-# user:profile scope, so the API 403s. The CLI's login keychain entry does have
-# it, so that is what _oauth_token reaches for. These stub `security` rather
-# than touching the real keychain — the point is the plumbing, not the secret.
+# A `claude setup-token` token lacks user:profile scope (API 403s); the CLI's
+# keychain entry has it, so _oauth_token reaches for that. `security` is stubbed.
 KEYCHAIN_JSON = json.dumps({"claudeAiOauth": {
     "accessToken": "sk-ant-oat01-from-keychain",
     "scopes": ["user:inference", "user:profile"],
@@ -318,8 +297,7 @@ def _stub_security(monkeypatch, *, stdout="", exc=None):
 
 
 def test_env_token_wins_over_the_keychain(monkeypatch):
-    # The escape hatch stays an escape hatch: if someone exports a token, we
-    # use it and never go near the keystore.
+    # An exported token is used and the keystore is never touched.
     seen = _stub_security(monkeypatch, stdout=KEYCHAIN_JSON)
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-from-env")
     assert claude_quota._oauth_token() == "sk-ant-oat01-from-env"
@@ -336,8 +314,7 @@ def test_keychain_answers_when_no_env_token(monkeypatch):
 
 
 def test_token_is_reread_each_time_so_rotation_is_picked_up(monkeypatch):
-    # The CLI rotates this credential roughly every few hours. We cache the
-    # windows, never the token, so the next poll simply sees the new one.
+    # The CLI rotates the credential every few hours: cache windows, never the token.
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
     _stub_security(monkeypatch, stdout=KEYCHAIN_JSON)
     assert claude_quota._oauth_token() == "sk-ant-oat01-from-keychain"
@@ -356,8 +333,7 @@ def test_token_is_reread_each_time_so_rotation_is_picked_up(monkeypatch):
     ("empty", {"stdout": ""}),
 ])
 def test_unreadable_keychain_is_just_no_token(monkeypatch, kind, kwargs):
-    # Every one of these is a normal state on some machine — a Linux box, a
-    # locked keychain, a logged-out CLI. None may raise into the request.
+    # Each is a normal state somewhere (Linux, locked keychain, logged out); none may raise.
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
     _stub_security(monkeypatch, **kwargs)
     assert claude_quota._oauth_token() == "", kind

@@ -1,60 +1,9 @@
-"""Calendar writes — the WRITE face of the calendar provider.
-
-The provider only reads: Google Calendar is the truth and `events` in app.db is
-a droppable cache of it. Creating, moving, cancelling and RSVPing are explicit
-actions, and they live here rather than in the provider for the reason the
-mailbox writes live in routes/email.py — a provider that mutates its own
-upstream stops being a cache of it.
-
-The claude.ai MCP connector tools can't stand in for these: that connector
-goes needs-auth in every headless session, so the console could read the
-calendar all week and not move one event. This path goes out through the backend's own Google token — the same
-one the provider reads with — and works wherever the backend does.
-
-A repeat is a property of an event, not a fifth operation: Google stores one
-event carrying an RRULE and expands it, so "my Tuesday lecture until December"
-is one create, not fifteen. `_rrule` builds that rule from words a person says
-("weekly", "until 2026-12-12"), and the two ways it can go quietly wrong are
-both handled there — an inclusive `until` becomes the last instant of that
-local day (a bare date drops the last class of the semester), and its form has
-to match the event's own (a DATE-TIME `UNTIL` on an all-day series is refused
-by Google).
-
-An existing event addressed by `match` is an *instance* — the cache stores the
-expansion, not the master — so every write takes `scope`: "this" touches the
-one occurrence, "all" redirects to the master behind it. "This and following"
-is deliberately absent; it is a split, not an edit, and the honest recipe is to
-end the series early (`repeat_until`) and create a new one.
-
-Delete really is its own operation, not an update: Google has
-DELETE /calendars/{cal}/events/{id}, and the alternatives are worse. Blanking
-an event's fields leaves a ghost on the calendar; PATCHing status=cancelled is
-the same delete with a spelling only organizers may use. RSVP is a third thing
-again — declining an invitation records an answer, it does not remove anyone
-else's event.
-
-Scope: reading takes `calendar.readonly`, so a vault authorized before this
-shipped has a token that cannot write. Every path here checks the stored scopes
-first and says so, because Google's own answer is a 403 body about
-"insufficientPermissions" that looks like a bug in the request.
-
-Two habits carried over from the console's own history with this API:
-
-  * The clock time in a request is in the zone the *user* is in on the event's
-    date (tz.zone_on), never this machine's and never the zone the old event
-    happened to be stored in. Same rule the `event_zone` console tool states.
-  * An event is addressed by id or by a match against the cache, never by an id
-    the caller retyped. A calendar id that lost its `@group.calendar.google.com`
-    suffix once cost 18 consecutive 404s.
-
-Routes (localhost-only, like everything else):
-  POST   /api/calendar/events                     {summary, start, end?, repeat?,
-                                                   repeat_until?, ...}
-  PATCH  /api/calendar/events/{event_id}          {start?, end?, summary?,
-                                                   scope?, repeat?, ...}
-  DELETE /api/calendar/events/{event_id}          ?calendar_id=&scope=&notify=
-  POST   /api/calendar/events/{event_id}/respond  {response: accepted|declined|
-                                                             tentative}
+"""Calendar writes (create, move, delete, RSVP), the write face of providers/calendar.py:
+a provider that mutates its own upstream stops being a cache of it. Goes out through the
+backend's own Google token, not the claude.ai connector. Every write takes `scope`
+("this" or "all"); clock times are in `tz.zone_on(event date)`; guests are mailed only
+if `notify`.
+Design: DESIGN.md → §2 Calendar.
 """
 
 import urllib.parse
@@ -73,8 +22,7 @@ router = APIRouter(prefix="/api/calendar")
 
 API_BASE = calendar_provider.API_BASE
 
-# Either grants write on events. `calendar.events` is what config asks for;
-# `calendar` is the older catch-all a hand-run authorize may have used.
+# Either grants write on events (`calendar` is the older catch-all).
 WRITE_SCOPES = ("https://www.googleapis.com/auth/calendar.events",
                 "https://www.googleapis.com/auth/calendar")
 
@@ -83,16 +31,12 @@ RECONNECT = (f"Reconnect the {GOOGLE_CALENDAR_ACCOUNT} Google account to grant "
              f"--account {GOOGLE_CALENDAR_ACCOUNT}` (it opens a browser), or "
              f"the dashboard's Connect button.")
 
-# An event given a start and no end. An hour is what the Calendar UI itself
-# assumes, so a wrong guess is the one the user already expects to fix.
+# Length of an event given a start and no end (the Calendar UI's own default).
 DEFAULT_MINUTES = 60
 
 RESPONSES = ("accepted", "declined", "tentative")
 
-# How many occurrences of a series this will enumerate. A cap is needed because
-# an open-ended rule has no last instance to page to; 500 covers a daily event
-# for a year and a weekly one for a decade, which is past the point where
-# counting them is the useful answer anyway.
+# Cap on enumerated occurrences: an open-ended rule has no last instance; 500 = a daily event for a year.
 MAX_OCCURRENCES = 500
 
 
@@ -139,8 +83,7 @@ def _url(calendar_id: str, event_id: str | None = None, suffix: str = "",
 
 
 def _updates(notify: bool) -> str:
-    """Whether Google emails the guests. Off unless asked: an approval card for
-    "move the meeting" is not consent to mail six people about it."""
+    """Whether Google emails the guests: off unless asked."""
     return "all" if notify else "none"
 
 
@@ -160,14 +103,9 @@ EVENT_COLS = ("event_id, calendar_id, calendar_name, summary, start_at,"
 
 
 def event_candidates(con, match: str, day: str | None = None) -> list[dict]:
-    """Every cached event whose title contains `match` (literally — `%` and
-    `_` in it are not wildcards), optionally only on `day`; one row per
-    event, earliest first, with `day`/`first_at` its first occurrence.
-
-    The one query both find_event (which refuses on ambiguity) and the
-    console's approval card (console_preview, which shows the ambiguity
-    before the refusal) resolve a title with, so the two can't disagree
-    about which event a call names."""
+    """Cached events whose title contains `match` (literal, no wildcards), optionally on `day`;
+    one row per event, earliest first, `day`/`first_at` = first occurrence. Shared by
+    find_event and console_preview so they can't disagree on which event a call names."""
     sql = (f"SELECT {EVENT_COLS}, MIN(day) AS day, MIN(start_at) AS first_at"
            " FROM events WHERE summary LIKE ? ESCAPE '\\'")
     args: list = [db.like_contains(match)]
@@ -179,13 +117,8 @@ def event_candidates(con, match: str, day: str | None = None) -> list[dict]:
 
 
 def find_event(match: str, day: str | None = None) -> dict:
-    """An event the user named ("the dentist thing") -> its ids, from the cache.
-
-    Resolving here rather than making the caller carry an id around is what
-    keeps ids out of model-typed arguments entirely. Ambiguity is an error
-    with the candidates listed, never a guess: picking the wrong one of two
-    events called "Standup" moves the wrong meeting.
-    """
+    """An event the user named -> its ids, from the cache (keeps ids out of model-typed
+    arguments). Ambiguity is an error listing the candidates, never a guess."""
     match = (match or "").strip()
     if not match:
         raise HTTPException(400, "match is empty")
@@ -225,8 +158,7 @@ def _address(event_id: str | None, match: str | None, day: str | None,
 # ---------- times ----------
 
 def _zone(name: str | None, day: date) -> ZoneInfo:
-    """The zone a bare clock time is in: the one the user is standing in on
-    that date, unless the caller names one."""
+    """The zone a bare clock time is in: the user's on that date unless the caller names one."""
     if not name:
         return tz.zone_on(day.isoformat())
     try:
@@ -250,8 +182,7 @@ def _parse(value: str, field: str) -> date | datetime:
 
 
 def _parse_end(value: str, start: datetime) -> datetime:
-    """Same as `_parse`, plus the shorthand a caller reaches for after writing
-    a full start: a bare "16:30" means that clock time on the start's date."""
+    """`_parse`, plus a bare "16:30" meaning that clock time on the start's date."""
     text = (value or "").strip()
     if len(text) in (4, 5) and ":" in text:
         text = f"{start.date().isoformat()}T{text}"
@@ -270,12 +201,8 @@ def _google_time(when: date | datetime, zone: ZoneInfo) -> dict:
 
 
 def _span(start: str, end: str | None, time_zone: str | None) -> tuple[dict, dict]:
-    """The caller's start/end -> Google's two objects.
-
-    All-day ends are inclusive on the way in and exclusive on the way out:
-    people say "the 20th through the 22nd", Google stores end.date = the 23rd,
-    and getting that backwards silently drops the last day of every trip.
-    """
+    """The caller's start/end -> Google's two objects. All-day ends are inclusive in,
+    exclusive out (Google stores the day after)."""
     begin = _parse(start, "start")
     if isinstance(begin, datetime):
         zone = _zone(time_zone, begin.date())
@@ -305,19 +232,11 @@ def _existing(field: dict) -> date | datetime:
 
 def _reschedule(event: dict, start: str | None, end: str | None,
                 time_zone: str | None) -> dict:
-    """The start/end half of a PATCH, sent as a pair.
-
-    Always both, even when only one moved: Google validates the two against
-    each other, and half a change is how a 10am–11am meeting becomes a
-    23-hour one. An unstated end keeps the length the event already had, which
-    is what "move it to 4" means.
-    """
+    """The start/end half of a PATCH, always sent as a pair (half a change turns 10-11am into
+    23 hours). An unstated end keeps the event's existing duration."""
     was_start, was_end = _existing(event["start"]), _existing(event["end"])
     if start and len(start.strip()) in (4, 5) and ":" in start:
-        # The same shorthand `end` has, for the same reason: "move it to 15:00"
-        # is a time, not a date, and on a series the date it would have to be
-        # written against is the first occurrence — which may be months back
-        # and outside anything the caller can see.
+        # bare "15:00" is a time on the event's own date (a series' first occurrence may be months back)
         if not isinstance(was_start, datetime):
             raise HTTPException(400, "an all-day event has no clock time to "
                                      "move — give start as a date")
@@ -326,12 +245,8 @@ def _reschedule(event: dict, start: str | None, end: str | None,
         pair = dict(zip(("start", "end"), _span(start, end, time_zone)))
         if ("dateTime" in pair["start"]) == isinstance(was_start, datetime):
             return pair
-        # Timed <-> all-day. A PATCH merges into the stored start and end
-        # rather than replacing them, so an all-day event handed a clock time
-        # would hold both `date` and `dateTime`, which Google refuses as
-        # "Invalid start time" — and the console then works around it by
-        # deleting the event and creating it again. A null is
-        # how a PATCH clears a field.
+        # Timed <-> all-day: a PATCH merges, so an event would hold both `date` and
+        # `dateTime` ("Invalid start time"); a null clears a field.
         stale = ({"date": None} if "dateTime" in pair["start"]
                  else {"dateTime": None, "timeZone": None})
         return {k: {**v, **stale} for k, v in pair.items()}
@@ -341,25 +256,19 @@ def _reschedule(event: dict, start: str | None, end: str | None,
             zone = _zone(time_zone, was_start.date())
             finish = _parse_end(end, was_start)
             if finish.tzinfo is None:
-                # A new end is wall time in the user's zone; the old start
-                # came back from Google carrying an offset, and comparing the
-                # two raw is a TypeError rather than a wrong answer only by
-                # luck.
+                # new end is wall time in the user's zone; was_start is offset-aware (comparing raw is a TypeError)
                 finish = finish.replace(tzinfo=zone)
             if finish <= was_start:
                 raise HTTPException(400, f"the event would end ({finish}) before"
                                          f" it starts ({was_start})")
-            # The start goes back exactly as Google gave it — re-deriving it
-            # would rewrite its stored zone for no reason.
+            # start goes back as Google gave it (re-deriving would rewrite its zone)
             return {"start": event["start"], "end": _google_time(finish, zone)}
         return dict(zip(("start", "end"),
                         _span(was_start.isoformat(), end, time_zone)))
 
     begin = _parse(start or "", "start")
     if isinstance(begin, datetime) != isinstance(was_start, datetime):
-        # Timed <-> all-day is a real change, but only if it was asked for:
-        # here the caller gave one endpoint, so the other has no meaning to
-        # carry over and the duration cannot be preserved.
+        # one endpoint given: the other can't carry over, so the duration can't be kept
         raise HTTPException(400, "changing between a timed and an all-day event"
                                  " needs both start and end")
     if isinstance(begin, datetime):
@@ -372,9 +281,7 @@ def _reschedule(event: dict, start: str | None, end: str | None,
 
 # ---------- recurrence ----------
 
-# A repeat the way it gets said out loud -> (FREQ, INTERVAL). "Every other
-# week" is the one people phrase as a frequency rather than an interval, so it
-# gets names of its own instead of an `interval` argument nobody would pass.
+# A repeat as said out loud -> (FREQ, INTERVAL); "every other week" gets its own names.
 REPEATS = {"daily": ("DAILY", 1),
            "weekly": ("WEEKLY", 1),
            "biweekly": ("WEEKLY", 2),
@@ -384,12 +291,11 @@ REPEATS = {"daily": ("DAILY", 1),
            "yearly": ("YEARLY", 1),
            "annually": ("YEARLY", 1)}
 
-# Not frequencies: day sets that pick which days a weekly repeat lands on.
+# Day sets for a weekly repeat, not frequencies.
 REPEAT_SETS = {"weekdays": ("MO", "TU", "WE", "TH", "FR"),
                "weekends": ("SA", "SU")}
 
-# Words that mean "stop repeating" — the way back out of a series that should
-# have been one event.
+# Words that mean "stop repeating".
 REPEAT_NEVER = ("none", "never", "no", "off", "once", "single")
 
 WEEKDAY_NAMES = ("monday", "tuesday", "wednesday", "thursday", "friday",
@@ -398,8 +304,7 @@ WEEKDAY_CODES = ("MO", "TU", "WE", "TH", "FR", "SA", "SU")
 
 
 def _byday(name: str) -> str:
-    """"Tuesday", "tues", "TU" -> "TU". Anything shorter than two letters is
-    refused rather than guessed: "T" and "S" each name two days."""
+    """"Tuesday", "tues", "TU" -> "TU". One letter is refused: "T" and "S" each name two days."""
     text = (name or "").strip().rstrip(".").lower()
     if len(text) >= 2:
         for full, code in zip(WEEKDAY_NAMES, WEEKDAY_CODES):
@@ -410,14 +315,9 @@ def _byday(name: str) -> str:
 
 
 def _until(value: str, begins: dict) -> str:
-    """The last date the user named -> an RFC 5545 UNTIL for this event.
-
-    Two traps, both silent. An `UNTIL` must match DTSTART's form — a DATE for
-    an all-day series, a UTC DATE-TIME for a timed one — and it is an instant,
-    not a day, so "until December 12" has to become the *end* of December 12
-    where the event happens. A bare midnight there drops the last class of the
-    semester, which is exactly the occurrence the date was naming.
-    """
+    """The last date the user named -> an RFC 5545 UNTIL. Two silent traps: it must match
+    DTSTART's form (DATE all-day, UTC DATE-TIME timed), and it is an instant, so it becomes
+    the end of that local day (a bare midnight drops the last occurrence)."""
     last = _parse(value, "repeat_until")
     if isinstance(last, datetime):
         last = last.date()
@@ -428,9 +328,7 @@ def _until(value: str, begins: dict) -> str:
                                  f" before its first event ({first_day})")
     if not isinstance(first, datetime):
         return last.strftime("%Y%m%d")
-    # `_google_time` wrote the zone alongside the start, so this is the same
-    # zone the event was just filed under; the lookup is only a fallback for an
-    # existing event Google handed back without one.
+    # the start's own zone; the lookup is a fallback for an existing event returned without one
     zone = _zone(begins.get("timeZone"), last)
     return (datetime.combine(last, time.max, zone)
             .astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
@@ -438,17 +336,9 @@ def _until(value: str, begins: dict) -> str:
 
 def _rrule(repeat: str | None, begins: dict, days: list[str] | None = None,
            until: str | None = None, count: int | None = None) -> list[str]:
-    """The `recurrence` field for a repeating event, or [] for a single one.
-
-    `begins` is the event's own Google start object because `_until` needs it:
-    the rule's end has to be written in the same form, and the same zone, as
-    the start it repeats from.
-
-    A full RRULE passes through for the shapes words don't reach ("the first
-    Monday of each month" is FREQ=MONTHLY;BYDAY=1MO); it must then carry its
-    own ending, because merging two statements of when a series stops is how
-    you get a series that stops at neither.
-    """
+    """The `recurrence` field for a repeating event, or [] for a single one. `begins` is the
+    event's Google start object (UNTIL must match its form and zone). A full RRULE passes
+    through alone, carrying its own ending (merging two stop rules stops at neither)."""
     text = (repeat or "").strip()
     if not text:
         if days or until or count:
@@ -486,8 +376,7 @@ def _rrule(repeat: str | None, begins: dict, days: list[str] | None = None,
     if interval > 1:
         parts.append(f"INTERVAL={interval}")
     if byday:
-        # dict.fromkeys and not set(): "Tuesday, Thursday" should stay in the
-        # order it was said.
+        # dict.fromkeys keeps the order said
         parts.append("BYDAY=" + ",".join(dict.fromkeys(byday)))
     if until and count:
         raise HTTPException(400, "end the series on a date or after a number of"
@@ -504,13 +393,8 @@ def _rrule(repeat: str | None, begins: dict, days: list[str] | None = None,
 
 
 def _instances(calendar_id: str, event_id: str, token: str) -> list[dict]:
-    """Every occurrence of a series, as Google itself expands it.
-
-    Best-effort by construction, like `_recache`: this runs after a write has
-    already happened, and it exists to say what the write did ("13 Tuesdays,
-    last one December 8") and to find the cached days it changed. Failing to
-    count them is not a failed write.
-    """
+    """Every occurrence of a series, as Google expands it. Best-effort like `_recache`:
+    it runs after the write, so failing to count them is not a failed write."""
     items: list[dict] = []
     page = None
     try:
@@ -542,9 +426,8 @@ def _series_scope(scope: str | None) -> bool:
 
 
 def _master(event: dict, calendar_id: str, token: str) -> tuple[str, dict]:
-    """(event_id, event) for the series behind an instance — or the event as
-    given, when it isn't one. `recurringEventId` is only on the expansion,
-    which is what the cache holds and therefore what `match` resolves to."""
+    """(event_id, event) for the series behind an instance, or the event itself if it isn't
+    one. `recurringEventId` exists only on the expansion, which is what `match` resolves to."""
     parent = event.get("recurringEventId")
     if not parent:
         return event.get("id") or "", event
@@ -554,8 +437,7 @@ def _master(event: dict, calendar_id: str, token: str) -> tuple[str, dict]:
 # ---------- cache ----------
 
 def _days(event: dict, calendar_id: str) -> list[str]:
-    """Local dates an event's row would occupy — the provider's own mapping,
-    so a 10pm–1am event refreshes both of its days here too."""
+    """Local dates an event's row would occupy (the provider's own mapping)."""
     try:
         normalized = calendar_provider.normalize(event, calendar_id, calendar_id)
         return calendar_provider.days_covered(normalized)
@@ -564,9 +446,8 @@ def _days(event: dict, calendar_id: str) -> list[str]:
 
 
 def _recache(*day_lists: list[str]) -> None:
-    """Re-pull the cache for the days a write touched. Best-effort by
-    construction: the write already happened, and a stale cache is what the
-    next poll is for — raising here would report a real change as a failure."""
+    """Re-pull the cache for the days a write touched. Best-effort: the write already
+    happened, so raising would report a real change as a failure."""
     try:
         calendar_provider.sync_days([d for days in day_lists for d in days])
     except Exception:
@@ -574,14 +455,8 @@ def _recache(*day_lists: list[str]) -> None:
 
 
 def _series_days(instances: list[dict], calendar_id: str) -> list[str]:
-    """The days a series write went stale on — only the ones already cached.
-
-    A single write re-pulls the days it touched, and a series touches every
-    Tuesday until December. Re-pulling all of those would fetch an autumn the
-    cache never had, so this keeps the days `calendar_days` already claims:
-    a day that was never synced cannot be stale, because `get()` fetches it on
-    demand and will see the series then.
-    """
+    """The days a series write made stale: only those `calendar_days` already holds
+    (an unsynced day can't be stale; `get()` fetches it on demand)."""
     days = sorted({d for inst in instances for d in _days(inst, calendar_id)})
     if not days:
         return []
@@ -607,15 +482,8 @@ def _result(event: dict, calendar_id: str) -> dict:
 
 
 def _occurrences(out: dict, instances: list[dict]) -> dict:
-    """What a series write actually produced, folded into its result: how many
-    occurrences there are and when the last one is.
-
-    Whether it ever ends is read off the rule, not off the count — a rule with
-    neither UNTIL nor COUNT never stops, and that is true whether or not the
-    enumeration came back. Inferring it from `len(instances)` would report the
-    one series worth warning about as an ordinary bounded one every time
-    `_instances` failed.
-    """
+    """Fold a series write's occurrence count and last date into its result. `open_ended` is
+    read off the rule (no UNTIL/COUNT), not the count, so a failed `_instances` can't hide it."""
     rule = out.get("recurrence") or ""
     out["occurrences"] = len(instances)
     out["open_ended"] = ("UNTIL=" not in rule and "COUNT=" not in rule
@@ -649,9 +517,7 @@ def create_event(*, summary: str, start: str, end: str | None = None,
         body["description"] = description
     if attendees:
         body["attendees"] = [{"email": a.strip()} for a in attendees if a.strip()]
-    # Built before the POST so a rule that can't be written costs nothing: the
-    # alternative is an event on the calendar that doesn't repeat, which reads
-    # as success to everyone except the person who misses the other fourteen.
+    # built before the POST: a bad rule must not leave a non-repeating event behind
     rule = _rrule(repeat, begins, days=repeat_days, until=repeat_until,
                   count=repeat_count)
     if rule:
@@ -664,8 +530,7 @@ def create_event(*, summary: str, start: str, end: str | None = None,
     if not rule:
         _recache(_days(created, calendar_id))
         return out
-    # A recurring create returns the master, whose start is the first
-    # occurrence; the rest of the series exists only in Google's expansion.
+    # a recurring create returns the master (first occurrence); the rest is in Google's expansion
     series = _instances(calendar_id, created.get("id") or "", token)
     _recache(_days(created, calendar_id), _series_days(series, calendar_id))
     return _occurrences(out, series)
@@ -687,17 +552,13 @@ def update_event(*, event_id: str | None = None, match: str | None = None,
     token = _token()
     before = _api(_url(calendar_id, event_id), token)
 
-    # How an event repeats is a property of the series, so changing it always
-    # addresses the master — patching `recurrence` onto one expanded Tuesday
-    # is a thing Google refuses, and rightly.
+    # repeat is a series property: always patch the master (Google refuses `recurrence` on an instance)
     changing_repeat = bool(repeat) or repeat_days or repeat_until or repeat_count
     if _series_scope(scope) or changing_repeat:
         event_id, before = _master(before, calendar_id, token)
     series = bool(before.get("recurrence"))
     if series and not time_zone:
-        # A series keeps the zone it was created in. Re-anchoring it to
-        # wherever the user is standing today would shift every occurrence,
-        # including the ones already behind them.
+        # a series keeps its creation zone (re-anchoring shifts every occurrence)
         time_zone = (before.get("start") or {}).get("timeZone")
 
     patch: dict = {}
@@ -717,9 +578,7 @@ def update_event(*, event_id: str | None = None, match: str | None = None,
         raise HTTPException(400, "nothing to change — pass a new start, end, "
                                  "summary, location, description or repeat")
 
-    # Where the series lands *now*, read before the write: moving it to
-    # Thursdays leaves every Tuesday it used to occupy stale, and after the
-    # PATCH those days are no longer derivable from anything.
+    # read before the write: after the PATCH the vacated days aren't derivable
     vacated = _series_days(_instances(calendar_id, event_id, token),
                            calendar_id) if series else []
 
@@ -743,21 +602,15 @@ def update_event(*, event_id: str | None = None, match: str | None = None,
 def delete_event(*, event_id: str | None = None, match: str | None = None,
                  day: str | None = None, calendar_id: str | None = None,
                  scope: str | None = None, notify: bool = False) -> dict:
-    """Remove an event from the calendar. Not recoverable from here — Google's
-    trash for events is the UI's own undo, which this cannot reach.
-
-    On a repeating event the default is the one occurrence the caller named;
-    `scope="all"` deletes the master, which takes the whole series with it.
-    """
+    """Remove an event; not recoverable from here. On a series the default is the one
+    occurrence named; `scope="all"` deletes the master and the whole series."""
     calendar_id, event_id = _address(event_id, match, day, calendar_id)
     token = _token()
-    # Read first so the answer can name what went: "deleted" with nothing but
-    # an id is unverifiable by the person who asked for it.
+    # read first so the answer can name what went
     doomed = _api(_url(calendar_id, event_id), token)
     if _series_scope(scope):
         event_id, doomed = _master(doomed, calendar_id, token)
-    # Enumerated before the delete for the same reason as an update's: once the
-    # master is gone there is nothing left to ask which days it occupied.
+    # enumerated before the delete: the master's days can't be asked afterwards
     series = (_instances(calendar_id, event_id, token)
               if doomed.get("recurrence") else [])
 
@@ -774,8 +627,7 @@ def respond_event(*, response: str, event_id: str | None = None,
                   match: str | None = None, day: str | None = None,
                   calendar_id: str | None = None, comment: str | None = None,
                   notify: bool = False) -> dict:
-    """RSVP to an invitation. Distinct from deleting it: this answers the
-    organizer and leaves the event on the calendar."""
+    """RSVP to an invitation: answers the organizer, leaves the event on the calendar."""
     response = (response or "").strip().lower()
     if response not in RESPONSES:
         raise HTTPException(400, f"response must be one of {', '.join(RESPONSES)},"
@@ -794,8 +646,7 @@ def respond_event(*, response: str, event_id: str | None = None,
         if comment:
             a["comment"] = comment
 
-    # The whole guest list goes back, not just the one entry: `attendees` is
-    # replaced wholesale, so sending one attendee uninvites everyone else.
+    # whole guest list goes back: `attendees` is replaced wholesale (one entry uninvites the rest)
     after = _api(_url(calendar_id, event_id, sendUpdates=_updates(notify)),
                  token, method="PATCH", body={"attendees": attendees})
     out = _result(after, calendar_id)

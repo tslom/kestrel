@@ -1,15 +1,8 @@
 """One turn's parallel tool calls become one approval card.
 
-The console asks the browser for permission from inside `can_use_tool`, once
-per call, and an assistant turn can emit several calls at once. A card apiece
-meant the user answered the first while the rest sat queued: three
-`event_create` calls in one turn all came back "AbortError: Stream closed"
-with the later cards never answered, and that error accounts for 15 of the
-console's failed tool calls on record.
-
-These drive the real socket. `build_options` is patched only to catch the
-`can_use_tool` it is handed, and the calls made against it are the ones the
-SDK itself would make — concurrently, on the socket's own event loop.
+Drives the real socket; `build_options` is patched only to catch `can_use_tool`, and
+calls run concurrently on the socket's loop as the SDK's would.
+Design: DESIGN.md → `backend/tests/test_console_permission_bursts.py`.
 """
 
 import asyncio
@@ -76,9 +69,7 @@ async def socket(monkeypatch):
         return real_build(session_id, model, mode, can_use_tool,
                           ask_questions, *a, **k)
 
-    # The socket's own SessionState, so a test can put the model's narration
-    # where a real turn would have left it — `can_use_tool` reads it from
-    # there to fill the card's reason.
+    # The socket's SessionState: where `can_use_tool` reads the narration for the card's reason.
     class Spy(console.SessionState):
         def __init__(self):
             super().__init__()
@@ -130,8 +121,7 @@ async def test_a_burst_becomes_one_card_carrying_every_call(socket):
     assert len(ws.of_type("permission_request")) == 1, "one card, not three"
     assert [c["summary"] for c in card["inputs"]] == ["Lecture 0", "Lecture 1",
                                                       "Lecture 2"]
-    # `input` stays the first of them, so a client reading only the old field
-    # still renders something true.
+    # `input` stays the first, for clients reading only the old field.
     assert card["input"] == card["inputs"][0]
 
     ws.feed({"type": "permission", "request_id": card["request_id"],
@@ -182,8 +172,7 @@ async def test_different_tools_still_get_their_own_cards(socket):
 
 @pytest.mark.anyio
 async def test_a_later_call_is_not_folded_into_a_settled_card(socket):
-    """The window is one turn's worth. A call that arrives after the card has
-    gone out gets a card of its own, not a silent ride on an old answer."""
+    """A call arriving after the card went out gets its own card."""
     ws, can_use_tool = socket
     first = asyncio.ensure_future(
         can_use_tool("mcp__vault__event_create", {"summary": "One"}, None))
@@ -210,10 +199,7 @@ async def test_a_later_call_is_not_folded_into_a_settled_card(socket):
 
 # ---------- what the card says ----------
 #
-# The same card, asked to be answerable. It used to carry the tool's raw
-# input and nothing else, so a delete arrived as a calendar id and an event
-# id — no title, no hour, no calendar, and no word about what saying yes
-# would cost. These assert the three fields that fixed that.
+# The card must be answerable: title/hour/calendar, and what yes costs.
 
 
 def _event(day="2026-09-22"):
@@ -236,8 +222,7 @@ async def test_the_card_carries_the_event_not_just_its_ids(socket, dbfile):
     card = await _card(ws)
     assert [c["title"] for c in card["preview"]] == ["Lift"]
     assert ["calendar", "Gym/Workouts"] in card["preview"][0]["rows"]
-    # and the arguments are still there, because the preview is a reading of
-    # them and a reading can be wrong.
+    # the raw arguments stay: the preview is a reading and can be wrong.
     assert card["inputs"] == [{"event_id": "ev1", "calendar_id": "gym@g"}]
     ws.feed({"type": "permission", "request_id": card["request_id"], "allow": True})
     await asyncio.wait_for(call, timeout=2)
@@ -245,8 +230,7 @@ async def test_the_card_carries_the_event_not_just_its_ids(socket, dbfile):
 
 @pytest.mark.anyio
 async def test_a_delete_says_what_saying_yes_costs(socket, dbfile):
-    """In every mode, not only auto's. "ask" was rendering a delete and a
-    rename in the same neutral card."""
+    """In every mode, not only auto's."""
     ws, can_use_tool = socket
     call = asyncio.ensure_future(can_use_tool(
         "mcp__vault__event_delete", {"event_id": "ev1"}, None))
@@ -259,8 +243,7 @@ async def test_a_delete_says_what_saying_yes_costs(socket, dbfile):
 
 @pytest.mark.anyio
 async def test_a_reversible_write_gets_no_warning(socket, dbfile):
-    """A card that warned about every write is a card nobody reads the
-    warning on."""
+    """Only destructive writes warn (a warning on every card goes unread)."""
     ws, can_use_tool = socket
     call = asyncio.ensure_future(can_use_tool(
         "mcp__vault__task_create", {"title": "Order supplies"}, None))
@@ -285,9 +268,7 @@ async def test_the_card_quotes_why_in_the_models_own_words(socket, dbfile):
 
 @pytest.mark.anyio
 async def test_a_reason_is_used_once_and_not_re_attached(socket, dbfile):
-    """The failure this prevents is the worst one available here: the
-    sentence explaining the first delete rendered under a second, different
-    delete the model said nothing about."""
+    """The first delete's reason must not render under a second, different delete."""
     ws, can_use_tool = socket
     ws.state.narration.append("Dropping the duplicate 9am.")
     first = asyncio.ensure_future(

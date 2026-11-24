@@ -1,8 +1,7 @@
 """POST /api/console/upload — the composer's drop target.
 
-The route is thin on purpose (read_upload does the work, and test_attachments
-covers its policy); what these pin is the contract the frontend depends on:
-every answer carries a label, a kind, and a note, including the refusals.
+The route is thin (read_upload's policy is in test_attachments); these pin the
+frontend contract: every answer, refusals included, carries a label, kind and note.
 """
 
 import asyncio
@@ -61,8 +60,7 @@ def test_a_turn_with_no_image_stays_a_plain_string():
 
 
 def test_an_image_gone_from_memory_says_so():
-    """A backend restart between drop and send. The model must not be left to
-    answer about a picture that isn't there."""
+    """A restart between drop and send says the image is gone."""
     pill = {"label": "board.png", "kind": "file", "data": "", "image": "gone"}
     out = console.turn_input({"text": "hi", "context": [pill]})
     assert isinstance(out, str) and "the image is gone" in out
@@ -82,8 +80,7 @@ def test_a_video_is_refused_with_a_reason_not_a_500(api):
 
 
 def test_every_answer_carries_the_three_fields_the_pill_renders(api):
-    """The chip shows label + note and sends text; a missing key renders
-    'undefined' into the pill rather than failing loudly."""
+    """Every answer has the label, note and text the pill renders (a missing key shows 'undefined')."""
     for name, data, mime in [("a.txt", b"hi", "text/plain"),
                              ("b.mov", b"\x00", "video/quicktime"),
                              ("c.txt", b"", "text/plain"),
@@ -95,8 +92,7 @@ def test_every_answer_carries_the_three_fields_the_pill_renders(api):
 
 
 def test_nothing_is_written_to_the_database(api, fresh_dbfile):
-    """The bytes end with the request — extract() caches because it has a row
-    to cache against, and a dropped file has none."""
+    """A dropped file is not cached: no row to cache against."""
     api.post("/api/console/upload",
              files={"file": ("notes.txt", b"transient", "text/plain")})
     assert not fresh_dbfile.exists(), "the upload path touched app.db"
@@ -391,8 +387,7 @@ def test_files_stay_under_the_tab_and_tasks_md_is_read_only(api, monkeypatch, tm
 
 
 def test_a_finished_tab_queues_one_notification(api, monkeypatch):
-    """The page swallows this route's errors, so an unknown kind would mean
-    notifications that silently never arrive."""
+    """A finished tab queues one notification (the page swallows this route's errors)."""
     sent, flushed = [], []
     real_key = console.notify._notify_key
     monkeypatch.setattr(console.notify, "send", lambda kind, *parts, **kw: sent.append(

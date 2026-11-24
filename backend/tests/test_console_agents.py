@@ -1,6 +1,5 @@
 """Subagents at work (console_agents): the CLI's task lifecycle messages folded
-into the rows the console's strip shows. A background subagent's calls never
-reach the parent's stream, so these are all the page ever hears of it."""
+into the rows the strip shows (a background subagent's calls never reach the parent's stream)."""
 
 from app import console_agents as ca
 

@@ -1,12 +1,5 @@
-"""app/backup.py — the monthly snapshot the poller takes on its own.
-
-The failure this replaces was not a bug in the copy, it was the copy never
-running: a correct script with no schedule left app.db unbacked-up for 59
-days. So the assertions that matter are about *when* it decides to run, not
-about sqlite's backup API, plus the two ways a due-check can lie — a month
-key read off the wall clock instead of day_key(), and a half-written file
-whose name claims the month is done.
-"""
+"""app/backup.py, the monthly snapshot: assertions are about when it runs and the two ways a
+due-check lies (month key from the wall clock not day_key(); a half-written file named for the month)."""
 
 import sqlite3
 from pathlib import Path
@@ -58,10 +51,7 @@ def test_new_month_is_due_again(dbfile, frozen_day, freeze_day):
 
 
 def test_filename_follows_day_key_not_the_wall_clock(dbfile, freeze_day):
-    """1am on the 1st: day_key() still says last month (4am rollover) while
-    datetime.now() says the new one. Naming the file from the clock would file
-    it under a month the due-check isn't asking about, and every cycle until
-    4am would take another copy."""
+    """1am on the 1st, day_key() still says last month (4am rollover): name the file from day_key(), not the clock."""
     _seed(dbfile)
     freeze_day("2026-08-31")
     info = backup.run()
@@ -70,8 +60,7 @@ def test_filename_follows_day_key_not_the_wall_clock(dbfile, freeze_day):
 
 
 def test_a_failed_copy_does_not_claim_the_month(dbfile, frozen_day, monkeypatch):
-    """The one failure that turns a backup into the absence of one: a copy
-    that dies halfway leaving a file whose name says the month is covered."""
+    """A copy that dies halfway must not leave a file whose name says the month is covered."""
     _seed(dbfile)
 
     real_connect = sqlite3.connect
@@ -83,10 +72,7 @@ def test_a_failed_copy_does_not_claim_the_month(dbfile, frozen_day, monkeypatch)
             raise sqlite3.OperationalError("disk I/O error")
         return real_connect(path, *a, **kw)
 
-    # Not monkeypatch.undo() to put the disk back: undo() is per-test, not
-    # per-setattr, so it would also revert the dbfile fixture's db.APP_DB —
-    # and the next line would back up the *real* database into the real data
-    # directory. (It did, once, before this comment existed.)
+    # Not monkeypatch.undo(): it also reverts dbfile's db.APP_DB and would back up the real database.
     monkeypatch.setattr(backup.sqlite3, "connect", dies_on_the_copy)
     with pytest.raises(sqlite3.OperationalError):
         backup.run()

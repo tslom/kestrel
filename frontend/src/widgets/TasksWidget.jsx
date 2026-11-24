@@ -29,9 +29,7 @@ function Row({ t, overdue, onComplete, onPinItem }) {
   );
 }
 
-// A write goes out on the "tasks" topic rather than reloading only this
-// card: the glance strip's open count answers to it too, and would
-// otherwise go on counting a task you just ticked off.
+// The "tasks" topic, not a local reload: the glance strip's open count answers to it too.
 const changed = () => broadcastRefresh("tasks");
 
 export function useTasksCard() {
@@ -57,9 +55,7 @@ export function useTasksCard() {
   const stale = data ? data.waiting_stale : [];
   const dated = data ? data.overdue.length + data.due_today.length : 0;
 
-  // Dated work is the demand; the available pick is worth a look but isn't
-  // owed today. Collapsing takes the quick-add box with it — the console adds
-  // tasks too, and one click brings it back.
+  // Dated work is the demand; the available pick isn't owed today. Collapsing hides quick-add too.
   const level = !data ? null : dated > 0 ? NEEDS : shown > 0 || stale.length > 0 ? HAS : QUIET;
   const summary = !data ? "the board is clear"
     : dated > 0
@@ -70,13 +66,11 @@ export function useTasksCard() {
     : stale.length > 0 ? `${stale.length} waiting on someone`
     : "the board is clear";
 
-  // One row per dated task. Overdue is a clock; due today is a clock only
-  // when it has a time on it — a bare due date has all day.
+  // Overdue is a clock; due today only with a time (a bare date has all day).
   const checkOff = (t) => ({ label: "Check off", style: "go", run: () => complete(t) });
   const asks = !data ? [] : [
     ...data.overdue.map((t) => {
-      // A deadline that passed today is hours late, not "0 d": count from
-      // the due instant itself (elapsed time, so the browser clock is fine).
+      // A deadline that passed today is hours late, not "0 d" (elapsed time, so the browser clock is fine).
       const late = dayGap(t.due, data.today);
       const why = late > 0 ? `due ${shortDay(t.due)} · ${late} d overdue`
         : t.due_time ? `due ${fmtTime(`T${t.due_time}`)} · ${age(`${t.due}T${t.due_time}`)} overdue`
@@ -98,9 +92,7 @@ export default function TasksWidget({ card, onPin, onExpand }) {
   const { data, error, setError, reload, refreshing, complete, shown, more, stale } = card;
   const [title, setTitle] = useState("");
 
-  // "draft the memo @ 5pm" files a due time, which is what a countdown counts.
-  // The day key comes off the payload rather than the browser clock — the 4am
-  // rollover is the backend's call (see tasks_today).
+  // "draft the memo @ 5pm" files a due time. Day key from the payload: the 4am rollover is the backend's (tasks_today).
   const quick = parseQuickDue(title, data && data.today);
 
   function add() {
@@ -143,8 +135,7 @@ export default function TasksWidget({ card, onPin, onExpand }) {
             : `${stale.length} waiting items gone stale`}
         </p>
       )}
-      {/* Not a cut for space: these are open but not on today's board
-          (tasks_today), and the full view is where every list lives. */}
+      {/* Open but not on today's board (tasks_today). */}
       {more > 0 && (
         <button className="widget-footer-btn" onClick={onExpand}>
           {more} more in all tasks <Icon name="arrowRight" size={11} />
@@ -155,10 +146,7 @@ export default function TasksWidget({ card, onPin, onExpand }) {
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && add()} />
       </div>
-      {/* Echo what the `@` was read as before it's committed — a due date the
-          parser guessed wrong is worth catching while the text is still in the
-          box, and an `@` it couldn't read at all needs saying out loud or the
-          task files with the phrase stuck in its title. */}
+      {/* Echo what `@` was read as before commit; an unreadable `@` is said, or the phrase sticks in the title. */}
       {quick.hint && <p className="task-add-hint">due {quick.hint}</p>}
       {quick.unparsed && <p className="task-add-hint dim">no date read after “@” — filing it as part of the title</p>}
     </section>

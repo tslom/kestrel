@@ -1,10 +1,6 @@
-"""The at-desk channel.
+"""The at-desk channel: dedupe, and the two ways a queued row leaves unseen (presence, staleness). Delivery is stubbed.
 
-The dangerous half of an emitter is saying something twice, so most of what is
-worth testing here is dedupe and the two ways a queued row can leave the queue
-without being seen: presence and staleness. Delivery itself is stubbed — the
-whole reason senders enqueue instead of posting is that there is exactly one
-path to the OS to fake.
+Design: DESIGN.md → Reaching the user (§21).
 """
 
 import json
@@ -20,9 +16,7 @@ NOW = datetime.fromisoformat("2026-08-10T14:00:00-04:00")
 
 @pytest.fixture
 def desk(monkeypatch):
-    """At the desk, with a delivery backend that records instead of posting.
-    Returns the call list. Presence is stubbed in *every* test that flushes,
-    because the real probe would answer about whoever is running pytest."""
+    """At the desk, with a recording delivery backend (returns the call list). Presence is stubbed in every flushing test."""
     posted = []
     monkeypatch.setattr(notify, "at_desk", lambda: True)
     monkeypatch.setattr(notify, "_post",
@@ -43,8 +37,7 @@ def test_the_same_fact_queues_once(dbfile):
 
 
 def test_a_changed_value_is_a_different_fact(dbfile):
-    """The poll cycle re-reads the same status every five minutes and must stay
-    quiet; a package that actually moves has news."""
+    """The same status re-read every poll stays quiet; a package that moves has news."""
     con = db.connect()
     notify.send("package", "Amazon:1", "shipped", title="a", con=con, now=NOW)
     assert notify.send("package", "Amazon:1", "delivered", title="b",
@@ -54,8 +47,7 @@ def test_a_changed_value_is_a_different_fact(dbfile):
 
 
 def test_a_sent_row_is_never_requeued_by_a_second_send(dbfile, desk):
-    """DO NOTHING, not an upsert: re-sending after delivery must not resurrect
-    the row and say it again."""
+    """DO NOTHING, not an upsert: re-sending after delivery must not say it again."""
     con = db.connect()
     notify.send("flight", "PNR", "1", title="Flight 1", con=con, now=NOW)
     notify.flush(con, now=NOW)
@@ -67,8 +59,7 @@ def test_a_sent_row_is_never_requeued_by_a_second_send(dbfile, desk):
 
 
 def test_a_colon_in_a_value_is_escaped_not_rejected(dbfile):
-    """An AeroAPI status is free text. Raising on 'Delayed until 15:30' would
-    sink the flight poll from inside its transaction."""
+    """Free-text statuses ('Delayed until 15:30') must not raise inside the flight poll's transaction."""
     con = db.connect()
     assert notify.send("flight", "PNR", "1", "Delayed until 15:30",
                        title="t", con=con, now=NOW) is True
@@ -78,8 +69,7 @@ def test_a_colon_in_a_value_is_escaped_not_rejected(dbfile):
 
 
 def test_two_facts_cannot_collide_onto_one_key(dbfile):
-    """Injectivity, the property escaping exists to preserve — a collision means
-    one fact inherits the other's delivery record and never fires."""
+    """Key escaping is injective: a collision would let one fact inherit another's delivery record."""
     con = db.connect()
     notify.send("package", "a:b", "c", title="one", con=con, now=NOW)
     assert notify.send("package", "a", "b:c", title="two",
@@ -124,8 +114,7 @@ def test_a_failed_post_stays_queued_for_the_next_cycle(dbfile, monkeypatch):
 
 
 def test_nothing_posts_while_nobody_is_at_the_desk(dbfile, monkeypatch):
-    """Held, not dropped and not counted as sent — a banner posted at a locked
-    screen would be recorded as delivered and never seen."""
+    """Held, not dropped or counted as sent (a banner at a locked screen is never seen)."""
     posted = []
     monkeypatch.setattr(notify, "at_desk", lambda: False)
     monkeypatch.setattr(notify, "_post",
@@ -163,8 +152,7 @@ def test_disabled_holds_the_queue_without_posting(dbfile, monkeypatch, desk):
 # ---------------------------------------------------------------- staleness
 
 def test_a_stale_notification_expires_instead_of_firing_late(dbfile, desk):
-    """The one place this channel deliberately loses data: 'out for delivery',
-    delivered two hours late, is worse than silence."""
+    """Stale rows are dropped on purpose: 'out for delivery' two hours late is worse than silence."""
     con = db.connect()
     notify.send("package", "Amazon:1", "out_for_delivery", title="t",
                 con=con, now=NOW)
@@ -177,9 +165,7 @@ def test_a_stale_notification_expires_instead_of_firing_late(dbfile, desk):
 
 
 def test_an_expired_notification_is_kept_readable(dbfile, desk):
-    """It's the only record the channel had something to say while you were
-    away — deleting it would make a missed notification indistinguishable from
-    one that was never queued."""
+    """The row is kept: deleting it would make a missed notification look never queued."""
     con = db.connect()
     notify.send("package", "Amazon:1", "shipped", title="t", con=con, now=NOW)
     notify.flush(con, now=NOW + timedelta(minutes=notify.NOTIFY_STALE_MIN + 1))
@@ -203,8 +189,7 @@ def test_expiry_does_not_touch_an_already_sent_row(dbfile, desk):
 # --------------------------------------------------------------- burst cap
 
 def test_the_cycle_cap_defers_rather_than_refusing(dbfile, monkeypatch, desk):
-    """Opposite call from ALARM_MAX_WITHDRAW_PER_CYCLE: half the news beats none
-    of it, and the rest keep their turn."""
+    """Burst cap (opposite of ALARM_MAX_WITHDRAW_PER_CYCLE): half the news beats none; the rest keep their turn."""
     monkeypatch.setattr(notify, "NOTIFY_MAX_PER_CYCLE", 2)
     con = db.connect()
     for i in range(5):
@@ -223,10 +208,7 @@ def test_the_cycle_cap_defers_rather_than_refusing(dbfile, monkeypatch, desk):
 # ----------------------------------------------------------------- posting
 
 def test_text_is_passed_as_arguments_never_interpolated(monkeypatch):
-    """The old `_notify` pasted json.dumps(body) into the script text, and
-    osascript then refused to compile the script for any non-ASCII character
-    (-2741) — silently, under check=False. Nothing user-shaped may appear in the
-    script itself."""
+    """No user text in the osascript source (non-ASCII failed to compile, -2741, silently under check=False)."""
     seen = {}
 
     class Proc:
@@ -265,9 +247,7 @@ def _no_osascript(monkeypatch):
 
 
 def test_under_the_app_a_banner_goes_to_the_window_with_its_tab(dbfile, monkeypatch):
-    """Kestrel.app hands the server a pipe; the window posts the banner as
-    Kestrel and a click opens `target`. One JSON line per banner, and long
-    non-ASCII text arrives whole (macOS PIPE_BUF is 512)."""
+    """Banners go down Kestrel.app's pipe: one JSON line each, long non-ASCII text whole (PIPE_BUF is 512)."""
     r, w = os.pipe()
     monkeypatch.setattr(notify, "WINDOW_FD", w)
     monkeypatch.setattr(notify, "at_desk", lambda: True)
@@ -315,15 +295,13 @@ def test_a_closed_window_pipe_falls_back_to_osascript(monkeypatch):
 # ---------------------------------------------------------------- presence
 
 def test_at_desk_fails_open_when_the_probe_cannot_answer(monkeypatch):
-    """The direction that matters: a presence check that silently swallows every
-    banner is `_notify`'s never-fired bug in better clothes."""
+    """A presence check must not silently swallow every banner."""
     monkeypatch.setattr(notify, "_probe", lambda cmd: None)
     assert notify.at_desk() is True
 
 
 def test_a_locked_screen_is_not_at_the_desk(monkeypatch):
-    """Typing a password is input, so idle time alone reads a lock screen as
-    presence."""
+    """Typing a password is input: idle time alone reads a lock screen as presence."""
     monkeypatch.setattr(
         notify, "_probe",
         lambda cmd: '"IOConsoleUsers" = ({"CGSSessionScreenIsLocked"=Yes})'

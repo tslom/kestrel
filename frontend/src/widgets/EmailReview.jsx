@@ -9,14 +9,9 @@ import Files from "../ui/Files.jsx";
 import Icon from "../ui/icons.jsx";
 import SheetHead from "../ui/SheetHead.jsx";
 
-// Email review queue: one card per inbox message — AI summary,
-// recommended action, and the label it will be filed under. Three actions:
-// archive, unsubscribe, keep — and every one files the message under its
-// label, because after review the only thing a message is still for is being
-// found. The label arrives already picked (the sender's record, else the
-// model's); correcting it is picking another before acting, and two
-// corrections teach the sender. Everything mutates Gmail itself via
-// POST /api/email/{id}/action; the card leaves the queue on success.
+// Email review queue: one card per inbox message (summary, recommended action, filing label).
+// Archive/unsubscribe/keep each file under the label via POST /api/email/{id}/action; the card
+// leaves on success. Design: DESIGN.md → `frontend/src/widgets/EmailReview.jsx`.
 
 function fmtWhen(iso) {
   const d = new Date(iso);
@@ -27,8 +22,7 @@ function fmtWhen(iso) {
 }
 
 const ACTION_LABELS = { archive: "Archive", unsubscribe: "Unsub", keep: "Keep" };
-// What the undo toast says was done (`performed` is the capability for an
-// unsubscribe, so those map too).
+// Undo toast wording (`performed` is the capability for an unsubscribe, so those map too).
 const PAST = { archive: "Archived", keep: "Kept", unsubscribe: "Unsubscribed",
                one_click: "Unsubscribed", mailto: "Unsubscribed", delete: "Deleted" };
 
@@ -58,16 +52,12 @@ function Card({ card, labels, hovered, onHover, onPin, onDone, onHold, onError }
   const [busy, setBusy] = useState(null);   // action name in flight
   const [picking, setPicking] = useState(false);
   const [reading, setReading] = useState(false);   // reader open on this card
-  // The label this card will be filed under. Starts as the suggestion; a
-  // pick replaces it without acting, so the correction and the action stay
-  // one gesture each and either can come first.
+  // Starts as the suggestion; a pick replaces it without acting.
   const [label, setLabel] = useState(card.label);
   const corrected = label !== card.label;
 
   const act = (action) => {
-    // A request that would actually reach the sender waits out the undo
-    // window first (EmailReview's hold). "link" only opens a page, so it
-    // goes straight through as before.
+    // A request that reaches the sender waits out the undo window (hold); "link" only opens a page.
     if (action === "unsubscribe" && ["one_click", "mailto"].includes(card.unsubscribe)) {
       onHold(card, label);
       return;
@@ -86,22 +76,13 @@ function Card({ card, labels, hovered, onHover, onPin, onDone, onHold, onError }
       .catch((e) => { setBusy(null); onError(e.message); });
   };
 
-  // The recommendation used to come off the message body alone and never saw
-  // the List-Unsubscribe header, so a header-less newsletter came back with a
-  // pick the Unsub button can't perform. It now comes from what you actually
-  // did with this sender (providers/email_learn.py), but the same mismatch is
-  // still reachable — you may have unsubscribed from this sender through a
-  // message that carried a header when this one doesn't. Archive stays the
-  // honest substitute: it still clears the inbox, and it keeps the highlight
-  // on a button that presses instead of an ink-filled disabled one.
+  // A learned "unsubscribe" can hit a message with no List-Unsubscribe header; archive is the
+  // substitute so the highlight lands on a button that presses.
   const unsubDead = card.action === "unsubscribe" && card.unsubscribe === "none";
   const rec = unsubDead ? "archive" : card.action;
 
-  // The recommendation in one gesture: click the "→ archive" chip, or hover
-  // the card and hit ↵. It files under whatever the label chip says, so a
-  // correction followed by ↵ is still two keystrokes' worth of review. All
-  // three actions are ⌘Z-undoable — except the unsubscribe request itself,
-  // which is already sent by the time the archive is reversed.
+  // The recommendation in one gesture: the chip, or hover + ↵. All actions are undoable except an
+  // already-sent unsubscribe request.
   const runRec = () => {
     if (!rec || busy !== null) return;
     act(rec);
@@ -166,16 +147,11 @@ function Card({ card, labels, hovered, onHover, onPin, onDone, onHold, onError }
             )}
           </p>
         : <p className="email-ai dim">{card.snippet}</p>}
-      {/* Why this call, in your own history's words. A recommendation drawn
-          from two clicks has to admit that before it is trusted — the rule
-          the place shortlist already follows. `default` is the
-          unknown-sender fallback and says nothing worth a line of card. */}
+      {/* Why this call, in your own history's words; `default` (unknown sender) says nothing worth a line. */}
       {card.why && card.basis !== "default" && (
         <p className={`email-why email-why-${card.basis}`}>
           <Icon name="clock" size={11} />
-          {/* One span, not loose text plus a sibling: as separate flex items
-              the note detached from the sentence and drifted to its own
-              column once the reason wrapped to a second line. */}
+          {/* One span: separate flex items drift to their own column when the reason wraps. */}
           <span>{card.why}
             {card.unsubscribable && rec !== "unsubscribe" && (
               <span className="email-why-unsub"> · looks unsubscribable</span>
@@ -195,8 +171,7 @@ function Card({ card, labels, hovered, onHover, onPin, onDone, onHold, onError }
           }[card.unsubscribe],
         })}
         {btn("keep", { title: "Leave in inbox (labelled), drop from this queue" })}
-        {/* Where it will be filed. The chip is the correction: open, pick,
-            then act — every button above files under whatever this says. */}
+        {/* The filing label; every button above files under it. */}
         <button className={`email-label${label ? "" : " none"}${corrected ? " corrected" : ""}`}
           aria-expanded={picking} disabled={busy !== null}
           onClick={() => setPicking((v) => !v)}
@@ -224,16 +199,10 @@ export default function EmailReview({ onPin }) {
   const [labels, setLabels] = useState([]);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
-  // Which card ↵ acts on. Hover is the cursor here: the queue is a mouse-first
-  // list, and a card that leaves on its own action would strand a selection.
+  // Which card ↵ acts on: hover, since a card that leaves would strand a selection.
   const [hoverId, setHoverId] = useState(null);
-  // Undo stack, newest last: every action taken in this session, so ⌘Z can
-  // walk back through a run of fast archives, not just the most recent one.
-  // The ref is the stack; the state only mirrors it for rendering. React runs
-  // a setState updater during render, not during the event, so reading the top
-  // entry inside one saw `undefined` — undo popped the card and then returned
-  // before sending anything, which looked exactly like an undo that lost the
-  // mail: button gone, nothing back in the inbox.
+  // Undo stack, newest last. The ref is the stack, state only mirrors it: reading the top inside a
+  // setState updater runs during render and saw `undefined`, so undo popped the card and sent nothing.
   const stackRef = useRef([]);
   const [undoStack, setUndoStack] = useState([]);
   const [undoing, setUndoing] = useState(false);
@@ -253,9 +222,7 @@ export default function EmailReview({ onPin }) {
     fetchJSON("/api/email/labels").then(setLabels).catch(() => setLabels([]));
   }, [load]);
 
-  // Reverse one action and put its card back in the queue: the newest, from
-  // the button here, or the one the undo toast was offering. Optimistic
-  // removal so a double press can't fire the same undo twice.
+  // Optimistic removal from the stack so a double press can't fire the same undo twice.
   const undoEntry = useCallback((entry) => {
     if (!entry || !stackRef.current.includes(entry)) return;
     setStack(stackRef.current.filter((x) => x !== entry));
@@ -276,12 +243,9 @@ export default function EmailReview({ onPin }) {
   }, [load, setStack]);
   const undo = useCallback(() => undoEntry(stackRef.current[stackRef.current.length - 1]),
     [undoEntry]);
-  // ⌘Z is the undo toast's now (lib/undo.js): each action offers itself
-  // there, so one keypress can't undo twice. The button here still walks
-  // back through the whole run.
+  // ⌘Z belongs to the undo toast (lib/undo.js); the button here walks back the whole run.
 
-  // Sync Gmail + summarize new mail, then reload the queue. Summarization
-  // runs server-side on Haiku; this can take a minute with a lot of new mail.
+  // Gmail sync + server-side Haiku summaries; can take a minute.
   const refresh = () => {
     setRefreshing(true);
     fetchJSON("/api/email/queue/refresh", { method: "POST" })
@@ -301,9 +265,7 @@ export default function EmailReview({ onPin }) {
     hide(id);
   };
 
-  // An unsubscribe can't be recalled once it's sent, so it isn't sent yet:
-  // the card leaves now and the request goes out when the undo toast does.
-  // Undo just brings the card back; nothing ever reached the sender.
+  // An unsubscribe can't be recalled: the request goes out when the undo toast expires.
   const hold = (card, label) => {
     hide(card.id);
     offerUndo({
@@ -319,10 +281,7 @@ export default function EmailReview({ onPin }) {
   };
 
   const hide = (id) => {
-    // The desk shows this same count (card + glance chip). Targeted, not a
-    // whole-desk refresh: nothing else on the desk moved because one mail was
-    // archived. Fired here rather than inside load(), which also runs on mount
-    // — that would reload the email card just for opening the panel.
+    // Targeted refresh of the card + glance chip count; not in load(), which also runs on mount.
     broadcastRefresh("email");
     setQueue((q) => q && {
       ...q,

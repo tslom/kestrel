@@ -63,17 +63,19 @@ def test_parse_dedupes_and_reads_who(projects):
     assert sinfo.subagent and sinfo.session == "s1" and scalls[0].session == "s1"
 
 
-def test_cost_and_cache_savings():
+def test_cost_and_cache_savings(dbfile):
+    # dbfile: prices are read from app.db's cache, which must be the empty test one.
     c = tu.Call(ts=0, model="claude-opus-5-5", provider="anthropic", session="s",
                 inp=0, out=1_000_000, cache_read=1_000_000, cache_5m=0, cache_1h=1_000_000)
     # 20 out + 0.20 read + 4*2 1h write
     assert tu.cost(c) == pytest.approx(28.2)
     assert tu.uncached_cost(c) == pytest.approx(28.0)
-    assert tu.price_for("claude-haiku-4-5-20251001") == tu.PRICES["claude-haiku-4-5"]
+    haiku = tu.price_for("claude-haiku-4-5-20251001")
+    assert (haiku.source, haiku.base.input) == ("builtin", 1.0)
     assert tu.cost(tu.Call(0, "gpt-9", "openai", "s", 1, 1, 0, 0, 0)) is None
 
 
-def test_haiku_long_prompt_tier():
+def test_haiku_long_prompt_tier(dbfile):
     short = tu.Call(0, "claude-haiku-5-5", "anthropic", "s", 100_000, 0, 0, 0, 0)
     long = tu.Call(0, "claude-haiku-5-5", "anthropic", "s", 100_001, 0, 0, 0, 0)
     assert tu.cost(long) / tu.cost(short) == pytest.approx(5.0, rel=1e-3)
@@ -108,27 +110,45 @@ def _run(con, provider, model, tin, tout, session, started, status="ok"):
 def test_delegate_runs_are_their_own_provider(projects, con):
     now = datetime.now().isoformat(timespec="seconds")
     with con:
-        _run(con, "gemini", "gemini-2.5-pro", 1000, 200, "s1", now)
+        _run(con, "antigravity", "gemini-2.5-pro", 1000, 200, "s1", now)
         _run(con, "codex", None, 500, 50, "s2", now)
         _run(con, "claude", "claude-sonnet-5-5", 9, 9, "s1", now)    # a fan-out variant: in transcripts
-        _run(con, "gemini", "gemini-2.5-pro", 7, 7, "s1", now, status="running")
-        _run(con, "gemini", "gemini-2.5-pro", 7, 7, "s1", "2020-01-01T00:00:00")
+        _run(con, "antigravity", "gemini-2.5-pro", 7, 7, "s1", now, status="running")
+        _run(con, "antigravity", "gemini-2.5-pro", 7, 7, "s1", "2020-01-01T00:00:00")
     week = tu.summary("week", "provider")
     rows = {r["key"]: r for r in week["rows"]}
-    assert set(rows) == {"claude", "gemini", "codex"}
-    assert rows["gemini"]["calls"] == 1 and rows["gemini"]["input"] == 1000
-    assert rows["gemini"]["cost"] == 0 and rows["gemini"]["unpriced"] == 1
+    assert set(rows) == {"claude", "antigravity", "codex"}
+    assert rows["antigravity"]["calls"] == 1 and rows["antigravity"]["input"] == 1000
+    assert rows["antigravity"]["cost"] == 0 and rows["antigravity"]["unpriced"] == 1
     assert rows["codex"]["label"] == "ChatGPT (Codex)"
     assert [p["key"] for p in week["providers"]][0] == "claude"
-    # Tiering compares Claude with Claude: errands change neither side.
+    # An errand with no price is left out of both sides of the comparison.
     claude_only = tu.summary("week", "provider", sources=tu.SOURCES)
-    assert week["claude_cost"] == claude_only["claude_cost"]
+    assert week["mix_cost"] == claude_only["mix_cost"]
     assert week["if_all_on"] == claude_only["if_all_on"]
+    why = {(p["provider"], p["model"]): p["unpriced_why"] for p in week["prices"]}
+    assert why[("codex", "default model")] == "the CLI didn't say which model ran"
+    assert why[("antigravity", "gemini-2.5-pro")] == "no price list has this model"
+    assert why[("claude", "claude-opus-5-5")] is None
     # An errand counts to the tab that sent it.
     tabs = {r["key"]: r for r in tu.summary("week", "tab")["rows"]}
-    assert "Gemini gemini-2.5-pro" in tabs["s1"]["models"]
+    assert "Antigravity gemini-2.5-pro" in tabs["s1"]["models"]
     model_rows = {r["key"]: r for r in tu.summary("week", "model")["rows"]}
-    assert model_rows["codex:codex"]["provider"] == "codex"
+    # No model named: the CLI's default, said so rather than the provider id.
+    assert model_rows["codex:default model"]["provider"] == "codex"
+
+
+def test_a_run_refused_before_any_call_adds_no_row(projects, con):
+    """A bad --model or signed-out CLI fails with no tokens spent, no call, and no model row for the typo."""
+    now = datetime.now().isoformat(timespec="seconds")
+    with con:
+        _run(con, "antigravity", None, 900, 100, "s1", now)
+        _run(con, "antigravity", "no-such-model-x", None, None, "s1", now, status="failed")
+        _run(con, "antigravity", None, 300, 50, "s1", now, status="failed")   # cut off: spent tokens
+    rows = {r["key"]: r for r in tu.summary("week", "provider")["rows"]}
+    assert rows["antigravity"]["calls"] == 2 and rows["antigravity"]["input"] == 1200
+    models = {r["key"] for r in tu.summary("week", "model")["rows"]}
+    assert "antigravity:no-such-model-x" not in models and "antigravity:default model" in models
 
 
 def test_a_broken_delegates_log_costs_only_its_rows(projects, dbfile, monkeypatch):

@@ -1,6 +1,4 @@
-"""Smoke tests for two paths whose connection scoping was reworked: the mail
-queue (one connection per request) and the brief worker (no connection held
-across the model call)."""
+"""Connection scoping: the mail queue (one per request) and the brief worker (none held across the model call)."""
 
 from app import brief, db
 from app.routes import email as email_route

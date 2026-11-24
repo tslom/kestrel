@@ -1,9 +1,7 @@
 """A permission-mode switch is live: same CLI, same session, same turn.
 
-It used to reconnect, which killed the turn in flight, denied its cards and,
-when the first turn hadn't written yet, came back as a fresh session — and
-Shift+Tab cycling did it once per press. Now the socket stays up and the
-switch reaches the running client through set_permission_mode.
+The socket stays up and the switch reaches the running client via
+set_permission_mode (a reconnect killed the turn, denied its cards, or lost the session).
 """
 
 import asyncio
@@ -110,8 +108,7 @@ async def test_the_next_call_is_asked_under_the_new_mode(socket):
 
 @pytest.mark.anyio
 async def test_a_card_waiting_across_the_switch_still_answers(socket):
-    """The old reconnect denied every waiting card. A live switch leaves it
-    up, and the click still reaches the call."""
+    """A live switch leaves a waiting card up and its click still reaches the call."""
     ws, caught = socket
     waiting = asyncio.ensure_future(caught["can_use_tool"](
         "Bash", {"command": "rm -rf 06-Generated"}, None))

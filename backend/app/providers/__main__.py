@@ -1,5 +1,4 @@
-"""CLI face of the providers, for skills and the console — same code as REST,
-zero exploration tokens:
+"""CLI face of the providers for skills and the console (same code as REST):
 
     python -m app.providers weather --range this-week --metric tmax
     python -m app.providers calendar --range next-week --query lawton
@@ -7,9 +6,8 @@ zero exploration tokens:
     python -m app.providers --list
     python -m app.providers weather --refresh       # force a cache pull first
 
-Prints one JSON object to stdout (`--format brief`: header + one line per
-item — same data, far fewer tokens for console/skill use). OAuth management
-is its own CLI: python -m app.providers.oauth --help.
+Prints one JSON object (`--format brief`: header + one line per item, far fewer tokens).
+OAuth management is its own CLI: python -m app.providers.oauth --help.
 """
 
 import argparse
@@ -17,14 +15,12 @@ import json
 import sys
 
 from . import REGISTRY, describe, get
-# Registers db's task-write hook: a `--refresh` here can create tasks (finance,
-# email_extract, messages), and tasks.md must follow them as it does in-app.
+# Registers db's task-write hook so tasks a `--refresh` creates reach tasks.md.
 from .. import vault_views  # noqa: F401 — imported for its side effect (above)
 
 
 def _brief(out: dict, mod) -> str:
-    """Header + one line per item. Providers may define brief_line(item);
-    fallback is single-line JSON."""
+    """Header + one line per item via the provider's brief_line (fallback: single-line JSON)."""
     line = getattr(mod, "brief_line",
                    lambda it: json.dumps(it, separators=(",", ":"),
                                          ensure_ascii=False))
@@ -40,15 +36,13 @@ def _brief(out: dict, mod) -> str:
 
 
 def _search_brief(hits: dict, mod) -> str:
-    """Same one-line-per-item face as _brief, for a payload that has a query
-    where a range would be — a search answers over the source, not over days."""
+    """_brief for a search payload (a query where the range would be)."""
     line = getattr(mod, "brief_line",
                    lambda it: json.dumps(it, separators=(",", ":"),
                                          ensure_ascii=False))
     scope = f" in {hits['subreddit']}" if hits.get("subreddit") else ""
     scan = hits.get("scan")
-    # reddit's fallback when the archive's search is down: only the newest
-    # posts were read, so the window in the head would overstate it.
+    # Reddit's scan fallback read only the newest posts; don't overstate the window.
     span = (f" newest {scan['posts']} posts only, back to {scan['back_to']}"
             f" (search down)" if scan and not scan["complete"]
             else f" last {hits['days']}d")
@@ -143,9 +137,7 @@ def _main() -> None:
     except ValueError as e:
         sys.exit(f"error: {e}")
     except RuntimeError as e:
-        # A source refusing or failing — a live search the archive timed out
-        # on, a 4xx from an upstream API. It is an answer about the world, not
-        # a bug in the caller, so it reads as one line rather than a traceback.
+        # An upstream refusal is an answer about the world: one line, not a traceback.
         sys.exit(f"error: {e}")
 
 

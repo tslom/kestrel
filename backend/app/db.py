@@ -1,15 +1,9 @@
-"""app.db — the app-owned source of truth for tasks and habits.
+"""app.db — the app-owned source of truth for tasks, habits and the provider caches.
 
-Concurrency: this file is written by BOTH the FastAPI backend and terminal
-Claude Code skills (via `sqlite3` in bash). That's safe because of two
-settings applied on every connection here — and which any skill using the
-sqlite3 CLI should also set:
-
-    PRAGMA journal_mode=WAL;      -- readers don't block writers
-    PRAGMA busy_timeout=5000;     -- wait instead of "database is locked"
-
-Day boundary: `day_key()` is the ONLY way to compute "today" anywhere in this
-app. Local time; hours before 04:00 count toward the previous day.
+Written by both the backend and terminal skills (sqlite3 CLI), so every
+connection sets `journal_mode=WAL` and `busy_timeout=5000`; skills must too.
+`day_key()` is the ONLY way to compute "today" (local, 04:00 rollover).
+Migrations are fingerprinted and never edited once shipped: DESIGN.md → Schema history.
 """
 
 import hashlib
@@ -54,9 +48,7 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (habit_id, day)
     );
     """,
-    # v2 — provider foundation: oauth tokens + stub provider cache.
-    # tokens holds OAuth secrets — app.db must never leave this machine, and
-    # token values must never appear in API responses (see providers/oauth.py).
+    # v2 — OAuth tokens (secrets: never in API responses, see providers/oauth.py) + stub cache.
     """
     CREATE TABLE tokens (
         provider TEXT NOT NULL,                -- 'google'
@@ -79,10 +71,7 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (day, metric)
     );
     """,
-    # v3 — calendar provider cache. Google Calendar is truth; these
-    # rows are derived and droppable. A multi-day event gets one row per local
-    # date it touches. calendar_days records which days have been synced, so
-    # "no events rows" is distinguishable from "never fetched".
+    # v3 — calendar cache (derived); calendar_days marks synced days, so no rows != never fetched.
     """
     CREATE TABLE events (
         day TEXT NOT NULL,                     -- local date, YYYY-MM-DD
@@ -100,16 +89,11 @@ MIGRATIONS: list[str] = [
         refreshed_at TEXT NOT NULL
     );
     """,
-    # v4 — multi-calendar: human-readable calendar name per
-    # event (calendar_id is an opaque email-ish id once there's more than
-    # 'primary'). NULLs backfill on the next sync — the table is derived.
+    # v4 — events.calendar_name (derived; backfills on next sync).
     """
     ALTER TABLE events ADD COLUMN calendar_name TEXT;
     """,
-    # v5 — health provider cache. Google Health is truth; these
-    # rows are derived and droppable. One row per (day, metric); health_sync
-    # marks fetched days, so "no row" (watch not worn) is distinguishable
-    # from "never fetched".
+    # v5 — health cache (derived); health_sync marks fetched days (no row = not worn, not unfetched).
     """
     CREATE TABLE health_days (
         day TEXT NOT NULL,                     -- civil date, YYYY-MM-DD
@@ -123,12 +107,7 @@ MIGRATIONS: list[str] = [
         refreshed_at TEXT NOT NULL
     );
     """,
-    # v6 — email provider. Gmail is truth; emails/email_days are
-    # derived and droppable (metadata only — bodies are never stored).
-    # email_triage holds app-generated summaries + your review decisions:
-    # summaries are regenerable (at token cost), user_action is real data —
-    # but the Gmail mailbox state it mirrors (archived/labeled/trashed) is
-    # the durable record, so the whole table survives a drop philosophically.
+    # v6 — email cache (metadata only, derived) + email_triage (summaries regenerable; user_action is real data).
     """
     CREATE TABLE emails (
         msg_id TEXT PRIMARY KEY,
@@ -162,12 +141,7 @@ MIGRATIONS: list[str] = [
         user_action_at TEXT
     );
     """,
-    # v7 — daily brief. Generated lazily on the
-    # first dashboard open of each day_key; the /daily-brief skill is a thin
-    # wrapper over GET /api/brief. body is app-generated content (like
-    # email_triage summaries): regenerable at token cost, DB-only — never
-    # written into the vault. The row doubles as the generation lock: an
-    # atomic claim flips status to 'generating' (see app/brief.py).
+    # v7 — daily brief: lazy per day_key, DB-only; the row doubles as the generation lock (app/brief.py).
     """
     CREATE TABLE daily_brief (
         day TEXT PRIMARY KEY,                  -- day_key, YYYY-MM-DD
@@ -180,11 +154,8 @@ MIGRATIONS: list[str] = [
         generated_at TEXT                      -- when status became ready
     );
     """,
-    # v8 — finance provider (archive/PLAID_PLAN.md). Plaid is truth; fin_accounts and
-    # fin_transactions are derived cache (droppable, re-pulled by a cursor
-    # sync). plaid_items is NOT derived: access_token is a real credential
-    # (like the tokens table) and must survive cache drops — never in API
-    # responses or logs. Amounts keep Plaid's sign: positive = money OUT.
+    # v8 — finance: fin_* derived; plaid_items holds a real credential (never in responses or logs).
+    # Amounts keep Plaid's sign: positive = money OUT.
     """
     CREATE TABLE plaid_items (
         item_id TEXT PRIMARY KEY,
@@ -228,13 +199,7 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX fin_transactions_day ON fin_transactions (day);
     """,
-    # v9 — weather provider. Open-Meteo is truth; both tables are
-    # derived and droppable. Day = civil date (Open-Meteo's own local day for
-    # the queried lat/lon, timezone=auto) — same camp as calendar/health, not
-    # day_key. sunrise/sunset store as minutes-since-midnight REAL; render
-    # HH:MM at display. weather_code stays the numeric WMO code (map to text
-    # in the widget/brief layer). geo_cache memoizes name -> (lat, lon)
-    # geocoding lookups (event locations, HOME_LAT/LON overrides by name).
+    # v9 — weather (derived). Civil date, not day_key; sunrise/sunset are minutes since midnight; geo_cache memoizes geocoding.
     """
     CREATE TABLE weather_days (
         day TEXT NOT NULL,                     -- civil date, YYYY-MM-DD
@@ -249,18 +214,8 @@ MIGRATIONS: list[str] = [
         lon REAL NOT NULL
     );
     """,
-    # v10 — tasks v2 (archive/TASKS_PLAN.md): triage fields, one-level
-    # subtasks, provenance. All new columns nullable so v1 writers (skills,
-    # console) keep working unmodified. `source` (v1) keeps meaning who
-    # created the row (ui|console|migrated|reconcile|capture|travel|
-    # finance); source_kind/source_ref/source_excerpt are a different axis —
-    # the provenance obligation (what real-world thing this task came from).
-    # source_excerpt is denormalized on purpose: the cache tables it might
-    # otherwise point at (emails, chat.db) are droppable/pruning, so the
-    # excerpt has to survive on its own. Status vocabulary grows to open |
-    # waiting | someday | done | dropped — no CHECK constraint (v1 had none;
-    # skills write raw SQL). The trigger keeps updated_at correct for BOTH
-    # the FastAPI app and terminal skills writing raw UPDATE statements.
+    # v10 — tasks v2: nullable columns so v1 writers keep working; no status CHECK (skills write raw SQL); trigger keeps updated_at.
+    # `source` = who created the row; source_kind/ref/excerpt = provenance (excerpt is denormalized on purpose).
     """
     ALTER TABLE tasks ADD COLUMN defer TEXT;          -- YYYY-MM-DD; hidden from today-view before this date
     ALTER TABLE tasks ADD COLUMN parent_id INTEGER REFERENCES tasks(id);
@@ -277,8 +232,7 @@ MIGRATIONS: list[str] = [
     END;
     UPDATE tasks SET updated_at = created_at;
     """,
-    # v11 — task triage queue (removed again in v12). Same shape as
-    # email_triage: an app-generated suggestion + your decision (user_action).
+    # v11 — task triage queue (removed in v12).
     """
     CREATE TABLE task_triage (
         task_id INTEGER PRIMARY KEY REFERENCES tasks(id),
@@ -292,20 +246,9 @@ MIGRATIONS: list[str] = [
         user_action_at TEXT
     );
     """,
-    # v12 — task triage queue removed: one-time backlog cleanup after the
-    # vault migration, not a standing feature (no more mass task imports).
+    # v12 — task triage queue removed.
     "DROP TABLE task_triage;",
-    # v13 — screen time provider. DROPPED AGAIN IN v46, and kept here because
-    # migrations are replayed in order on a fresh app.db, so this still has to
-    # create what v46 removes. Nothing reads these tables any more.
-    #
-    # ActivityWatch (aw-server, one per configured host) is truth; both tables
-    # are derived/droppable. Day is **day_key** (4am rollover), not civil date
-    # — a behavioral source
-    # like calendar/health/weather are NOT: activity at 1am belongs to
-    # yesterday's day_key. screen_apps holds per (day, host, app) seconds so
-    # the `apps` metric and DOOMSCROLL_APPS matching don't re-walk raw AW
-    # events on every read.
+    # v13 — screen time (dropped in v46; kept so a fresh app.db replays). Keyed by day_key.
     """
     CREATE TABLE screen_days (
         day TEXT NOT NULL,                     -- day_key, YYYY-MM-DD
@@ -322,14 +265,7 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (day, host, app)
     );
     """,
-    # v14 — news provider. Kagi Kite (kite.kagi.com/kite.json)
-    # is truth; table is derived/droppable. day = day_key of the *fetch*,
-    # not an article date — Kite has no per-day historical API, it just
-    # serves whatever its current daily edition is (refreshes ~12:00 UTC),
-    # so a pre-noon fetch tags that content under today's day_key rather
-    # than erroring. cluster_i is Kite's own cluster_number within the
-    # category, stable for a given edition. sources is a JSON list of
-    # domain names for attribution (Kite content is CC BY-NC).
+    # v14 — news (derived). day = day_key of the fetch, not an article date; sources is a JSON list of domains.
     """
     CREATE TABLE news_items (
         day TEXT NOT NULL,                     -- day_key, YYYY-MM-DD
@@ -342,17 +278,7 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (day, category, cluster_i)
     );
     """,
-    # v15 — finance deeper (archive/ROUND34_PLAN.md §18): recurring transactions +
-    # liabilities. Plaid is truth; both derived/droppable, re-synced by
-    # finance.refresh() alongside the existing transactions cursor sync.
-    # fin_recurring.predicted_next_date is Plaid's own prediction, taken
-    # as-is rather than reimplemented from last_day+frequency — Plaid
-    # already handles weekday/month-end drift,
-    # so recomputing it would just be a second, worse implementation.
-    # fin_liabilities.kind is Plaid's own bucket (credit | student |
-    # mortgage); field names vary a lot by kind upstream, normalized here
-    # to one shape (statement_balance/min_payment/due_day/apr) so the
-    # bills_due metric doesn't need to branch on kind.
+    # v15 — fin_recurring / fin_liabilities (derived). predicted_next_date is Plaid's own; liabilities normalized to one shape.
     """
     CREATE TABLE fin_recurring (
         stream_id TEXT PRIMARY KEY,
@@ -382,13 +308,7 @@ MIGRATIONS: list[str] = [
         refreshed_at TEXT NOT NULL
     );
     """,
-    # v16 — Spotify provider. Day is **day_key** (4am rollover), a behavioral
-    # source like messages and location. Unlike other providers' caches,
-    # `plays` is NOT purely derived: Spotify's recently-played endpoint only
-    # returns the last 50 tracks, so this table is the only record of
-    # anything older than the polling window — losing it loses history, not
-    # just cache freshness (the GDPR-export importer writes here too).
-    # artist_genres was a cache; v35 drops it.
+    # v16 — Spotify, day_key. `plays` is NOT purely derived: the API returns only the last 50, so this is the only record.
     """
     CREATE TABLE plays (
         played_at TEXT PRIMARY KEY,            -- ISO instant, Spotify's played_at
@@ -410,20 +330,8 @@ MIGRATIONS: list[str] = [
         refreshed_at TEXT NOT NULL
     );
     """,
-    # v17 — messages provider (archive/ROUND34_PLAN.md §9) + generic sync_state.
-    # chat.db is truth; unlike Spotify's `plays`, `messages` IS a genuine
-    # derived cache — chat.db keeps full local history, so a drop only costs
-    # a re-sync (up to MESSAGES_BACKFILL_DAYS back) on the next refresh, not
-    # lost data. Day is **day_key** (4am rollover), a behavioral source like
-    # screen/spotify/location — 1am texting belongs to yesterday. text is
-    # capped at 2000 chars on write; it's already on this disk in chat.db,
-    # so caching it here changes nothing about exposure (localhost-only
-    # stands). sync_state is a generic (key, value) incremental-sync
-    # watermark table, not messages-specific — other providers may use it.
-    # NOTE: `messages` and `sync_state` have independent lifecycles — to
-    # force a clean re-sync, drop/clear BOTH (see providers/messages.py
-    # module docstring); dropping only `messages` leaves the old watermark
-    # in place and the table never re-backfills.
+    # v17 — messages (derived from chat.db, day_key, text capped at 2000) + generic sync_state watermark.
+    # To force a re-sync, clear `messages` AND `sync_state`: the old watermark blocks a re-backfill.
     """
     CREATE TABLE sync_state (
         key TEXT PRIMARY KEY,
@@ -443,21 +351,8 @@ MIGRATIONS: list[str] = [
     CREATE INDEX messages_day ON messages (day);
     CREATE INDEX messages_chat ON messages (chat_guid);
     """,
-    # v18 — email extractors (archive/ROUND34_PLAN.md §15 packages + §16 travel):
-    # shared pipeline in providers/email_extract.py over the already-synced
-    # `emails` table. email_extract caches the raw model output per message
-    # (kind = package | trip) so nothing is re-parsed/re-billed once seen,
-    # mirroring email_triage's cache-by-msg_id posture. packages/trips are
-    # the typed results — unlike most provider caches, these are NOT purely
-    # derived: they're the only record of order/flight state this app keeps,
-    # so dropping them loses real state, not just freshness (a full
-    # email_extract wipe would let them rebuild, at model cost, as long as
-    # the source emails are still in `emails`). packages.status only ever
-    # moves forward through ordered->shipped->out_for_delivery->delivered
-    # (see _upsert_package); trips.status/gate are owned by the AeroAPI
-    # poller once it starts (poll_flight_status) — later confirmation
-    # emails update itinerary details but never downgrade status/gate back
-    # to 'confirmed'.
+    # v18 — email_extract cache + packages/trips (real state, not derived). packages.status only moves forward;
+    # trips.status/gate belong to the AeroAPI poller.
     """
     CREATE TABLE email_extract (
         msg_id TEXT PRIMARY KEY,
@@ -496,24 +391,9 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX trips_dep ON trips (dep_local);
     """,
-    # v19 — people / CRM-lite (archive/ROUND34_PLAN.md §17). `people` is NOT
-    # droppable — birthday/watch_cadence_days/notes are real facts with no
-    # other source of truth (unlike every other table in this file, a drop
-    # loses data, not just freshness). person_key is a normalized email
-    # (lowercase) or phone (last 10 digits) — same normalization as
-    # providers/messages.py's normalize_handle, so a person's key lines up
-    # across emails.from_addr/to_addr and messages.handle without a join
-    # table. last_email_at/last_msg_at/last_event_at are NOT stored here —
-    # computed live in app/people.py from emails/messages/events, which stay
-    # the source of truth for contact history.
+    # v19 — people: NOT droppable (birthday/cadence/notes). person_key = normalized email or last-10 phone digits (messages.normalize_handle).
     #
-    # is_sent/to_addr on emails: the existing day-window sync in email.py
-    # already fetches every message in range regardless of folder (Gmail's
-    # after:/before: search isn't inbox-scoped), so no second "list
-    # label:SENT" pass is needed — just persist the SENT label and the To
-    # header, both already available where in_inbox/unread are computed.
-    # to_addr holds only the first recipient (best effort, like messages.py's
-    # contact_name) — enough to match a sent message back to a person_key.
+    # emails.is_sent/to_addr: persisted from the existing sync; to_addr is the first recipient only.
     """
     CREATE TABLE people (
         person_key TEXT PRIMARY KEY,
@@ -527,17 +407,8 @@ MIGRATIONS: list[str] = [
     ALTER TABLE emails ADD COLUMN is_sent INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE emails ADD COLUMN to_addr TEXT;
     """,
-    # v20 — location provider (archive/ROUND34_PLAN.md §10). OwnTracks (iOS)
-    # fixes arrive through the location relay (providers/location_relay.py).
-    # The `--` comments below still name Overland's fields, the app that
-    # wrote the oldest rows; read the units off location_relay.py. Like Spotify's
-    # `plays` and the messages/email_extract tables, `location_points` is
-    # NOT a derived cache — it's the only record of raw location history
-    # this app keeps, so a drop loses data, not just freshness.
-    # `location_days` IS a derived/droppable cache, recomputed from
-    # location_points by providers/location.py. Day is **day_key** (4am
-    # rollover), a behavioral source like screen/spotify/messages — a 1am
-    # fix belongs to yesterday.
+    # v20 — location. location_points is NOT derived (only record); location_days is. day_key.
+    # The `--` field names below are Overland's; units: providers/location_relay.py.
     """
     CREATE TABLE location_points (
         ts TEXT PRIMARY KEY,                   -- ISO instant, Overland's own timestamp
@@ -558,15 +429,7 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (day, metric)
     );
     """,
-    # v21 — net-worth history. finance.py overwrites
-    # fin_accounts on every sync (DELETE+INSERT), so a point-in-time balance
-    # is all Plaid gives us. This table is the ONLY record of balance history
-    # — NOT a derived/droppable cache (like location_points/messages): a drop
-    # loses the net-worth line for good and the past can't be backfilled.
-    # One row per day_key (4am rollover) per env; repeated syncs within a day
-    # upsert the latest snapshot. net_worth = assets − liabilities, where
-    # assets are depository/investment balances and liabilities are the
-    # positive amounts owed on credit/loan accounts.
+    # v21 — net-worth history: the ONLY record of balances (fin_accounts is overwritten each sync). One row per day_key per env.
     """
     CREATE TABLE fin_balance_history (
         day TEXT NOT NULL,                     -- day_key, YYYY-MM-DD
@@ -578,32 +441,16 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (day, env)
     );
     """,
-    # v22 — mute spam/automated contacts. `hidden` flags a person_key the user
-    # dismissed (marketing/OTP/no-reply senders that keep surfacing under
-    # "waiting on reply"). Marking one upserts a people row so it sticks even
-    # for keys never CRM'd; the row is kept (not deleted) so it stays
-    # reversible. Filtered out of waiting_on(), the people list, and brief
-    # signals.
+    # v22 — people.hidden: muted senders; the row is kept so it's reversible.
     """
     ALTER TABLE people ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0;
     """,
-    # v23 — transaction enrichment.
-    # Plaid also exposes a brand logo_url and an in-store location; surface
-    # both when present. Both are derived cache like fin_transactions — the
-    # cursor sync only fills them on newly added/modified rows, so existing
-    # cached rows stay NULL until a cursor reset re-pulls history (droppable).
-    # location is a pre-joined "City, ST" display string (NULL when Plaid has
-    # no location, which is the norm for online spend).
+    # v23 — transaction logo_url/location (derived; only newly synced rows fill until a cursor reset).
     """
     ALTER TABLE fin_transactions ADD COLUMN logo_url TEXT;
     ALTER TABLE fin_transactions ADD COLUMN location TEXT;
     """,
-    # v24 — chat metadata cache for the conversations view. The `messages`
-    # cache has no room for a chat's *own* attributes (custom group name,
-    # group flag) — those live once per chat_guid, not per message.
-    # This table caches chat.db's `chat` rows so the conversations view can show
-    # a real group name ("Family 👨‍👩‍👧") instead of a participant list. Derived
-    # cache like `messages`: full-replace each sync, droppable, no watermark.
+    # v24 — chats: chat.db chat attributes (group names). Derived, full-replace each sync.
     """
     CREATE TABLE chats (
         chat_guid TEXT PRIMARY KEY,
@@ -612,15 +459,7 @@ MIGRATIONS: list[str] = [
         refreshed_at TEXT NOT NULL
     );
     """,
-    # v25 — contact identity clusters. A person owns many identifiers (two
-    # numbers + a couple emails); `people` rows and messages/emails each key
-    # off ONE, so the same human fragments across
-    # tables. This maps every normalized identifier to a stable cluster_key,
-    # built from macOS Contacts' OWN record grouping (providers/messages.py
-    # sync_identities) — the authoritative "same person" signal. Merges follow
-    # a shared Contacts card / shared identifier, NEVER a shared name, so two
-    # distinct people with the same name never collapse. Derived cache like
-    # `chats`: full-replace each sync, droppable.
+    # v25 — contact identity clusters from macOS Contacts' grouping; never merge on a shared name. Derived, full-replace.
     """
     CREATE TABLE contact_identities (
         identifier TEXT PRIMARY KEY,           -- normalized handle/email
@@ -630,16 +469,7 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX contact_identities_cluster ON contact_identities (cluster_key);
     """,
-    # v26 — features cross-provider day matrix (archive/ROUND34_PLAN.md §11, the
-    # keystone). One row per (day, feature): a pure denormalization of the
-    # other providers' cache tables (health/screen/spotify/messages/location/
-    # finance/events/tasks/weather) so the brief/console can reason over
-    # passive signals in one place. Fully derived/droppable — providers/
-    # features.py recomputes it from those tables with SQL/python only, no
-    # external calls. A source with no data for a day is simply absent (a gap,
-    # never a 0), so a real zero and "no signal" stay distinguishable. `day` is
-    # each source's own key (day_key for behavioral sources + tasks, civil date
-    # for health/weather/calendar/finance) — not re-bucketed.
+    # v26 — features day matrix (derived, providers/features.py). A source with no data is an absent row, never 0.
     """
     CREATE TABLE features (
         day TEXT NOT NULL,                     -- YYYY-MM-DD (source's own key)
@@ -649,15 +479,7 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (day, feature)
     );
     """,
-    # v27 — intraday heart rate (archive/ROUND34_PLAN.md §12). One row per (day, hour):
-    # the hourly mean bpm from Google Health's heart-rate rollUp endpoint, kept
-    # for a short trailing window (the API caps heart-rate rollups at 14 days).
-    # Derived/droppable like health_days — health.py refills it from the API,
-    # and features.py folds it into the `hr_var_day` feature (spread of a day's
-    # hourly HR = a same-day physiological-load proxy). `day`/`hour` are LOCAL
-    # (the rollup's UTC buckets converted to the user's tz), so they line up
-    # with health_days' civil dates. No sync marker: the window is small and
-    # simply recomputed each refresh.
+    # v27 — hourly heart rate (derived; the API caps rollups at 14 days). day/hour are local.
     """
     CREATE TABLE health_hours (
         day TEXT NOT NULL,                     -- local civil date, YYYY-MM-DD
@@ -668,46 +490,20 @@ MIGRATIONS: list[str] = [
         PRIMARY KEY (day, hour, metric)
     );
     """,
-    # v28 — transaction website + counterparties (archive/ROUND34_PLAN.md §11 polish,
-    # same cache-and-render pattern as v23's logo_url/location). Plaid also
-    # returns a merchant `website` and a `counterparties` array (payment apps,
-    # marketplaces, processors — the "how you paid" beyond the merchant name).
-    # website is stored raw; counterparties is pre-joined to a display string of
-    # the non-merchant parties (providers/finance._format_counterparties), NULL
-    # when there are none. Derived cache like the rest of fin_transactions — the
-    # cursor sync only fills them on newly added/modified rows, so existing rows
-    # stay NULL until a cursor reset re-pulls history (droppable).
+    # v28 — transaction website + counterparties (derived; same fill rule as v23).
     """
     ALTER TABLE fin_transactions ADD COLUMN website TEXT;
     ALTER TABLE fin_transactions ADD COLUMN counterparties TEXT;
     """,
-    # v29 — habit check-in provenance (auto exercise check-in). `source` mirrors
-    # tasks.source: who created the row — 'ui'/'console' (a person did it) vs
-    # 'auto' (a provider signal did, e.g. health AZM ≥ threshold checks the
-    # Exercise habit). Auto check-ins never overwrite a person's row (INSERT ...
-    # DO NOTHING), and an un-check now leaves a value=0 tombstone instead of
-    # deleting, so an auto pass can't resurrect a day the user deliberately
-    # cleared — the habit analog of travel's dropped-auto-task-not-recreated rule.
-    # value=0 rows read as "not done" everywhere (streak filters value>0).
+    # v29 — checkin source. 'auto' never overwrites a person's row; un-check leaves a value=0 tombstone (reads as not done).
     """
     ALTER TABLE habit_checkins ADD COLUMN source TEXT NOT NULL DEFAULT 'ui';
     """,
-    # v30 — email undo. Gmail mutations are one-way from the API's side (you
-    # can re-add INBOX, but nothing tells you what the message looked like
-    # before), so the action route records what it changed: JSON
-    # {"unread": 0|1, "label_id": "..."} written at action time and replayed in
-    # reverse by POST /api/email/{id}/undo. NULL for rows triaged before this
-    # existed — those undo on a best-effort basis (back to inbox, read).
+    # v30 — email undo: JSON of what the action changed, replayed by POST /api/email/{id}/undo; NULL = best effort.
     """
     ALTER TABLE email_triage ADD COLUMN undo_state TEXT;
     """,
-    # v31 — "not something to respond to". Distinct from people.hidden, which
-    # mutes a sender forever (bots, spam): this dismisses ONE dangling thread
-    # while keeping the person. `through_ts` is the last_at that was dismissed,
-    # so the row stays gone only while it's the newest thing they said — write
-    # again and they resurface on their own, no un-dismissing needed. Keyed
-    # (kind, key) to match the waiting feed's own identifiers: a person_key
-    # for messages, a to_addr for email.
+    # v31 — dismiss one waiting thread, keyed (kind, key); through_ts = the last_at dismissed, so newer activity resurfaces it.
     """
     CREATE TABLE IF NOT EXISTS waiting_dismissed (
       kind        TEXT NOT NULL,
@@ -717,23 +513,11 @@ MIGRATIONS: list[str] = [
       PRIMARY KEY (kind, key)
     );
     """,
-    # v32 — tapbacks, which are neither messages nor nothing. Direction is
-    # what decides: a ❤️ *they* put on something you said is not them asking
-    # you anything, but a ❤️ *you* left is you answering. Storing both with
-    # a flag lets the waiting feed read that asymmetry while volume metrics
-    # (sent/received/participant counts) keep excluding them — reactions
-    # outnumber real messages here and would swamp any count.
+    # v32 — tapbacks, kept with a direction flag; excluded from volume metrics.
     """
     ALTER TABLE messages ADD COLUMN is_reaction INTEGER NOT NULL DEFAULT 0;
     """,
-    # v33 — provider health. The poller already learns, every cycle, whether
-    # each provider's refresh() raised; that outcome only ever reached stderr,
-    # so a died-in-the-night Fitbit token was something you noticed by seeing
-    # a widget look wrong. One row per provider, overwritten each cycle —
-    # fully derived/droppable (the next cycle rebuilds it, and a missing row
-    # just means "hasn't run yet", which is what a cold boot should show).
-    # `fails` counts *consecutive* failures so the UI can tell a blip apart
-    # from a source that's been down for hours.
+    # v33 — provider_health: one row per provider, overwritten each cycle; `fails` = consecutive failures.
     """
     CREATE TABLE provider_health (
       provider         TEXT PRIMARY KEY,
@@ -747,15 +531,7 @@ MIGRATIONS: list[str] = [
     );
     """,
 
-    # v34 — provider event log. provider_health holds only the *latest* cycle,
-    # so a source that broke at 3am and recovered by 9 leaves no trace at all
-    # (`fails` resets on the first success). This is the append-only companion:
-    # one row per state change, plus the sub-step failures that never reach
-    # provider_health because refresh() caught them and returned success
-    # anyway — a Plaid leg 500ing, chat.db schema drift, an AeroAPI timeout.
-    # Transitions only, never every cycle: a source down all night would
-    # otherwise write 288 identical rows. Derived/droppable, trimmed to
-    # EVENT_LOG_KEEP so it can't grow without bound.
+    # v34 — provider_events: state changes and swallowed sub-step failures only; derived, trimmed to EVENT_LOG_KEEP.
     """
     CREATE TABLE provider_events (
       id        INTEGER PRIMARY KEY,
@@ -767,18 +543,9 @@ MIGRATIONS: list[str] = [
     CREATE INDEX idx_provider_events ON provider_events (provider, id DESC);
     """,
 
-    # v35 — artist identity that survives the import seam. `plays.artist_id`
-    # holds Spotify's real id on rows the poller captured and a synthetic
-    # "sha:"+sha1(name) on the rows the GDPR importer wrote (neither export
-    # carries an artist id), so grouping on it splits every artist in two.
-    # artist_key is the honest join key: the artist *name*, normalized
-    # in Python (str.casefold — SQLite's lower() is ASCII-only and mangles
-    # e.g. "Vîęzë Ãsbæk"), so both sides agree. Backfilled and kept current by
-    # spotify._ensure_artist_keys(); nullable so the DDL stays pure SQL.
+    # v35 — plays.artist_key: casefolded artist name (SQLite lower() is ASCII-only); backfilled by spotify._ensure_artist_keys().
     #
-    # artist_genres goes at the same time; it never held a row, because Spotify
-    # no longer returns genres. Genres come from Last.fm instead, keyed on
-    # artist_key rather than any Spotify id, in artist_tags.
+    # artist_genres goes too; genres come from Last.fm (artist_tags, keyed on artist_key).
     """
     ALTER TABLE plays ADD COLUMN artist_key TEXT;
     CREATE INDEX plays_artist_key ON plays (artist_key);
@@ -795,22 +562,12 @@ MIGRATIONS: list[str] = [
     );
     """,
 
-    # v36 — keep Last.fm's untouched reply next to the cleaned list. `tags` is
-    # the product of a blocklist, a weight floor and a cap, all of which are
-    # judgement calls that will be revised as the tag noise shows itself
-    # (nationalities, "seen live", an artist tagged with their own name).
-    # Without the raw list every such revision costs a full 9.8k-artist refetch
-    # of data Last.fm already gave us; with it, `lastfm reclean` re-derives
-    # every row offline in a second. Nullable: rows written before v36 simply
-    # don't participate in a reclean until they're next fetched.
+    # v36 — Last.fm's raw reply beside the cleaned tags, so `lastfm reclean` works offline; NULL = not refetched yet.
     """
     ALTER TABLE artist_tags ADD COLUMN raw TEXT;   -- JSON: toptags.tag verbatim
     """,
 
-    # v37 — screen sync markers (health_days/health_sync's arrangement), so a
-    # day AW saw nothing on can say nothing instead of a false zero. Backfill
-    # marks every cached day as synced and deletes the false zeros from
-    # screen_days and from `features`, which had already copied them.
+    # v37 — screen sync markers; the backfill deletes false zeros from screen_days and `features`.
     """
     CREATE TABLE screen_sync (
         day TEXT PRIMARY KEY,                  -- day_key, YYYY-MM-DD
@@ -825,28 +582,8 @@ MIGRATIONS: list[str] = [
      WHERE feature IN ('active_min', 'doomscroll_min')
        AND day NOT IN (SELECT day FROM screen_apps);
     """,
-    # v38 — attachments: what was sent, separate from what it says.
-    # `messages.text` already names attachments ("(photo)", "(2 PDFs)") but a
-    # label isn't addressable — you can't ask "the packet Dad sent" without a
-    # filename. This table makes them referenceable; `attachment_text` caches
-    # what extraction found, and stays empty until something asks (extraction
-    # costs model tokens for images, and parses untrusted bytes for PDFs).
-    #
-    # Derived and droppable, both tables: iMessage rows rebuild from chat.db
-    # on the next full sync, Gmail rows from the API. Losing attachment_text
-    # costs only re-extraction.
-    #
-    # `locator` is deliberately source-shaped, not a path: for messages it's
-    # an absolute local path (chat.db stores it '~'-prefixed; expanded on the
-    # way in), for email a Gmail attachmentId that must be exchanged for
-    # bytes through the API. Nothing downloads during sync — email bytes are
-    # fetched only on demand, so an inbox of hostile PDFs never lands on disk
-    # by itself. iMessage attachments are a different case: Messages.app has
-    # already written them, so a row here points at a file that exists.
-    #
-    # text is capped at extraction time; status distinguishes "extracted,
-    # nothing there" (empty) from "never tried" (no row) and from the several
-    # ways parsing can refuse — see providers/attachments.py.
+    # v38 — attachments + attachment_text (derived; extraction is lazy). `locator` is source-shaped (local path | Gmail attachmentId);
+    # nothing downloads during sync. status: empty != never tried (no row).
     """
     CREATE TABLE attachments (
         id INTEGER PRIMARY KEY,
@@ -874,22 +611,7 @@ MIGRATIONS: list[str] = [
         extracted_at TEXT NOT NULL
     );
     """,
-    # v39 — three lists the old vault kept as markdown tables (debts.md,
-    # shopping.md, watchlist.md), plus the day-one tag from day-ones.md.
-    # They move into app.db for the reason tasks did: the markdown was both
-    # hand-edited and agent-edited, so neither copy was truth. The old files
-    # are NOT read back after this — same rule as tasks.md.
-    #
-    # `debts.person` is free text with an optional `person_key`: the CRM only
-    # knows people who have messaged or emailed, and most of these owe from
-    # a beach week, not a thread. Amounts are stored as one row per debt
-    # rather than a running total, so "Iris owes $24 + $25.95" keeps its two
-    # reasons and either half can settle on its own.
-    #
-    # people.day_one is the filter asked for; people.crew keeps what a bare
-    # boolean would have thrown away — day-ones.md grouped them by where
-    # they're known from (Kramden / NCAAT / Triangle Insights Group), which
-    # is a different axis from "close" and useful on its own.
+    # v39 — debts / lists / watchlist moved out of vault markdown (old files never read back); one row per debt; people.day_one/crew.
     """
     CREATE TABLE debts (
         id INTEGER PRIMARY KEY,
@@ -933,25 +655,7 @@ MIGRATIONS: list[str] = [
     ALTER TABLE people ADD COLUMN day_one INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE people ADD COLUMN crew TEXT;
     """,
-    # v40 — reddit provider cache. Arctic Shift is truth; both tables are
-    # derived and droppable (drop BOTH together — reddit_sync alone would leave
-    # days marked fetched with no rows behind them).
-    #
-    # `day` is the day_key of created_utc, not its civil date: a post made at
-    # 1am belongs to the night before, the same fold screen/spotify/messages
-    # use. So a day's window is [04:00, 04:00) local, which is what _sync asks
-    # Arctic Shift for in epoch seconds.
-    #
-    # score/num_comments are NULLABLE and that is the point. A post from the
-    # old .rss fallback has no score at all, and the archive omits counts on
-    # removed posts; storing 0 for "not known yet"
-    # is how the screen provider got its historical false zeros (see v37) — the
-    # number is indistinguishable from a real one once it's in the table. NULL
-    # sorts last in the `top` metric and reads back as null, not as unpopular.
-    #
-    # reddit_sync marks a day as fetched even when it produced no rows, so a
-    # genuinely quiet day doesn't look like a gap and get re-fetched on every
-    # single read.
+    # v40 — reddit (derived; drop both tables together). day = day_key of created_utc. score/num_comments NULL = unknown, never 0.
     """
     CREATE TABLE reddit_posts (
         day TEXT NOT NULL,                     -- day_key of created_utc
@@ -975,20 +679,8 @@ MIGRATIONS: list[str] = [
         refreshed_at TEXT NOT NULL
     );
     """,
-    # v41 — the shopping list generalizes: `lists` holds the names,
-    # `list_items` holds what used to be shopping_items, one list_id deeper.
-    #
-    # shopping_items is DROPPED here rather than left behind, and its rows are
-    # carried over ids-and-all into the seeded 'Shopping' list. Ids survive
-    # because they are what the console addresses an item by (`list_item_done`
-    # takes the id a db_query handed back); renumbering them would strand
-    # every id in an open session's history. Nothing reads shopping_items
-    # after this migration — it is not a second copy, it is gone.
-    #
-    # `name` is UNIQUE COLLATE NOCASE so "College" and "college" can't become
-    # two chips holding half the packing list each. The item rows carry no
-    # such constraint: two "milk"s on a buy list is a legitimate thing to type
-    # twice, and de-duping them is the user's call, not the schema's.
+    # v41 — lists + list_items. shopping_items is migrated with ids kept (the console addresses items by id), then dropped.
+    # lists.name is NOCASE-unique; items are not.
     """
     CREATE TABLE lists (
         id INTEGER PRIMARY KEY,
@@ -1021,22 +713,8 @@ MIGRATIONS: list[str] = [
     DROP INDEX shopping_open;
     DROP TABLE shopping_items;
     """,
-    # v42 — alarms: future-dated alarms written to Reminders, which the phone
-    # syncs, so they fire with the laptop shut.
-    #
-    # NOT derived, despite looking it. Every other cache table here can be
-    # dropped and rebuilt from its source, but `external_id` is the only record
-    # of what was written to Reminders — lose it and the alarms already on the
-    # phone are unreachable, un-withdrawable, and will fire anyway. Back it up
-    # with app.db, and never DELETE a row without withdrawing the alarm first.
-    #
-    # `key` is 'kind:...' and the prefix is load-bearing: the reconciler
-    # partitions written rows by kind so a source that failed to read only ever
-    # holds its *own* alarms. Built in one place (alarms._alarm_key).
-    #
-    # `fire_at` is offset-aware ISO, not wall clock. An alarm is a promise about
-    # an instant, and this row can outlive a move across TIMELINE — a bare
-    # '09:00' would silently mean a different moment after a move.
+    # v42 — alarms: NOT derived; external_id is the only handle to what's in Reminders, so withdraw before DELETE.
+    # The `key` 'kind:' prefix is load-bearing (alarms._alarm_key); fire_at is offset-aware ISO.
     """
     CREATE TABLE alarms (
         key         TEXT PRIMARY KEY,          -- 'kind:...', built by _alarm_key
@@ -1052,25 +730,8 @@ MIGRATIONS: list[str] = [
     CREATE INDEX alarms_kind ON alarms (kind);
     CREATE INDEX alarms_fire ON alarms (fire_at);
     """,
-    # v43 — the at-desk channel. The alarms table above is for
-    # alerts with a known future time, which the phone can be handed hours in
-    # advance. This one is for the fact that just became true and matters within
-    # minutes (a flight slipped, a package is out for delivery): there is no
-    # future time to date it to, so it is delivered here, now, or not at all.
-    #
-    # Persisted rather than fired inline for two reasons. Dedupe has to survive a
-    # restart — an in-memory set would re-announce everything on every reload,
-    # and this backend runs --reload. And a row is what lets delivery *wait*: a
-    # banner posted while nobody is at the desk is indistinguishable from one
-    # that was seen, so the queue holds until presence says otherwise.
-    #
-    # `key` is 'kind:...' like alarms (built by app/keys.py) and identifies the
-    # *fact*, not the moment — a status re-observed on every poll cycle is one
-    # row, while a status that flaps back and forth is two facts and two rows.
-    #
-    # sent_at and expired_at are both nullable timestamps rather than one state
-    # column: each records when something happened, so there is no state string
-    # that can hold a value no code writes. Queued means both are NULL.
+    # v43 — at-desk notification queue (persisted for restart-proof dedupe and to hold while away). key (app/keys.py) names the fact.
+    # Queued = sent_at and expired_at both NULL.
     """
     CREATE TABLE notifications (
         key        TEXT PRIMARY KEY,           -- 'kind:...', one row per fact
@@ -1084,24 +745,7 @@ MIGRATIONS: list[str] = [
     CREATE INDEX notifications_queue ON notifications (sent_at, expired_at, queued_at);
     """,
 
-    # v44 — failures. `provider_health`/`provider_events` cover the poller and
-    # nothing else, so three layers still fail into a log that /tmp eventually
-    # deletes: an on-demand read raising inside `providers/api.py` (the poller
-    # path is instrumented, the path the desk hits on every load is not), a
-    # widget throwing during render, and a console turn coming back is_error.
-    # Same argument v34 already made for sub-step failures, one layer out.
-    #
-    # Keyed by fingerprint rather than appended per occurrence, which is the
-    # only shape that survives the failure mode this exists to catch: a widget
-    # that throws on render throws again on every re-render, and an event
-    # stream would be a thousand identical rows an hour — v34's "288 identical
-    # rows" argument, except here the loop is tight enough to bloat the DB.
-    # So one row per distinct failure, `first_at`/`last_at` bracketing it and
-    # `count` carrying the volume. That also makes the ranking question ("what
-    # breaks most") an ORDER BY instead of a GROUP BY.
-    #
-    # Derived/droppable like its two siblings: nothing reads it back into the
-    # app, it is trimmed to FAILURE_KEEP, and losing it costs only history.
+    # v44 — failures: one row per fingerprint (first_at/last_at/count); derived, trimmed to FAILURE_KEEP.
     """
     CREATE TABLE failures (
         fingerprint TEXT PRIMARY KEY,   -- origin+label+detail, hashed in Python
@@ -1118,27 +762,8 @@ MIGRATIONS: list[str] = [
     CREATE INDEX failures_recent ON failures (last_at DESC);
     """,
 
-    # v45 — usage: which cards get read, so the desk's ranking
-    # (`lib/salience.js`) and each card's slot can be checked.
-    #
-    # Counted per **day**, not as a running total, because the question is
-    # "still used?" and a total cannot tell fifty opens last March from five a
-    # week since. Distinct days is the honest unit of a habit; the raw `count`
-    # is kept alongside it but is the weaker number.
-    #
-    # `band` is what stops this lying. A card read at a glance leaves no trace
-    # at all — no click, no unfold — so interaction alone would convict every
-    # card that does its job in one line, which is most of the good ones. The
-    # band it was sitting in is the tie-breaker: a card that has been in
-    # `quiet` every day for a month and never opened is dead weight, while one
-    # that sits in `needs`/`has` unopened is being read exactly as designed.
-    # Same shape as the "silence is a signal, but only if the source would
-    # have sent something" rule in Recurring lessons.
-    #
-    # kinds: seen (rendered on the desk, band set) | open (you unfolded a card
-    # the desk had folded — the ranking being told it was wrong) | sheet (the
-    # full slide-over) | command (⌘K). Derived/droppable: nothing reads it
-    # back into the app, and losing it costs only the history.
+    # v45 — usage: per-day card counts (distinct days is the honest unit); `band` separates read-at-a-glance from dead.
+    # kinds: seen | open | sheet | command. Derived.
     """
     CREATE TABLE usage (
         day     TEXT NOT NULL,          -- db.day_key()
@@ -1152,13 +777,7 @@ MIGRATIONS: list[str] = [
     CREATE INDEX usage_kind ON usage (kind, label);
     """,
 
-    # v46 — drop the screen-time provider (DESIGN.md, Screen time — REMOVED).
-    # These tables were its source of truth, not a cache, so DROP is
-    # destructive here; the only copy is the dump in
-    # backend/data/backups/screen-tables-*.sql.
-    #
-    # IF EXISTS on all three: a fresh app.db built after this migration never
-    # created them, and a plain DROP would make first boot fail.
+    # v46 — drop screen time. DESTRUCTIVE (dump: backend/data/backups/screen-tables-*.sql); IF EXISTS so fresh DBs boot.
     """
     DROP TABLE IF EXISTS screen_apps;
     DROP TABLE IF EXISTS screen_days;
@@ -1170,43 +789,14 @@ MIGRATIONS: list[str] = [
          'app_switches');
     """,
 
-    # v47 — debts remember being chased. An open IOU is not one fact but two:
-    # the money, and whether you've said anything about it lately. Without the
-    # second the card could only ever sit in HAS — "someone owes you $106" is
-    # true every day and actionable on none of them.
-    #
-    # `reminded_at` is the whole mechanism: NULL means never asked (act now),
-    # recent means asked and it's their turn (stay quiet), and older than
-    # DEBT_NUDGE_DAYS means the ask has gone unanswered and it's yours again.
-    # Stored as a timestamp but always *read* through day_key, like every other
-    # "how many days ago" in this schema.
-    #
-    # `reminded_count` is not used for the nudge and is kept anyway: the number
-    # of times you've had to ask is the part that decides whether to keep
-    # asking or write it off, and it cannot be recovered later from a single
-    # overwritten timestamp.
+    # v47 — debts.reminded_at/reminded_count. NULL = never asked; read via day_key against DEBT_NUDGE_DAYS.
     """
     ALTER TABLE debts ADD COLUMN reminded_at TEXT;
     ALTER TABLE debts ADD COLUMN reminded_count INTEGER NOT NULL DEFAULT 0;
     """,
 
-    # v48 — proposed office-hours amendments read off email, waiting on you.
-    # An extractor wrong about hours fails silently, so this table is the
-    # waiting room. Nothing here has touched the vault;
-    # approving is what calls set_exception, and the vault stays the only
-    # source of truth for what the hours *are*.
-    #
-    # `quote` is required and is why the table earns its keep: the proposal is
-    # only checkable if you can see the sentence it came from, verbatim, next
-    # to it. Everything else in the row is the model's reading of that
-    # sentence. Note that it holds email body text, which the extract pipeline
-    # otherwise deliberately never stores (email_triage.body_excerpt fetches
-    # transiently) — one sentence per proposal is the whole exception, and it
-    # is deleted with the row.
-    #
-    # Rejections are kept rather than deleted: the same message must not come
-    # back next cycle, and `email_extract` alone can't carry that because one
-    # message can propose amendments for several dates.
+    # v48 — office-hours proposals awaiting approval (the vault stays truth). `quote` is the verbatim email sentence;
+    # rejections are kept so a message isn't re-proposed.
     """
     CREATE TABLE oh_proposals (
         id         INTEGER PRIMARY KEY,
@@ -1229,31 +819,8 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX oh_proposals_pending ON oh_proposals (status, day);
     """,
-    # v49 — one night and one day, drawn instead of summed: the sleep stage
-    # segments the `sleep` dataPoint already carries (30-second resolution),
-    # beside health_days' per-night totals.
-    #
-    # Keyed on the wake-up civil date exactly like the sleep_* metrics in
-    # health_days, so a night joins to its own totals. Naps land on the same day
-    # as the main session by that rule, which is why `seq` orders segments
-    # across the whole day rather than within one session — the sheet draws a
-    # day's sleep, not a session's.
-    #
-    # Timestamps are stored as local ISO8601 *with offset* rather than UTC. The
-    # hypnogram is read against the clock you slept by, and converting stored
-    # UTC with the browser's current zone moves past evenings into the small
-    # hours once the desk changes coasts. The offset travels with the row.
-    #
-    # Derived and droppable like health_days: health.py refills from the API.
-    #
-    # The two marks on health_sync are here for the same reason
-    # `health_sync.refreshed_at` exists: an empty read has to be able to mean
-    # "asked, and there was nothing" instead of "never asked". Both drill-downs
-    # fill on demand (older nights were synced before this table existed),
-    # and without a mark a night you genuinely didn't wear the watch
-    # for would re-hit the API on every open, forever. They're two columns
-    # because they're two pulls: segments ride the daily sleep fetch, hourly
-    # steps are their own rollUp call.
+    # v49 — sleep segments + hourly steps (derived), keyed on wake-up date like health_days; timestamps local ISO with offset.
+    # seq orders across the day; the health_sync marks mean 'asked, nothing there'.
     """
     CREATE TABLE sleep_segments (
         day         TEXT NOT NULL,     -- wake-up civil date, YYYY-MM-DD
@@ -1268,19 +835,7 @@ MIGRATIONS: list[str] = [
     ALTER TABLE health_sync ADD COLUMN segments_at TEXT;
     ALTER TABLE health_sync ADD COLUMN steps_at TEXT;
     """,
-    # v50 — basemap tiles, so the location map has something under the dots.
-    #
-    # The frontend can't fetch these (image hosts outside the CDN allowlist are
-    # blocked) and shouldn't refetch them (somebody else's tile server), so the
-    # backend fetches each tile once and keeps it. Street geometry doesn't
-    # move, which is why there is no TTL: `fetched_at` is for reading, not for
-    # expiring.
-    #
-    # Derived and droppable, like every provider cache — dropping this table
-    # costs one re-fetch per tile you look at again, and nothing else. It is
-    # the only table in the app holding a blob, so it's also the only one worth
-    # watching the size of: ~15KB a tile, a few hundred tiles for a city you
-    # actually pan around.
+    # v50 — basemap tiles (derived blob; no TTL, fetched_at is informational). The one table worth watching for size (~15KB/tile).
     """
     CREATE TABLE tile_cache (
         z          INTEGER NOT NULL,
@@ -1292,18 +847,7 @@ MIGRATIONS: list[str] = [
     );
     """,
 
-    # v51 — what the outside world calls a coordinate, remembered.
-    #
-    # Naming an unnamed cluster asks two strangers (Google's reverse geocoder,
-    # Overpass) what is at a point. Both answers are about buildings, which do
-    # not move, so like the tiles above there is no TTL: `fetched_at` is a
-    # reading and not an expiry. Keyed by the coordinate rounded to 4dp (~11m,
-    # finer than the fixes and coarser than the jitter between two recomputes
-    # of the same cluster's centroid) so re-opening the same place is free.
-    #
-    # Derived and droppable — dropping it costs one lookup per place you ask
-    # about again. The *answers you chose* are not here: those are `type:
-    # place` notes in the vault, which is the one source of truth for a name.
+    # v51 — reverse-geocode cache keyed by lat/lon rounded to 4dp (~11m); derived, no TTL. Chosen names live in the vault.
     """
     CREATE TABLE geo_lookup_cache (
         source     TEXT NOT NULL,           -- 'google' | 'overpass'
@@ -1315,23 +859,7 @@ MIGRATIONS: list[str] = [
     );
     """,
 
-    # v52 — which kind of evidence you actually accept.
-    #
-    # The place-name suggester ranks name candidates with fixed per-source weights, and
-    # fixed is the wrong shape for a number nobody can know in advance: whether
-    # the calendar beats OpenStreetMap depends on whose calendar and whose
-    # streets. Every shortlist you act on is a labelled example — one candidate
-    # accepted, the others shown and passed over — so the weights can be the
-    # accept rate per evidence kind instead of a guess.
-    #
-    # One row per candidate *shown*, not per suggestion, because that is the
-    # quantity the ranking needs: given a candidate from this kind of evidence,
-    # how often is it the one you take.
-    #
-    # NOT a derived cache, unlike every other places table. A rejection
-    # exists nowhere else — the vault records the names you chose and is silent
-    # about the ones you turned down — so dropping this loses real information
-    # and the weights fall back to their priors.
+    # v52 — place-suggestion evidence log, one row per candidate shown. NOT derived: rejections exist nowhere else.
     """
     CREATE TABLE place_feedback (
         id      INTEGER PRIMARY KEY,
@@ -1347,22 +875,7 @@ MIGRATIONS: list[str] = [
     CREATE INDEX place_feedback_cell ON place_feedback (lat, lon);
     """,
 
-    # v53 — which place, on which visit.
-    #
-    # At campus density one cluster holds several places, and nothing
-    # automatic separates them (coordinates, time of day and the calendar
-    # were all measured: DESIGN.md, Schema history). So the label comes from
-    # the person, and this is where it lands.
-    #
-    # In app.db and not the vault because this is not a note: it is one
-    # assertion per visit, hundreds of them, keyed by an instant — the same
-    # shape as a checkin, which lives here for the same reason. The *names*
-    # it refers to are still vault places.
-    #
-    # `started_at` is the visit's first fix. Stay boundaries are computed from
-    # `location_points` alone, which is append-only, so a past visit's start is
-    # stable; a label is matched back to any stay whose span contains it, so a
-    # stay split by a range boundary keeps its label rather than orphaning it.
+    # v53 — per-visit place labels keyed by the visit's first fix (started_at); matched to any stay whose span contains it.
     """
     CREATE TABLE visit_labels (
         started_at TEXT PRIMARY KEY,   -- the visit's first fix, ISO
@@ -1374,27 +887,7 @@ MIGRATIONS: list[str] = [
     CREATE INDEX visit_labels_cell ON visit_labels (lat, lon);
     """,
 
-    # v54 — what a sentence was read off.
-    #
-    # The handle that gets a restated fact's source back (an email, an event,
-    # a text).
-    #
-    # `ref` is derived, not assigned: sha1(kind + target), truncated. That
-    # matters more than it looks. A counter would need session state at the
-    # point the brief line is rendered, would renumber across sessions, and
-    # would make a replayed transcript resolve its refs to different rows
-    # than it did when it was live. A derived ref is stable forever, so the
-    # same email is `e7a3f1` in every session that ever reads it.
-    #
-    # It is also the validation. The model emits the ref from context; a ref
-    # it invented does not resolve, and the pill renders dead rather than
-    # linking confidently to the wrong thing. A *collision* would link to the
-    # wrong thing silently, so `target` is stored and the insert is
-    # OR IGNORE — a second target claiming a taken ref never overwrites the
-    # first, and `resolve()` returns the row that was actually handed out.
-    #
-    # Derived and droppable: every row can be rebuilt by re-reading the
-    # provider caches it points into. Nothing is a source of truth here.
+    # v54 — cite_refs: ref = sha1(kind+target) truncated (stable across sessions); INSERT OR IGNORE keeps the first target on a collision. Derived.
     """
     CREATE TABLE cite_refs (
         ref     TEXT PRIMARY KEY,       -- kind letter + hex, e.g. e7a3f1
@@ -1406,13 +899,7 @@ MIGRATIONS: list[str] = [
     );
     CREATE UNIQUE INDEX cite_refs_target ON cite_refs (kind, target);
     """,
-    # --- v-next: what you actually do with email (the sender prior) ---
-    #
-    # Review's recommendation takes a prior from your record of decisions
-    # rather than from the model alone. Nothing here is a source of truth:
-    # every row is an aggregate of email_triage.user_action, the real record,
-    # so this table can be dropped and rebuilt by rebuild() at any time. It
-    # exists because the aggregate is read on every queue render.
+    # --- v-next: email_sender_stats (the sender prior). Derived from email_triage.user_action; rebuild() recreates it. ---
     """
     CREATE TABLE email_sender_stats (
         scope      TEXT NOT NULL,       -- 'addr' | 'domain'
@@ -1424,42 +911,15 @@ MIGRATIONS: list[str] = [
     );
     """,
 
-    # `n` decays and `obs` does not, because the two answer different
-    # questions. `obs` is "how many times have you decided about this sender"
-    # — evidence, which does not evaporate: two decisions ninety days apart
-    # are still two decisions. `n` is "how recently did you decide *this* way"
-    # — which of several actions is current.
-    #
-    # Collapsing both into the decayed count made a sender decided twice a day
-    # apart sum to 1.992 and never clear a floor of two, and one decided twice
-    # a quarter apart sum to 1.5 and never clear it at all. The backtest that
-    # justified this feature gated on a raw tally and used the weights only to
-    # pick the winner; this restores that.
+    # `n` decays (which action is current); `obs` doesn't (how much evidence). Don't merge them.
     """
     ALTER TABLE email_sender_stats ADD COLUMN obs INTEGER NOT NULL DEFAULT 0;
     """,
-    # --- v-next: the hour a task is due, not just the day ---
-    #
-    # `due` stays exactly what it was — a day key — so every comparison
-    # already written against day_key() keeps its meaning. Widening it to
-    # "YYYY-MM-DDTHH:MM" instead would have broken the equality test that
-    # decides the due-today group (`due == today`) and every
-    # COALESCE(due,'9999') ordering with it, silently and everywhere.
-    #
-    # So the clock time is a separate optional refinement of that day, not a
-    # second copy of the date: one datum per column, and NULL keeps meaning
-    # what it always meant — due that day, no hour named, nothing overdue
-    # until the day itself rolls over.
+    # --- v-next: tasks.due_time. `due` stays a day key; NULL = no hour named. ---
     """
     ALTER TABLE tasks ADD COLUMN due_time TEXT;   -- 'HH:MM' local, NULL = all-day
     """,
-    # --- v-next: the calendar list, instead of a name copied onto every event ---
-    #
-    # A name copied onto each cached event goes stale on cold rows after a
-    # rename, and a calendar with no cached events can't be listed at all.
-    # One row per calendar fixes both. Derived and droppable like every other
-    # provider cache — `_sync` rewrites it from calendarList on each pull, and
-    # backfills the denormalized copy on `events` from it.
+    # --- v-next: calendars list (derived; backfills events.calendar_name). ---
     """
     CREATE TABLE calendars (
         calendar_id  TEXT PRIMARY KEY,
@@ -1467,30 +927,11 @@ MIGRATIONS: list[str] = [
         refreshed_at TEXT NOT NULL
     );
     """,
-    # --- v-next: what an event says, not just when it is ---
-    #
-    # The approval card for a delete shows the notes that say which event it
-    # is (the Zoom link, the agenda). Truncation is the reader's job, not the cache's: the column holds what
-    # Google holds, and console_preview cuts it to a card's worth.
+    # --- v-next: events.description, full text (console_preview truncates). ---
     """
     ALTER TABLE events ADD COLUMN description TEXT;
     """,
-    # --- v-next: a location day computed to nothing is still computed ---
-    #
-    # location._ensure_days took "has location_days rows" to mean "computed",
-    # so a day with no fixes — which rightly writes no rows, a gap and not a
-    # zero — read as never-computed on every GET, and every summary()/get()/
-    # trace() re-ran a DELETE write transaction across all of them.
-    #
-    # One row per computed day, like health_sync/reddit_sync. `points` is the
-    # fix count the day was computed from: OwnTracks flushes a queue of
-    # offline fixes late, so a marked day (gap or not) is recomputed when its
-    # count moves, which a bare timestamp couldn't notice. Derived and
-    # droppable along with location_days — dropping it costs one recompute.
-    #
-    # The backfill marks the days location_days already holds, at their
-    # current counts, so the migration doesn't trigger a sweep; gap days get
-    # marked on the next read that covers them.
+    # --- v-next: location_computed. A day computed to nothing is still computed; `points` triggers a recompute when late fixes arrive. ---
     """
     CREATE TABLE location_sync (
         day          TEXT PRIMARY KEY,         -- day_key, YYYY-MM-DD
@@ -1503,21 +944,8 @@ MIGRATIONS: list[str] = [
                MAX(d.refreshed_at)
         FROM location_days d GROUP BY d.day;
     """,
-    # --- v-next: review files every message, so it can be found again ---
-    #
-    # Review collapses to archive / unsubscribe / keep, and every one of them
-    # files the message under a label from a fixed set (email_triage.TAXONOMY),
-    # because after review the only use a message has left is being found.
-    #
-    # `label` is the model's pick and `terms` the search handles it pulled out
-    # of the body (order numbers, amounts, people, dates) — both app-generated
-    # like `summary`, regenerable at token cost. `user_label` is what the
-    # message was actually filed under: real data, the label-side twin of
-    # `user_action`, and what the sender prior for labels is read from.
-    #
-    # email_fts is derived and droppable: email_search.ensure_index() rebuilds
-    # it whole whenever email_fts_state's signature stops matching the tables
-    # it indexes. No body text goes in — `terms` is as close as it gets.
+    # --- v-next: review labels + email_fts. label/terms are model output; user_label is real data; email_fts is derived
+    # (email_search.ensure_index rebuilds when email_fts_state's signature changes). ---
     """
     ALTER TABLE email_triage ADD COLUMN label TEXT;
     ALTER TABLE email_triage ADD COLUMN terms TEXT;
@@ -1530,11 +958,7 @@ MIGRATIONS: list[str] = [
         signature TEXT NOT NULL
     );
     """,
-    # email_fts without the porter stemmer. A search box matches as you type,
-    # so every word is a prefix query — and porter indexes "Dining" as "dine",
-    # which "dini*" can never reach. Prefix matching covers what stemming was
-    # for ("receipt" finds "receipts"). Derived, so dropping it loses nothing;
-    # the cleared signature makes the next search rebuild it.
+    # email_fts without porter: prefix queries can't reach stemmed words. Derived; the cleared signature forces a rebuild.
     """
     DROP TABLE email_fts;
     CREATE VIRTUAL TABLE email_fts USING fts5(
@@ -1542,24 +966,8 @@ MIGRATIONS: list[str] = [
         tokenize = 'unicode61 remove_diacritics 2');
     DELETE FROM email_fts_state;
     """,
-    # --- v-next: expenses claimed back from Dad (app/expenses.py) ---
-    #
-    # All three tables are real data, not cache. An expense is what you asked
-    # to be paid back, which is its own fact rather than a view of
-    # fin_transactions: part of a grocery run, or cash that never touched a
-    # card. So each row snapshots day, merchant and the charge's amount, and
-    # `transaction_id` is only a soft link back. The Plaid cache stays
-    # droppable, and a claim outlives the row it was made from.
-    #
-    # A batch is one spreadsheet sent. Rows whose batch_id is NULL are still
-    # waiting to go out. Once sent, a row is frozen, because it has to match
-    # the file Dad actually has.
-    #
-    # `expense_reviewed` is "I've been through this charge". It is kept per
-    # transaction because a date watermark would be wrong: Plaid dates a
-    # posted charge by when it was authorised, so a card swipe that posts
-    # after an export lands *below* a date line without anyone having looked
-    # at it.
+    # --- v-next: expenses (app/expenses.py). Real data: each claim snapshots its charge (transaction_id is a soft link).
+    # batch_id NULL = unsent; sent rows are frozen. expense_reviewed is per transaction, not a date watermark. ---
     """
     CREATE TABLE expense_batches (
         id          INTEGER PRIMARY KEY,
@@ -1590,34 +998,12 @@ MIGRATIONS: list[str] = [
         reviewed_at    TEXT NOT NULL
     );
     """,
-    # --- v-next: expenses claimed while the charge is still pending ---
-    #
-    # Plaid posts a pending charge as a new transaction (new id, and maybe a
-    # new amount: tips, fuel holds, hotel deposits). The posted one names the
-    # pending one it replaces, and expenses.follow_posted moves the claim
-    # over on the sync that delivers it.
-    #
-    # `claimed_pending` is 1 until that happens. A claim still at 1 whose
-    # charge is gone from fin_transactions was a hold that never posted.
-    # `posted_amount` is set only on a claim that was already sent when its
-    # charge settled at a different number: the sent row stays frozen to
-    # match the spreadsheet, and this is how the card knows to say so.
-    #
-    # No backfill: until now a pending charge couldn't be claimed, so every
-    # existing row is correctly 0 / NULL.
+    # --- v-next: claims on pending charges. claimed_pending=1 until expenses.follow_posted moves it; posted_amount only on a sent claim that settled differently. ---
     """
     ALTER TABLE expenses ADD COLUMN claimed_pending INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE expenses ADD COLUMN posted_amount REAL;
     """,
-    # --- v-next: snoozes (plan view, "needs you" list) ---
-    #
-    # One row per ask pushed out of the list until `until` (local ISO
-    # datetime). `ask_id` is the card hook's stable key for the ask
-    # (`task:<id>`, `email:review`, `people`, `debts:<id>`), so a snooze
-    # outlives a reload but not the ask: a task that's done leaves a row
-    # nobody reads, and expired rows are pruned on the next read.
-    #
-    # No backfill: nothing could be snoozed before this.
+    # --- v-next: snoozes. ask_id is the card hook's stable key; expired rows are pruned on read. ---
     """
     CREATE TABLE snoozes (
         ask_id  TEXT PRIMARY KEY,
@@ -1625,41 +1011,13 @@ MIGRATIONS: list[str] = [
         created TEXT NOT NULL
     );
     """,
-    # --- v-next: the last 24 refresh outcomes per provider (plan view's map) ---
-    #
-    # provider_health holds one cycle and provider_events only transitions, so
-    # nothing could draw "how has this source been doing": a source that fails
-    # one cycle in ten looks healthy on both. `recent` is the last 24 outcomes,
-    # oldest first, one character each — o ok, x failed, . nothing to do (the
-    # refresh skipped) — written by heartbeat.record(). Derived and droppable
-    # like the rest of the table.
-    #
-    # No backfill: the past cycles were never kept, so every row starts empty
-    # and fills over the next two hours of polling.
+    # --- v-next: provider_health.recent, last 24 outcomes oldest first (o ok, x failed, . skipped), written by heartbeat.record(). ---
     """
     ALTER TABLE provider_health ADD COLUMN recent TEXT NOT NULL DEFAULT '';
     """,
-    # --- v-next: the Brain (app/brain.py) — what Kestrel knows about the user ---
-    #
-    # One row per fact, rendered into the vault's BRAIN_DIR as a read-only view
-    # (the tasks.md arrangement). Facts are learned from sources that stay
-    # where they live — console transcripts, messages, email, notes — and
-    # cite them by `source_ref` with a verbatim `quote`, so every page can be
-    # rebuilt from the sources. The one thing that can't be is the user's own
-    # ruling: `verdict` (confirmed|rejected) is NOT droppable, and a rebuild
-    # deletes only unruled ingest rows. A rejected fact stays as a tombstone
-    # that ingest is shown so it doesn't learn the same wrong thing again.
-    #
-    # status: active (told to Kestrel directly, or confirmed) | pending (read
-    # off a source; waits for a ✓, usable but labelled unconfirmed) |
-    # superseded (a newer fact replaced it — `superseded_by`) | rejected.
-    # `prior_status` is what a supersede overwrote, so rejecting the
-    # replacement can put the old fact back the way it was.
-    #
-    # brain_runs is the ingest/lint ledger and the watermark lazy ingest and
-    # the backfill resume from. Derived; droppable.
-    #
-    # No backfill: nothing was learned before this.
+    # --- v-next: the Brain (app/brain.py). verdict (confirmed|rejected) is NOT droppable; rebuild deletes only unruled ingest rows;
+    # a rejected fact stays as a tombstone. status: active | pending | superseded (superseded_by) | rejected; prior_status restores on rejecting a replacement.
+    # brain_runs is the ingest/lint ledger and watermark. ---
     """
     CREATE TABLE brain_pages (
         slug        TEXT PRIMARY KEY,       -- 'school', 'people/alex-smith'
@@ -1702,42 +1060,16 @@ MIGRATIONS: list[str] = [
         finished_at  TEXT
     );
     """,
-    # --- v-next: where a brain fact came from, in words ---
-    #
-    # `source_ref` is a guid or a session id — checkable, not readable. The
-    # label ("texts with Jamie", "Kestrel chat", "email from USC Housing")
-    # is fixed at ingest from the source itself, so a page can say where a
-    # fact came from without a join into a droppable cache.
-    #
-    # No backfill: the table was empty when this landed.
+    # --- v-next: brain.source_label, fixed at ingest so pages avoid a join into a droppable cache. ---
     """
     ALTER TABLE brain_facts ADD COLUMN source_label TEXT;
     """,
-    # --- office hours: proposals can add a weekly block, not just override one date ---
-    #
-    # A TA posting "starting next week, OH Thursdays 12-2 in GCS" is a
-    # standing schedule, which cancel/change on a date can't say. action='add' is
-    # the third shape — `when_str` holds the weekly rule ("Thu 12:00-14:00"),
-    # `day` the first date it applies, and approval calls courses.set_hours.
-    #
-    # `role` is the new block's (TA vs instructor), which set_hours needs and
-    # a dated override never did. `prior` is the JSON of the entry an approved
-    # add replaced — set_hours amends a person's same-weekday block in place,
-    # so undo has to put that back rather than delete the block outright.
-    #
-    # No backfill: existing rows are all cancel/change and need neither.
+    # --- office hours: action='add' (weekly block). when_str = rule, day = first date, role; prior = JSON of the entry an approved add replaced (for undo). ---
     """
     ALTER TABLE oh_proposals ADD COLUMN role TEXT;
     ALTER TABLE oh_proposals ADD COLUMN prior TEXT;
     """,
-    # --- owed beers, beside the debts card ---
-    #
-    # "Mo owes me a beer" is a favor, not money. Filed as a $5 debt it would
-    # inflate the owed-to-you total and get nudged like rent, so it gets its
-    # own table. One row per beer: settling one is the same flag-flip as any
-    # small list, and the card groups them into "Mo ×2".
-    #
-    # No backfill: there were no beers anywhere before this.
+    # --- owed beers: one row per beer, kept apart from debts (a favor, not money). ---
     """
     CREATE TABLE beers (
         id         INTEGER PRIMARY KEY,
@@ -1751,15 +1083,7 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX beers_open ON beers (settled, direction);
     """,
-    # --- USC athletics schedule (providers/athletics.py) ---
-    #
-    # Sidearm's public iCal feed for every USC sport is truth; this is a
-    # derived cache, safe to drop and re-pull (the provider refetches when
-    # its newest fetched_at is past the feed's own 2h TTL). `day` is the
-    # Pacific civil date of the game; `start` is null when the feed has a
-    # date but no time yet (a TBA kickoff arrives as DTSTART;VALUE=DATE).
-    #
-    # No backfill: nothing held this before; the first read fetches it.
+    # --- USC athletics (providers/athletics.py): derived. day = Pacific civil date; start NULL when TBA. ---
     """
     CREATE TABLE athletics_events (
         uid        TEXT PRIMARY KEY,
@@ -1778,17 +1102,7 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX athletics_events_day ON athletics_events (day);
     """,
-    # --- Brightspace due dates (providers/coursework.py) ---
-    #
-    # The user's D2L calendar feed (BRIGHTSPACE_ICS_URL, a per-user token
-    # URL kept in .env) is truth; derived cache, safe to drop, refetched past
-    # its TTL. One row per calendar item across every course: assignment due
-    # dates (kind 'due'), content release dates ('available'), and the odd
-    # item that is neither ('event' — some instructors' deadlines arrive
-    # without the " - Due" suffix). It has no submission status; D2L doesn't
-    # publish that in the feed.
-    #
-    # No backfill: nothing held this before; the first read fetches it.
+    # --- Brightspace due dates (providers/coursework.py): derived. kind: due | available | event. ---
     """
     CREATE TABLE coursework_items (
         uid         TEXT PRIMARY KEY,
@@ -1805,17 +1119,7 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX coursework_items_day ON coursework_items (day);
     """,
-    # --- Documents the console can point into (app/docs.py) ---
-    #
-    # A PDF dropped on the console used to be read to text and thrown away,
-    # so an answer about it could only describe a page, never show it. Now
-    # the bytes are kept at DATA_DIR/docs/<sha>.pdf, which is the source of
-    # truth; this row is what's known about them. `pages` is pypdf's text
-    # per page (a JSON array, index 0 = page 1) and is derived — re-reading
-    # the file rebuilds it. The citation ref (`d…`) lives in cite_refs like
-    # every other kind, minted over `sha`.
-    #
-    # No backfill: nothing kept these files before.
+    # --- docs (app/docs.py): bytes at DATA_DIR/docs/<sha>.pdf are truth; `pages` is a derived JSON array (index 0 = page 1). ---
     """
     CREATE TABLE docs (
         sha        TEXT PRIMARY KEY,        -- sha256 of the bytes
@@ -1828,18 +1132,8 @@ MIGRATIONS: list[str] = [
         opened_at  TEXT NOT NULL            -- last time it was attached
     );
     """,
-    # Food tracker (FOOD_PLAN.md). foods/food_log/food_profile/
-    # food_targets/food_days/weigh_ins are truth; food_venues, usc_menu_items,
-    # usc_menu_days and food_estimates are the usc_dining provider's derived
-    # cache — droppable, refetched. A food's nutrients are a JSON object per
-    # serving; a nutrient it doesn't know is absent, never 0.
-    #
-    # foods is keyed (source, source_id): sr28 → the SR28 id; usc_estimate →
-    # the normalized menu-item name (estimated once, shared by every hall and
-    # day that serves it); custom → "venue|normalized name". Every source sets
-    # source_id, so the one unique index is the dedupe for all of them.
-    #
-    # No backfill: nothing tracked food before.
+    # Food tracker (FOOD_PLAN.md). foods/food_log/food_profile/food_targets/food_days/weigh_ins are truth; the usc_*/food_venues/
+    # food_estimates tables are the derived dining cache. A nutrient it doesn't know is absent, never 0. foods is keyed (source, source_id).
     """
     CREATE TABLE foods (
         id           INTEGER PRIMARY KEY,
@@ -1916,17 +1210,7 @@ MIGRATIONS: list[str] = [
         error        TEXT
     );
     """,
-    # --- Study coverage (app/study.py) ---
-    #
-    # One row per quiz question or flashcard answered in the console, posted
-    # by StudyBlock.jsx on "Send results". Truth for "which lectures have I
-    # actually drilled, and where do my misses sit" — the review log (vault
-    # note) holds what was got wrong, this holds what was attempted at all.
-    # `block` is a hash of the fence's source, so sending the same quiz's
-    # results twice replaces rather than doubles. `doc_sha`/`page` come from
-    # the item's `slide` (else `cite`) ref; NULL when it had neither.
-    #
-    # No backfill: results were only ever drafted into the composer.
+    # --- study coverage (app/study.py): one row per answered item; block = hash of the fence source, so a resend replaces. ---
     """
     CREATE TABLE study_attempts (
         block      TEXT NOT NULL,
@@ -1945,12 +1229,7 @@ MIGRATIONS: list[str] = [
     CREATE INDEX study_attempts_doc ON study_attempts (doc_sha, page);
     CREATE INDEX study_attempts_course ON study_attempts (course, day);
     """,
-    # --- .docx extraction (providers/attachments.py) ---
-    #
-    # Word files used to be filed `unsupported`, and that verdict is cached:
-    # extract() never retries a row, so without this the files already tried
-    # would stay unreadable after support landed. attachment_text is a
-    # derived cache, so dropping rows is safe.
+    # --- .docx: clears cached `unsupported` verdicts (extract() never retries a row). ---
     """
     DELETE FROM attachment_text
      WHERE status = 'unsupported'
@@ -1960,31 +1239,15 @@ MIGRATIONS: list[str] = [
                OR (COALESCE(mime, '') IN ('', 'application/octet-stream', 'application/zip')
                    AND lower(COALESCE(filename, '')) LIKE '%.docx'));
     """,
-    # --- read receipts (providers/messages.py) ---
-    #
-    # chat.db stamps date_read/date_delivered onto a message row *after* it
-    # arrives, in place — the ROWID never moves, so the watermark sync that
-    # copied the row never saw the receipt. These are refreshed separately
-    # (messages._sync_receipts) over a recent window, and the rows already
-    # cached when this lands are backfilled once by the same function.
-    # Outbound: when they read yours (iMessage with receipts on, else NULL
-    # forever). Inbound: when you read theirs. is_read/is_delivered are kept
-    # beside the timestamps because chat.db sets the flag without a date on
-    # a few percent of rows.
+    # --- read receipts: chat.db stamps these in place after arrival; refreshed by messages._sync_receipts.
+    # is_read/is_delivered can be set without a date. ---
     """
     ALTER TABLE messages ADD COLUMN is_read INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE messages ADD COLUMN read_at TEXT;
     ALTER TABLE messages ADD COLUMN is_delivered INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE messages ADD COLUMN delivered_at TEXT;
     """,
-    # --- scheduled email (routes/email.py, email_schedule.py) ---
-    #
-    # Gmail's API has no scheduled send, so the schedule lives here and the
-    # message lives in Gmail as an ordinary draft until send_at, when
-    # email_schedule.send_due() calls drafts.send on it. The draft is the
-    # content — edit it in Gmail before then and the edit is what goes; delete
-    # it and the send finds a 404 and records `cancelled`. Source of truth,
-    # not a cache: a lost row is a mail that silently never goes.
+    # --- scheduled email: the Gmail draft is the content; email_schedule.send_due() sends it at send_at. Truth, not cache. ---
     """
     CREATE TABLE scheduled_emails (
         id          INTEGER PRIMARY KEY,
@@ -2002,19 +1265,8 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX scheduled_emails_due ON scheduled_emails (status, send_at);
     """,
-    # --- activity log + self-text routing (app/activity.py, app/selftexts.py) ---
-    #
-    # `activity` is every write the backend made on its own — nobody clicked
-    # anything — so "what changed while I was away" has one answer and each
-    # row can be taken back. `ref` is the JSON handle the undo needs (a task
-    # id, a calendar event id, food_log ids); `origin` ties rows from one
-    # self-text burst together so a redo can find its source. Truth, not a
-    # cache: the rows are the only record of what an automation did.
-    #
-    # A burst is one or more texts to yourself sent close together ("photo",
-    # then "for the party friday") and is routed as a unit. selftext_messages
-    # is which burst each message went into, and is also the "already seen"
-    # mark — a self-text with no row here hasn't been routed.
+    # --- activity log + self-texts. activity = every unprompted backend write; ref = undo handle (JSON), origin groups a burst. Truth.
+    # selftext_messages = which burst a message went into, and the already-routed mark. ---
     """
     CREATE TABLE activity (
         id          INTEGER PRIMARY KEY,
@@ -2043,32 +1295,17 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX selftext_messages_burst ON selftext_messages (burst_id);
     """,
-    # --- Study confidence (app/study.py) ---
-    #
-    # How sure the user said they were before answering a quiz question:
-    # dont_know | guess | unsure | sure, NULL when they didn't say (and for
-    # cards, which grade themselves). Right/wrong alone can't tell a slip
-    # from a misconception; wrong-and-sure is the misconception.
+    # --- study confidence: dont_know | guess | unsure | sure; NULL = not said (and cards). ---
     #
     # No backfill: earlier attempts were never asked.
     """
     ALTER TABLE study_attempts ADD COLUMN confidence TEXT;
     """,
-    # --- Study confidence, rated late ---
-    #
-    # 1 when `confidence` was given after the verdict was on screen. Allowed
-    # because the user asked for it, kept apart because such a rating can be
-    # fitted to the verdict. No backfill: every earlier row was asked first.
+    # --- confidence_late = 1: rated after the verdict was on screen. ---
     """
     ALTER TABLE study_attempts ADD COLUMN rated_after INTEGER NOT NULL DEFAULT 0;
     """,
-    # --- Project folders ---
-    #
-    # The picker's grouping of dev projects, and only that: a project still
-    # lives where it lives on disk (hardcoded paths and ~/.claude/projects
-    # session history are keyed by that path), so moving one is this row. A
-    # folder exists while something is in it. No row means no folder, and a
-    # row for a directory that has gone is ignored.
+    # --- project folders: picker grouping only; no row = no folder; rows for missing dirs are ignored. ---
     """
     CREATE TABLE project_folders (
         path TEXT PRIMARY KEY,
@@ -2076,19 +1313,8 @@ MIGRATIONS: list[str] = [
         updated_at TEXT NOT NULL
     );
     """,
-    # --- Food accuracy (app/food.py) ---
-    #
-    # portion_conf: how sure the *amount* of one entry is, apart from how sure
-    # the food's numbers are (foods.confidence). NULL = the amount was stated
-    # (typed, tapped, or answered); 0.6 = guessed from a photo or a vague
-    # line; 0.9 = the one portion question was answered. Portion is where
-    # most calorie error comes from, so an entry's range uses both.
-    # ask: the pending portion question (JSON), NULL when none or answered.
-    # Backfill: entries whose note says the amount was guessed or estimated
-    # (written by the console, e.g. "3 balls, guessed as half a serving")
-    # were exactly that.
-    # weigh_ins.at: when the weigh-in was entered, so a non-morning one can be
-    # told apart. No backfill — the time was never recorded.
+    # --- food accuracy (app/food.py). portion_conf: NULL = stated, 0.6 = guessed, 0.9 = portion question answered; ask = pending question (JSON).
+    # Backfill marks entries whose note says guessed/estimated. weigh_ins.at: no backfill. ---
     """
     ALTER TABLE food_log ADD COLUMN portion_conf REAL;
     ALTER TABLE food_log ADD COLUMN ask TEXT;
@@ -2170,12 +1396,7 @@ MIGRATIONS: list[str] = [
     CREATE INDEX IF NOT EXISTS delegate_runs_batch ON delegate_runs (batch, variant);
     CREATE INDEX IF NOT EXISTS delegate_runs_day ON delegate_runs (day, provider);
     """,
-    # --- console_sessions (app/console_work.py → app/token_usage.py): which
-    # tab and mode a Claude session ran in. The transcript knows the model,
-    # the tokens and the cwd, but not whether a vault session was a general
-    # or a study tab, nor the tab's title; console_work's rows go when the
-    # work does, so this is the record that stays. Not derived: nothing else
-    # holds it, though losing it only costs labels on the usage page.
+    # --- console_sessions (app/console_work.py → app/token_usage.py): tab and mode of a Claude session; outlives console_work's rows. ---
     """
     CREATE TABLE IF NOT EXISTS console_sessions (
         session_id TEXT PRIMARY KEY,
@@ -2273,6 +1494,118 @@ MIGRATIONS: list[str] = [
         device_id INTEGER
     );
     """,
+    # --- saved Claude accounts (app/claude_accounts.py). No secret here (tokens: Keychain).
+    # profile = the CLI's oauthAccount JSON; caps are percents, NULL = no ceiling.
+    """
+    CREATE TABLE IF NOT EXISTS claude_accounts (
+        uuid TEXT PRIMARY KEY,
+        label TEXT NOT NULL,
+        email TEXT,
+        plan TEXT,
+        profile TEXT,
+        priority INTEGER NOT NULL DEFAULT 0,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        five_hour_cap REAL,
+        weekly_cap REAL,
+        idle_only INTEGER NOT NULL DEFAULT 0,
+        active_since REAL,
+        claimed_idle INTEGER NOT NULL DEFAULT 0,
+        needs_login TEXT,
+        created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS claude_account_state (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS claude_account_events (
+        id INTEGER PRIMARY KEY,
+        at TEXT NOT NULL,
+        text TEXT NOT NULL
+    );
+    """,
+    # --- models (app/model_catalog.py). model_catalog and claude_model_access are derived
+    # (droppable); model_defaults is the user's (keys "mode:dev", "tier:grunt", "provider:codex").
+    """
+    CREATE TABLE IF NOT EXISTS model_catalog (
+        provider TEXT NOT NULL,
+        id TEXT NOT NULL,
+        family TEXT NOT NULL,
+        label TEXT,
+        released TEXT,
+        rank INTEGER NOT NULL DEFAULT 0,
+        lifecycle TEXT NOT NULL DEFAULT 'active',
+        PRIMARY KEY (provider, id)
+    );
+    CREATE TABLE IF NOT EXISTS model_catalog_fetches (
+        provider TEXT PRIMARY KEY,
+        at REAL NOT NULL,
+        ok INTEGER NOT NULL,
+        note TEXT
+    );
+    CREATE TABLE IF NOT EXISTS claude_model_access (
+        account_uuid TEXT NOT NULL,
+        family TEXT NOT NULL,
+        ok INTEGER NOT NULL,
+        reason TEXT,
+        source TEXT NOT NULL,
+        checked_at REAL NOT NULL,
+        PRIMARY KEY (account_uuid, family)
+    );
+    CREATE TABLE IF NOT EXISTS model_defaults (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    );
+    """,
+    # --- outside providers' accounts (app/delegates/accounts.py): one row per sign-in, its token in
+    # its `home`, none here. allowed_for: comma list of personal|learning|commercial.
+    # delegate_runs.account is NULL before accounts or on an API key.
+    """
+    CREATE TABLE IF NOT EXISTS delegate_accounts (
+        id TEXT PRIMARY KEY,
+        provider TEXT NOT NULL,
+        label TEXT NOT NULL,
+        email TEXT,
+        plan TEXT,
+        home TEXT NOT NULL,
+        allowed_for TEXT NOT NULL DEFAULT 'personal,learning,commercial',
+        priority INTEGER NOT NULL DEFAULT 0,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        monthly_credits REAL,
+        credit_cap REAL,
+        window_cap REAL,
+        created_at TEXT NOT NULL
+    );
+    ALTER TABLE delegate_runs ADD COLUMN account TEXT;
+    """,
+    # --- model prices (app/model_prices.py): derived, droppable; $ per million tokens, long_*
+    # = the tier past long_above. delegate_runs.tokens_cached is NULL when the CLI doesn't say.
+    """
+    CREATE TABLE IF NOT EXISTS model_prices (
+        source TEXT NOT NULL,
+        model TEXT NOT NULL,
+        input REAL NOT NULL,
+        output REAL NOT NULL,
+        cache_read REAL,
+        cache_write_5m REAL,
+        cache_write_1h REAL,
+        long_above INTEGER,
+        long_input REAL,
+        long_output REAL,
+        long_cache_read REAL,
+        long_cache_write_5m REAL,
+        long_cache_write_1h REAL,
+        PRIMARY KEY (source, model)
+    );
+    CREATE TABLE IF NOT EXISTS model_price_fetches (
+        source TEXT PRIMARY KEY,
+        at REAL NOT NULL,
+        ok INTEGER NOT NULL,
+        note TEXT,
+        good_at REAL,
+        models INTEGER
+    );
+    ALTER TABLE delegate_runs ADD COLUMN tokens_cached INTEGER;
+    """,
 ]
 
 
@@ -2287,10 +1620,7 @@ def day_key(dt: datetime | None = None) -> str:
 def day_instant(day: str, hhmm: str) -> datetime:
     """The wall-clock instant 'HH:MM on day key `day`' — day_key() inverted.
 
-    A day key runs 04:00 to 03:59, so 01:00 on day key D is 01:00 on the
-    *calendar* day after D. Resolving it as D 01:00 instead would put a task
-    filed for "tonight at 1am" twenty-three hours in the past the moment it
-    was filed, and day_key(day_instant(d, t)) would stop returning d.
+    A day key runs 04:00-03:59, so 01:00 on key D is 01:00 on the calendar day after D.
     """
     at = datetime.fromisoformat(f"{day}T{hhmm}")
     if at.hour < DAY_ROLLOVER_HOUR:
@@ -2307,17 +1637,9 @@ _wal_lock = threading.Lock()
 def _enable_wal(con: sqlite3.Connection) -> None:
     """Put the database in WAL mode, tolerating a concurrent first open.
 
-    Switching a database *into* WAL needs an exclusive lock, and SQLite does
-    not run the busy handler for that transition — so `busy_timeout` can't
-    save it, and whichever connection loses the race fails outright with
-    "database is locked". It only happens on a database that isn't WAL yet
-    (the mode is persistent in the file header), so it's a fresh-DB-only
-    race: rare, and it lands on whichever caller happened to open second.
-
-    Already-WAL is the overwhelmingly common case and costs one read, no
-    lock, no write. Otherwise the conversion is serialized in-process and
-    retried until `busy_timeout` worth of time has passed, which also covers
-    the other process that may hold app.db (skills running the sqlite3 CLI).
+    SQLite skips the busy handler when switching *into* WAL, so busy_timeout
+    can't cover it: serialize in-process and retry for BUSY_TIMEOUT_MS.
+    Already-WAL (the norm) costs one read.
     """
     if con.execute("PRAGMA journal_mode").fetchone()[0] == "wal":
         return
@@ -2328,29 +1650,21 @@ def _enable_wal(con: sqlite3.Connection) -> None:
                 con.execute("PRAGMA journal_mode=WAL")
                 return
             except sqlite3.OperationalError:
-                # Someone else is converting or holds the write lock. Once
-                # they finish, this same statement is a no-op that succeeds.
+                # Someone else is converting; once done this is a no-op.
                 if time.monotonic() >= deadline:
                     raise
                 time.sleep(0.005)
 
 
-# Database files this process has already put in WAL and migrated. Journal
-# mode lives in the file header and this process is the only migrator
-# (CLAUDE.md: skills only ever read app.db via the sqlite3 CLI), so neither
-# can change under us — but connect() re-established both on every open, at
-# four extra statements a time on a call that happens thousands of times a
-# day. Keyed by path so the test fixture's throwaway DBs still migrate.
+# Paths already in WAL and migrated (this process is the only migrator), so
+# connect() skips four statements per open. Keyed by path for test DBs.
 _ready: set[str] = set()
 
 
 def connect() -> sqlite3.Connection:
     con = sqlite3.connect(APP_DB)
     con.row_factory = sqlite3.Row
-    # busy_timeout FIRST: journal_mode=WAL itself needs a write lock, so if it
-    # runs before the timeout is set it fails immediately ("database is
-    # locked") whenever another connection holds one (e.g. a concurrent first
-    # migration). With the timeout in place it waits instead.
+    # busy_timeout FIRST: journal_mode=WAL needs a write lock and fails at once without it.
     con.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
     if (key := str(APP_DB)) not in _ready:
         _enable_wal(con)
@@ -2362,10 +1676,7 @@ def connect() -> sqlite3.Connection:
 
 @contextmanager
 def session():
-    """Open a connection and guarantee it's closed, even on error — the
-    read/query helpers below use this instead of a bare connect()/close()
-    pair, which leaked the connection (and its WAL read lock) whenever the
-    body raised. `with con:` inside still scopes transactions as before."""
+    """Open a connection and close it even on error. `with con:` inside scopes transactions."""
     con = connect()
     try:
         yield con
@@ -2375,10 +1686,7 @@ def session():
 
 @contextmanager
 def borrow(con: sqlite3.Connection | None = None):
-    """session() for functions that take an optional caller connection: yield
-    `con` untouched when one was passed (the caller owns it — never closed or
-    committed here), else open one and close it on the way out. Transactions
-    stay the body's business either way."""
+    """session() for an optional caller connection: a passed `con` is the caller's, never closed or committed here."""
     if con is not None:
         yield con
         return
@@ -2387,10 +1695,7 @@ def borrow(con: sqlite3.Connection | None = None):
 
 
 def like_contains(text: str) -> str:
-    r"""A LIKE pattern matching `text` as a literal substring. `%` and `_` are
-    wildcards in LIKE, and every caller interpolates something a human (or the
-    model) typed — a contact named "Jean_Luc" or a search for "50%" otherwise
-    matches the wrong rows silently. Pair with ESCAPE '\'."""
+    r"""A LIKE pattern matching `text` as a literal substring (escapes `%` and `_`). Pair with ESCAPE '\'."""
     return "%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
 
 
@@ -2400,13 +1705,7 @@ def _schema_version(con: sqlite3.Connection) -> int:
     return row["v"] if row else 0
 
 
-# connect() runs _migrate() on every connection, and the backend opens many
-# concurrently (the poller refreshes all providers in parallel threads). On a
-# fresh/behind DB they would otherwise race on the same CREATE TABLE and one
-# would crash with "table already exists". This process is the only migrator
-# — terminal skills only ever query app.db via the sqlite3 CLI — so a plain
-# in-process lock serializes them: the first thread migrates, the rest wait,
-# then see the recorded fingerprints and fall through.
+# Serializes concurrent first connections (parallel poller threads) so they don't race on CREATE TABLE.
 _migrate_lock = threading.Lock()
 
 
@@ -2414,19 +1713,9 @@ _SQL_COMMENT = re.compile(r"--[^\n]*")
 
 
 def fingerprint(script: str) -> str:
-    """Identify a migration by the SQL it runs, not by where it sits in the list.
+    """Identify a migration by its SQL (comments and whitespace stripped), not its list position.
 
-    Position used to be the identity, and it silently stopped being unique the
-    first time two branches each added a 40th migration. `schema_version` then
-    said "40 applied" on both, so on either branch the count read as current
-    and that branch's own 40th was skipped without a word — the DB claiming a
-    schema it did not have. Counting cannot tell those two apart; only what
-    they actually run can.
-
-    Comments and whitespace are stripped first, so editing the prose inside a
-    migration (these carry a lot of it) doesn't change its identity and re-run
-    it. The SQL is the identity — which is another way of saying you still must
-    never change the SQL of a migration that has shipped.
+    Never change the SQL of a shipped migration: that changes its identity and re-runs it.
     """
     return hashlib.sha256(
         " ".join(_SQL_COMMENT.sub("", script).split()).encode()).hexdigest()
@@ -2442,18 +1731,11 @@ def _applied(con: sqlite3.Connection) -> set[str]:
 
 
 def _adopt(con: sqlite3.Connection, prints: list[str], v: int) -> set[str] | None:
-    """One-time hand-off from counting to fingerprints, for a DB that predates
-    them. The first `v` migrations are what a version of `v` meant, so record
-    exactly those and nothing changes on disk.
+    """One-time hand-off from version counting to fingerprints: record the first `v` migrations.
 
-    Returns None when this checkout can't do the hand-off honestly: a DB
-    counted further than this branch's list reaches was migrated by some other
-    branch, and that branch's extra scripts are not here to fingerprint. Faking
-    them either way corrupts the record — claim them and the branch that owns
-    them re-runs them into "table already exists"; ignore them and this branch
-    reuses their slot. So defer, keep the old counting behaviour for this
-    process, and say so: opening the DB once from the longer branch completes
-    the hand-off for good.
+    Returns None when the DB is counted past this checkout's list (another branch
+    migrated it; its scripts aren't here to fingerprint). Opening it once from
+    that branch completes the hand-off.
     """
     if v > len(prints):
         logging.getLogger(__name__).warning(
@@ -2492,11 +1774,7 @@ def _migrate(con: sqlite3.Connection) -> None:
                 con.execute("INSERT INTO schema_applied"
                             " (fingerprint, idx, applied_at) VALUES (?,?,?)",
                             (fp, i, now))
-                # Kept in step for routes/status and anything reading the old
-                # number. It is now a display of how far the list has been
-                # walked, not the thing decisions are made on — and it never
-                # goes backwards, so a DB another branch counted higher keeps
-                # its count.
+                # Display only (routes/status); never goes backwards.
                 con.execute("DELETE FROM schema_version")
                 con.execute("INSERT INTO schema_version (v) VALUES (?)",
                             (max(i, v),))
@@ -2512,11 +1790,7 @@ TASK_FIELDS = (
 
 CLOSED_STATUSES = ("done", "dropped")
 
-# Chronological ordering over the two due columns. Within one day key the
-# timed tasks come first in clock order and the untimed ones last (they're due
-# by end of day, not at 00:00) — and because a day key runs 04:00 to 03:59,
-# an after-midnight time is the *end* of its day, not the start of it, so
-# 01:00 sorts after 23:00 rather than eleven hours before it.
+# Per day key: timed tasks in clock order, untimed last; times before 04:00 sort after 23:00.
 DUE_ORDER = (
     "COALESCE(due,'9999') ASC,"
     " CASE WHEN due_time IS NULL THEN 3 WHEN due_time < '04:00' THEN 2 ELSE 1 END ASC,"
@@ -2527,11 +1801,7 @@ DUE_ORDER = (
 def split_due(value: str | None) -> tuple[str | None, str | None]:
     """Split a due value into (day key, 'HH:MM' or None).
 
-    Accepts the bare "YYYY-MM-DD" every existing caller passes, and also
-    "YYYY-MM-DDTHH:MM" / "YYYY-MM-DD HH:MM" / a trailing ":SS" — so one field
-    can carry an hour without every caller (console tools, the API, skills)
-    needing a second one. Raises ValueError on anything else rather than
-    filing a task with a due date nobody can compare.
+    Accepts "YYYY-MM-DD", "YYYY-MM-DDTHH:MM", "YYYY-MM-DD HH:MM", optional ":SS". Raises ValueError otherwise.
     """
     if value is None:
         return None, None
@@ -2551,8 +1821,7 @@ def split_due(value: str | None) -> tuple[str | None, str | None]:
 
 
 def normalize_due_time(value: str | None) -> str | None:
-    """Validate an 'HH:MM' due time, dropping any seconds. NULL/'' means the
-    task is due that day with no hour named."""
+    """Validate an 'HH:MM' due time, dropping seconds. NULL/'' = no hour named."""
     if value is None:
         return None
     raw = str(value).strip()
@@ -2565,17 +1834,15 @@ def normalize_due_time(value: str | None) -> str | None:
 
 
 def _normalize_due(fields: dict, current_due: str | None = None) -> None:
-    """Fold a combined "due" ("YYYY-MM-DDTHH:MM") into the two columns, in
-    place. A `due` that names no hour clears `due_time` too, rather than
-    leaving yesterday's 9am hanging off a task rescheduled to a plain date —
-    but only when `due` is actually being set, so a PATCH that touches
-    neither field leaves both alone. `current_due` is the date already on the
-    row, so a PATCH setting only the hour isn't read as a homeless time."""
+    """Fold a combined "due" into the two columns, in place.
+
+    A `due` naming no hour clears `due_time`; a PATCH touching neither leaves both.
+    `current_due` is the row's date, so an hour-only PATCH isn't a homeless time.
+    """
     if "due" in fields:
         day, hhmm = split_due(fields["due"])
         fields["due"] = day
-        # An explicit due_time in the same call wins over the one parsed out
-        # of `due`; passing both is how a date + time picker sends it.
+        # An explicit due_time in the same call wins over the one parsed from `due`.
         if fields.get("due_time") is None:
             fields["due_time"] = hhmm
     if "due_time" in fields:
@@ -2585,13 +1852,7 @@ def _normalize_due(fields: dict, current_due: str | None = None) -> None:
 
 
 def _annotate(t: dict, today: str) -> dict:
-    """Read-time fields the UI needs but the row doesn't store.
-
-    `deferred` hides a task until its defer date; `due_at` is the instant it
-    comes due, for the countdown. Both are derived from day_key() here rather
-    than in the client, which has no business deciding what day it is (a
-    browser clock disagrees with the 4am rollover for four hours a night).
-    """
+    """Add read-time `deferred` and `due_at`, derived from day_key() (the browser clock disagrees with the rollover)."""
     t["deferred"] = bool(t.get("defer") and t["defer"] > today)
     t["due_at"] = (day_instant(t["due"], t["due_time"]).isoformat(timespec="minutes")
                    if t.get("due") and t.get("due_time") else None)
@@ -2601,15 +1862,7 @@ def _annotate(t: dict, today: str) -> dict:
 
 
 def _with_subtasks(con: sqlite3.Connection, tasks: list[dict]) -> list[dict]:
-    """Attach children inline under each parent (one level, by convention —
-    the UI only ever renders one level deep).
-
-    A closed (done/dropped) child drops out of a still-open parent's list: it
-    has been checked off, and a top-level task that was checked off likewise
-    leaves the open listing. Re-serving it is what made checking a subtask
-    look like it did nothing — the row came straight back, unchecked.
-    A closed parent keeps all of its children, since closing cascades and
-    they are the record of what got finished."""
+    """Attach children under each parent (one level). A closed child drops out of an open parent's list; a closed parent keeps all."""
     ids = [t["id"] for t in tasks]
     if not ids:
         return tasks
@@ -2627,9 +1880,7 @@ def _with_subtasks(con: sqlite3.Connection, tasks: list[dict]) -> list[dict]:
 
 
 def list_tasks(status: str | None = "open") -> list[dict]:
-    """Top-level tasks only (parent_id IS NULL) — subtasks ride along nested
-    under their parent via _with_subtasks, so listing them again here would
-    duplicate an open subtask as its own top-level row too."""
+    """Top-level tasks only; subtasks ride nested via _with_subtasks."""
     with session() as con:
         if status:
             rows = con.execute(
@@ -2638,8 +1889,6 @@ def list_tasks(status: str | None = "open") -> list[dict]:
         else:
             rows = con.execute("SELECT * FROM tasks WHERE parent_id IS NULL ORDER BY id DESC")
         out = _with_subtasks(con, [dict(r) for r in rows])
-    # Flag tasks deferred to a future day so the UI can hide them until then
-    # (day_key authority stays server-side — clients must not date.today()).
     today = day_key()
     for t in out:
         _annotate(t, today)
@@ -2647,10 +1896,7 @@ def list_tasks(status: str | None = "open") -> list[dict]:
 
 
 def _check_parent(con: sqlite3.Connection, parent_id: int, self_id: int | None) -> None:
-    """Shared by create_task/update_task: reject self-parenting, parents
-    that themselves have a parent, and reparenting a task that already has
-    children of its own (subtasks are one level deep, by convention —
-    cheap cycle/depth guard)."""
+    """Reject self-parenting, a parent that has a parent, and reparenting a task that has children (one level deep)."""
     if parent_id == self_id:
         raise ValueError("a task cannot parent itself")
     parent = con.execute("SELECT parent_id FROM tasks WHERE id=?", (parent_id,)).fetchone()
@@ -2665,12 +1911,8 @@ def _check_parent(con: sqlite3.Connection, parent_id: int, self_id: int | None) 
             raise ValueError("a task with subtasks of its own can't become a subtask")
 
 
-# Callbacks run after every committed task write (create/update/status), from
-# whatever thread made it. It's how the generated tasks.md stays current no
-# matter who wrote — REST route, console tool, or a provider sync that opens
-# a task on its own — without this module importing vault_views (which imports
-# db). vault_views registers itself at import. A hook that raises is logged
-# and skipped: a stale derived view must never fail the write that stales it.
+# Run after every committed task write, from the writer's thread (keeps tasks.md current;
+# vault_views registers itself, since db can't import it). A raising hook is logged and skipped.
 _task_write_hooks: list = []
 
 
@@ -2696,8 +1938,6 @@ def create_task(title: str, due: str | None = None, priority: int | None = None,
                 source_ref: str | None = None, source_excerpt: str | None = None,
                 due_time: str | None = None) -> dict:
     now = datetime.now().isoformat(timespec="seconds")
-    # `due` may carry its own hour ("YYYY-MM-DDTHH:MM"), so callers that have
-    # one string don't need to split it themselves.
     fields = {"due": due, "due_time": due_time}
     _normalize_due(fields)
     due, due_time = fields["due"], fields["due_time"]
@@ -2719,10 +1959,7 @@ def create_task(title: str, due: str | None = None, priority: int | None = None,
 
 
 def task_exists_for_source(source_kind: str, source_ref: str) -> bool:
-    """Dedupe check for auto-created tasks (archive/ROUND34_PLAN.md: §16 check-in,
-    §18 card payment) — call before create_task(). Matches regardless of
-    status: a completed/dropped auto-task should not be recreated either,
-    only a fresh source_ref (e.g. a new due_day) makes a new task."""
+    """Dedupe check for auto-created tasks; matches any status, so a done/dropped auto-task isn't recreated."""
     with session() as con:
         row = con.execute(
             "SELECT 1 FROM tasks WHERE source_kind=? AND source_ref=? LIMIT 1",
@@ -2731,11 +1968,7 @@ def task_exists_for_source(source_kind: str, source_ref: str) -> bool:
 
 
 def update_task(task_id: int, **fields) -> dict | None:
-    """PATCH-style partial update over the triage-editable fields. Only keys
-    the caller actually passes are touched — pass a field with value None to
-    clear it, or omit it to leave it alone (widgets.py uses Pydantic's
-    exclude_unset for this). Rejects parent_id pointing at a task that
-    itself has a parent (one-level-deep guard) and self-parenting."""
+    """PATCH-style update: only passed keys change; None clears, omitted leaves alone."""
     fields = {k: v for k, v in fields.items() if k in TASK_FIELDS}
     if not fields:
         with session() as con:
@@ -2761,17 +1994,11 @@ def update_task(task_id: int, **fields) -> dict | None:
 
 
 def set_task_status(task_id: int, status: str, waiting_on: str | None = None) -> dict | None:
-    """Closing a parent (done/dropped) cascades to its still-open subtasks —
-    a subtask has no independent existence once its parent is finished.
-    Parking a parent (waiting/someday) does NOT cascade: children stay
-    attached but hidden until the parent reopens (tasks_today()/list_tasks()
-    only surface parent_id IS NULL rows directly)."""
+    """Closing a parent (done/dropped) cascades to its open subtasks; waiting/someday does not."""
     completed = datetime.now().isoformat(timespec="seconds") if status == "done" else None
     with session() as con, con:
         if status == "open":
-            # Reopening (an undo, usually) reverses the cascade too: the
-            # subtasks the close took with it carry the parent's exact
-            # completed_at, which a subtask finished on its own doesn't.
+            # Reopening reverses the cascade: cascaded subtasks carry the parent's exact completed_at.
             prev = con.execute("SELECT status, completed_at FROM tasks WHERE id=?",
                                (task_id,)).fetchone()
             if prev and prev["status"] in ("done", "dropped"):
@@ -2797,11 +2024,7 @@ def set_task_status(task_id: int, status: str, waiting_on: str | None = None) ->
 
 
 def tasks_today() -> dict:
-    """Today-view triage groups (archive/TASKS_PLAN.md). 'Available' = status='open'
-    AND (defer IS NULL OR defer <= day_key()) — defer expiring needs no job,
-    it's a read-time comparison (lazy-over-scheduled). Children of
-    done/dropped parents and deferred/someday/fresh-waiting tasks stay
-    invisible here until the full list is opened."""
+    """Today-view triage groups. 'Available' = open and (defer IS NULL or defer <= day_key()), a read-time comparison."""
     today = day_key()
     now = datetime.now().isoformat(timespec="minutes")
     with session() as con:
@@ -2809,10 +2032,7 @@ def tasks_today() -> dict:
             "SELECT * FROM tasks WHERE status='open' AND (defer IS NULL OR defer<=?)"
             f" AND parent_id IS NULL ORDER BY {DUE_ORDER}", (today,)).fetchall()
         available = [_annotate(dict(r), today) for r in available]
-        # A task due today at an hour that has already passed is overdue, not
-        # "due today" — leaving it in the today group is how a 9am deadline sat
-        # quietly below a 5pm one all afternoon. An untimed task is due by end
-        # of day, so it never crosses over until the day key itself rolls.
+        # A timed task past its hour is overdue; an untimed one is due by end of day.
         def past(t: dict) -> bool:
             return bool(t["due"]) and (t["due"] < today
                                        or (t["due_at"] is not None and t["due_at"] <= now))
@@ -2834,13 +2054,10 @@ def tasks_today() -> dict:
         counts["deferred"] = con.execute(
             "SELECT COUNT(*) n FROM tasks WHERE status='open' AND defer>? AND parent_id IS NULL",
             (today,)).fetchone()["n"]
-        # _with_subtasks attaches "subtasks" in place, so overdue/due_today/
-        # available_capped/waiting_stale (same dicts) already carry it — no
-        # need to rebuild a fresh id->task map from its return value.
+        # _with_subtasks attaches in place, so the groups (same dicts) carry them.
         shown = overdue + due_today + available_capped + waiting_stale
         _with_subtasks(con, shown)
-        # waiting_stale came straight off its own query, and the subtasks just
-        # attached haven't been through _annotate at all.
+        # waiting_stale and the new subtasks haven't been through _annotate.
         for t in shown:
             _annotate(t, today)
     return {
@@ -2848,9 +2065,7 @@ def tasks_today() -> dict:
         "due_today": due_today,
         "available": available_capped,
         "waiting_stale": waiting_stale,
-        # The day key the triage above was computed against. The client needs
-        # it to resolve "due at 5pm" against the right date when quick-adding;
-        # deciding that in the browser is what the rollover makes wrong.
+        # The client resolves quick-add times against this, not its own clock.
         "today": today,
         "counts": {"open": counts.get("open", 0), "waiting": counts.get("waiting", 0),
                    "someday": counts.get("someday", 0), "deferred": counts["deferred"]},
@@ -2860,10 +2075,7 @@ def tasks_today() -> dict:
 # ---------- habits ----------
 
 def _created_day(habit: dict) -> str:
-    """The habit's birth *day_key*, not the calendar date of its created_at
-    wall-clock stamp. A habit created at 3am belongs to the previous day_key;
-    comparing raw created_at dates against day keys made that habit's own
-    first day look like it predated it (blank cell instead of a miss)."""
+    """The habit's birth day_key, not the calendar date of created_at (3am belongs to the previous key)."""
     try:
         return day_key(datetime.fromisoformat(habit["created_at"]))
     except (TypeError, ValueError):
@@ -2875,7 +2087,6 @@ def list_habits(day: str | None = None) -> list[dict]:
     with session() as con:
         habits = [dict(r) for r in con.execute(
             "SELECT * FROM habits WHERE archived=0 ORDER BY id")]
-        # One query for the day's values instead of one per habit.
         today_vals = {r["habit_id"]: r["value"] for r in con.execute(
             "SELECT habit_id, value FROM habit_checkins WHERE day=?", (day,))}
         for h in habits:
@@ -2886,10 +2097,7 @@ def list_habits(day: str | None = None) -> list[dict]:
 
 
 def habit_history(days: int = 7) -> dict:
-    """Each active habit with its check state for the last `days` day_keys
-    (oldest first) — the week-grid view. Callers decide how to render a day
-    the habit predates (`created_day` is returned so pre-birth days can show
-    neutral, not a miss — compare against that, never raw created_at)."""
+    """Active habits with check state for the last `days` day_keys, oldest first; compare against `created_day`, never raw created_at."""
     today = day_key()
     span = [(date.fromisoformat(today) - timedelta(days=i)).isoformat()
             for i in range(days - 1, -1, -1)]
@@ -2908,17 +2116,9 @@ def habit_history(days: int = 7) -> dict:
 
 
 def find_habit(name: str, include_archived: bool = False) -> dict | None:
-    """Resolve a habit by name, case- and whitespace-insensitively.
+    """Resolve a habit by name, case- and whitespace-insensitively (check-in and create must agree on identity).
 
-    The UI checks a habit off by id because it renders the row it clicks; the
-    console only ever has what the user said ("log my exercise"), so it needs
-    the name to be the key. Kept here rather than in the caller so the check-in
-    and create paths agree about when two names are the same habit — if they
-    disagreed, creating "exercise" beside "Exercise" would split a streak in
-    two and the check-in would keep writing to whichever one it matched.
-
-    Matched in Python, not SQL: SQLite's LOWER() and NOCASE are ASCII-only,
-    and these are user-typed names ('$50 DoorDash'). There are four rows.
+    Matched in Python: SQLite's LOWER()/NOCASE are ASCII-only.
     """
     key = " ".join(name.split()).casefold()
     if not key:
@@ -2933,8 +2133,7 @@ def find_habit(name: str, include_archived: bool = False) -> dict | None:
 
 def update_habit(habit_id: int, name: str | None = None,
                  archived: bool | None = None) -> dict | None:
-    """Rename or archive a habit. Archiving keeps its check-in history (the
-    list/grid filter on archived=0), so it's reversible and streaks aren't lost."""
+    """Rename or archive a habit; archiving keeps its check-ins (reversible)."""
     fields: dict = {}
     if name is not None:
         fields["name"] = name.strip()
@@ -2951,21 +2150,9 @@ def update_habit(habit_id: int, name: str | None = None,
 
 
 def delete_habit(habit_id: int) -> dict | None:
-    """Remove a habit *and its check-ins*, permanently. Returns the deleted
-    row, or None if there was nothing there.
+    """Permanently remove a habit and its check-ins; returns the deleted row or None.
 
-    This exists alongside archiving rather than replacing it, because the two
-    answer different questions. Archiving is for a habit you stopped doing —
-    the history is the point, streaks stay intact, and it comes back. This is
-    for a habit that should never have existed (a typo, a duplicate, an
-    experiment), where keeping the row means carrying a name you don't want to
-    read again.
-
-    The check-ins go explicitly rather than by FK cascade: the column is
-    declared `REFERENCES habits(id)` but `PRAGMA foreign_keys` is not on for
-    every connection, so relying on the cascade would leave orphaned rows on
-    some paths and not others — and orphans in habit_checkins re-appear in
-    habit_history as a habit with no name.
+    Check-ins are deleted explicitly: foreign_keys isn't on for every connection, and orphans resurface in habit_history.
     """
     with session() as con:
         row = con.execute("SELECT * FROM habits WHERE id=?", (habit_id,)).fetchone()
@@ -2989,10 +2176,7 @@ def create_habit(name: str, cadence: str = "daily", target: float = 1,
 
 def checkin(habit_id: int, day: str | None = None, value: float = 1,
             note: str | None = None, source: str = "ui") -> None:
-    """Idempotent upsert. A manual un-check (value=0) leaves a value=0 tombstone
-    rather than deleting the row, so an auto pass can't resurrect a day the user
-    deliberately cleared; value=0 reads as "not done" everywhere (streak filters
-    it out). `source` records who wrote the row ('ui'/'console'/'auto')."""
+    """Idempotent upsert. An un-check (value=0) leaves a tombstone so an auto pass can't resurrect the day. `source`: ui/console/auto."""
     day = day or day_key()
     with session() as con, con:
         con.execute(
@@ -3005,12 +2189,10 @@ def checkin(habit_id: int, day: str | None = None, value: float = 1,
 
 def auto_checkin(habit_name: str, day: str, value: float = 1,
                  note: str | None = None) -> bool:
-    """Signal-driven check-in for the named active habit (e.g. health AZM →
-    'Exercise'). Never overwrites an existing row — a person's check, un-check
-    tombstone, or a prior auto row all win — so it only ever fills a day the
-    user hasn't touched. Returns True iff a new row was written. A no-op if the
-    habit doesn't exist (renamed/archived), keeping the signal side decoupled
-    from whether the habit is present."""
+    """Signal-driven check-in for the named active habit. Never overwrites a row (person, tombstone or auto).
+
+    Returns True iff a row was written; a no-op if the habit is missing.
+    """
     with session() as con, con:
         row = con.execute(
             "SELECT id FROM habits WHERE name=? AND archived=0", (habit_name,)
@@ -3026,11 +2208,7 @@ def auto_checkin(habit_name: str, day: str, value: float = 1,
 
 
 def _streak(con: sqlite3.Connection, habit_id: int, today: str) -> int:
-    """Consecutive days checked, counting back from today (an un-done today
-    doesn't break the streak — it survives until today is missed for good).
-
-    Walks the (habit_id, day) index backwards and stops at the first gap, so
-    it reads only the streak's own rows, not the habit's whole history."""
+    """Consecutive checked days back from today (an un-done today doesn't break it). Stops at the first gap."""
     expected = None
     n = 0
     for row in con.execute(
@@ -3038,8 +2216,7 @@ def _streak(con: sqlite3.Connection, habit_id: int, today: str) -> int:
             " ORDER BY day DESC",
             (habit_id, today)):
         if expected is None:
-            # Anchor on the most recent check: today, or yesterday if today
-            # isn't done yet. Anything older means the streak already ended.
+            # Anchor on today or yesterday; anything older ended the streak.
             if row["day"] == today:
                 expected = date.fromisoformat(today)
             elif row["day"] == (date.fromisoformat(today) - timedelta(days=1)).isoformat():
@@ -3055,11 +2232,7 @@ def _streak(con: sqlite3.Connection, habit_id: int, today: str) -> int:
 
 # ---------- small lists: debts, user lists, watchlist ----------
 #
-# Three tables with one shape: add a row, flip its done-flag, drop it. The
-# flag column differs per table (settled / done / watched) because each reads
-# naturally in its own domain, so the shared helpers take the spec rather than
-# forcing a common column name. Anything domain-specific (debt totals,
-# watchlist kind, which list an item is on) stays in its own function below.
+# One shape (add, flip a done-flag, drop); the flag column differs per table, so helpers take the spec.
 
 _LIST_SPECS: dict[str, tuple[str, str, str]] = {
     # table         done-flag   done-timestamp  default order
@@ -3078,8 +2251,7 @@ def _spec(table: str) -> tuple[str, str, str]:
 
 
 def list_rows(table: str, include_done: bool = False) -> list[dict]:
-    """Rows for one of the small lists. Done rows are excluded by default —
-    the widgets lead with what's still outstanding."""
+    """Rows for one of the small lists; done rows excluded by default."""
     done_col, _, order = _spec(table)
     where = "" if include_done else f" WHERE {done_col}=0"
     with session() as con:
@@ -3088,9 +2260,7 @@ def list_rows(table: str, include_done: bool = False) -> list[dict]:
 
 
 def set_row_done(table: str, row_id: int, done: bool) -> dict | None:
-    """Flip a row's done-flag. Stamps the matching timestamp on the way in and
-    clears it on undo, so a re-opened row doesn't keep a stale settled/bought
-    date."""
+    """Flip a row's done-flag, stamping or clearing its timestamp."""
     done_col, at_col, _ = _spec(table)
     now = datetime.now().isoformat(timespec="seconds") if done else None
     with session() as con:
@@ -3125,14 +2295,10 @@ def create_debt(person: str, amount: float, direction: str = "owed_to_me",
 
 
 def update_debt(debt_id: int, **fields) -> dict | None:
-    """Rewrite a debt in place: person, amount, direction, reason or
-    incurred_on. Fields left as None are untouched, and "" clears reason or
-    incurred_on. Returns the updated row, or None if there's no such debt.
+    """Rewrite a debt in place (None leaves a field, "" clears reason/incurred_on); None if missing.
 
-    This exists so that correcting or merging a debt doesn't have to go
-    through settling it. Settling stamps settled_at, which reads as "they
-    paid", so merging split rows by settling them records payments that
-    never happened."""
+    Don't merge debts by settling them: settled_at reads as "they paid".
+    """
     sets: dict = {}
     if fields.get("person") is not None:
         if not str(fields["person"]).strip():
@@ -3163,14 +2329,7 @@ def update_debt(debt_id: int, **fields) -> dict | None:
 
 
 def remind_debt(debt_id: int) -> dict | None:
-    """Record that you've just chased this one. Returns the updated row, or
-    None if there's no such debt.
-
-    Overwrites `reminded_at` rather than appending: the nudge only ever asks
-    "how long since the last ask", so a history of asks would be storage
-    nothing reads. `reminded_count` keeps the part that would otherwise be
-    lost — how many times you've had to ask is what eventually decides whether
-    to keep asking, and it can't be rebuilt from one overwritten timestamp."""
+    """Record a chase; returns the row or None. Overwrites `reminded_at`; `reminded_count` keeps the tally."""
     now = datetime.now().isoformat(timespec="seconds")
     with session() as con:
         if con.execute("SELECT 1 FROM debts WHERE id=?", (debt_id,)).fetchone() is None:
@@ -3184,22 +2343,9 @@ def remind_debt(debt_id: int) -> dict | None:
 
 
 def _debt_nudge(row: dict) -> dict:
-    """Annotate one debt with whether it's your move, and since when.
+    """Annotate a debt with `nudge`: never | waiting | overdue (None unless an open owed_to_me debt).
 
-    Three states rather than two, for the same reason heartbeat has four:
-    `never` (you have not asked at all) and `overdue` (you asked and heard
-    nothing back) both want your attention but are different actions, and
-    collapsing them would make the card say "remind them again" about someone
-    you have never once mentioned it to.
-
-    Only `owed_to_me` is nudged. The verb here is "I asked them", which has no
-    meaning pointed the other way — a debt you owe is chased by the other
-    person, and inventing a nudge for it would put a button on the card that
-    does nothing anyone asked for.
-
-    Measured in day_key steps, not elapsed hours: "a week" has to mean seven
-    calendar days the way the rest of this schema means them, or a reminder
-    sent late at night comes due an evening early.
+    `never` and `overdue` are different actions, so they stay distinct. Measured in day_key steps, not hours.
     """
     out = dict(row)
     out["nudge"] = None
@@ -3225,12 +2371,7 @@ def _debt_nudge(row: dict) -> dict:
 
 
 def debt_summary() -> dict:
-    """Open debts plus the two directional totals. Net is positive when more
-    is owed to you than by you — the number the card leads with.
-
-    Each debt also carries its nudge state, computed here rather than in the
-    card: "a week" is a day_key question, and the browser's own midnight
-    disagrees with day_key for four hours every night."""
+    """Open debts plus directional totals (net > 0 = owed to you); each carries its nudge, computed server-side (day_key)."""
     rows = [_debt_nudge(r) for r in list_rows("debts")]
     owed_to_me = round(sum(r["amount"] for r in rows if r["direction"] == "owed_to_me"), 2)
     i_owe = round(sum(r["amount"] for r in rows if r["direction"] == "i_owe"), 2)
@@ -3242,9 +2383,7 @@ def debt_summary() -> dict:
 
 def add_beers(person: str, count: int = 1, direction: str = "owed_to_me",
               reason: str | None = None) -> list[dict]:
-    """File `count` beers, one row each. A row per beer, not a count column,
-    so paying one back is the same settle as any other small list and the
-    record of who bought which round survives it."""
+    """File `count` beers, one row each, so settling is the same flag-flip as any small list."""
     if direction not in ("owed_to_me", "i_owe"):
         raise ValueError("direction must be owed_to_me or i_owe")
     if not str(person).strip():
@@ -3273,12 +2412,7 @@ def settle_beer(person: str, direction: str = "owed_to_me") -> dict | None:
 
 
 def beer_summary() -> dict:
-    """Open beers grouped per person and direction. The card shows "Mo ×2",
-    not two rows, and its check settles one (the oldest) at a time.
-
-    Kept apart from debt_summary on purpose: a beer is not $5, and folding it
-    into the dollar total or the to-chase nudges would turn a running joke
-    into a collections notice."""
+    """Open beers grouped per person and direction; a check settles the oldest. Kept out of debt_summary: a beer is not $5."""
     groups: dict[tuple[str, str], dict] = {}
     for r in list_rows("beers"):
         g = groups.setdefault((r["person"].lower(), r["direction"]), {
@@ -3296,14 +2430,7 @@ def beer_summary() -> dict:
 
 
 def all_lists(include_done: bool = False) -> list[dict]:
-    """Every list with its items and its open count, in chip order.
-
-    Two queries, not one per list: the card draws every chip's count at once,
-    and these tables are small enough that shipping all of it beats a second
-    round trip when the chip is clicked. `open` is counted separately from the
-    items so it stays the number of things still outstanding even when the
-    caller asked for the done rows too.
-    """
+    """Every list with its items and open count, in chip order. `open` counts outstanding items even when done rows are included."""
     done_col, _, order = _spec("list_items")
     where = "" if include_done else f" WHERE {done_col}=0"
     with session() as con:
@@ -3324,9 +2451,7 @@ def all_lists(include_done: bool = False) -> list[dict]:
 
 
 def list_items_for(list_id: int, include_done: bool = False) -> list[dict]:
-    """One list's items. `all_lists` exists alongside this rather than calling
-    it per list: the card wants every list at once and that would be a query
-    per chip. This is the single-list read for everything else."""
+    """One list's items (all_lists is the every-chip read)."""
     done_col, _, order = _spec("list_items")
     where = "" if include_done else f" AND {done_col}=0"
     with session() as con:
@@ -3343,10 +2468,7 @@ def project_folders() -> dict[str, str]:
 
 
 def set_project_folder(path: str, folder: str | None) -> str | None:
-    """File a project under `folder`, or under nothing when it's empty. An
-    existing folder keeps its spelling whatever the case typed here, so
-    "client projects" joins "Client Projects" instead of starting a twin.
-    Returns the folder as stored."""
+    """File a project under `folder` (empty = none); an existing folder keeps its spelling. Returns the folder as stored."""
     now = datetime.now().isoformat(timespec="seconds")
     with session() as con, con:
         if not folder:
@@ -3363,9 +2485,7 @@ def set_project_folder(path: str, folder: str | None) -> str | None:
 
 
 def find_list(name: str) -> dict | None:
-    """A list by name, case-insensitively — how the console addresses one. The
-    UI passes ids; a model that was told "add it to my packing list" has only
-    the words."""
+    """A list by name, case-insensitively (the console has words, not ids)."""
     with session() as con:
         row = con.execute("SELECT * FROM lists WHERE name=? COLLATE NOCASE",
                           (str(name).strip(),)).fetchone()
@@ -3405,9 +2525,7 @@ def rename_list(list_id: int, name: str) -> dict | None:
 
 
 def delete_list(list_id: int) -> bool:
-    """Drop a list and everything on it — the items go with it by FK cascade
-    (`PRAGMA foreign_keys=ON` is set per connection), so no orphan rows are
-    left addressable by an id that no chip can reach."""
+    """Drop a list; its items go by FK cascade (foreign_keys=ON per connection)."""
     with session() as con, con:
         return con.execute("DELETE FROM lists WHERE id=?",
                            (list_id,)).rowcount > 0
@@ -3420,9 +2538,7 @@ def get_list_item(item_id: int) -> dict | None:
 
 
 def add_list_item_note(item_id: int, note: str) -> dict | None:
-    """Attach `note` to a list item, after any note it already has (a line
-    each), so a note written at completion doesn't erase the one it was
-    added with. The same text twice is kept once."""
+    """Append `note` as a new line after any existing note; the same text twice is kept once."""
     note = str(note or "").strip()
     with session() as con, con:
         row = con.execute("SELECT note FROM list_items WHERE id=?", (item_id,)).fetchone()

@@ -1,20 +1,9 @@
-"""The two ways the backend reaches past itself into macOS: osascript and `open`.
+"""The two ways the backend reaches into macOS: osascript and `open`.
 
-Every caller used to carry its own copy of the subprocess call, and the copies
-had drifted — reminders.py let a TimeoutExpired escape as itself instead of its
-own error type, and the Obsidian hand-off ran `open` with no timeout at all.
-One wrapper each, so the rules are written once:
-
-  * **Arguments, never interpolation.** osascript gets the script as `-e` and
-    user-shaped values after `--`, read back through `on run argv`; `open`
-    gets the URL as an argv element. Nothing a user typed is ever parsed as
-    script or shell.
-  * **Always a timeout**, and every way the process can fail — missing binary,
-    timeout, non-zero exit — comes back as one exception type the caller
-    chose, so callers catch what they already caught.
-
-Probes that answer "is this machine able to…" (notify._probe, wake._run) stay
-where they are: they swallow failure by design and share nothing but the call.
+Arguments, never interpolation (osascript values after `--` via `on run argv`;
+`open` gets the URL as argv). Always a timeout; every failure comes back as one
+exception type the caller chose. Probes (notify._probe, wake._run) stay separate:
+they swallow failure by design. Design: DESIGN.md → `app/macos.py`.
 """
 
 from __future__ import annotations

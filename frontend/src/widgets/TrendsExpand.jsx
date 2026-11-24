@@ -24,9 +24,7 @@ export default function TrendsExpand({ onPin }) {
   const [series, setSeries] = useState(null);
   const [loading, setLoading] = useState(false);
   const [allShown, setAllShown] = useState(false);   // the metric picker, unfolded
-  // Only the newest request may write — the same guard useSheetData keeps.
-  // /api/health reads sync the provider first, so clicking through ranges or
-  // metrics can land a slow earlier answer on top of the one asked for last.
+  // Only the newest request may write (as useSheetData): /api/health syncs first, so a slow earlier answer can land late.
   const seq = useRef(0);
 
   const load = useCallback((rangeToken, metricSet) => {

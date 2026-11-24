@@ -1,22 +1,10 @@
-"""USC dining provider — the three residential dining halls' menus and
-the campus venue list, for the food tracker. No key.
+"""USC dining provider: the three residential halls' menus and the campus venue list. No key.
 
-Menus: the endpoint the hospitality site's own menu page calls,
-`/wp-json/hsp-api/v1/get-res-dining-menus/<hall>?y=&m=&d=`, one hall-day per
-call → meals → stations → items with allergen and diet tags. **No calories,
-macros or portions** — so nutrition is estimated downstream
-(app/food_estimate.py), once per item name.
-
-Venues: the location listing pages (UPC + HSC), each tile a slug, a type and
-today's open shifts as epoch-ms pairs. Dining Dollars are accepted at "any
-Residential Dining Hall or on-campus retail cafe" except USC Hospitality venues
-that serve alcohol; the listing's `restaurants` type (University Club, McKay's,
-The Lab, MoretonFig) is that set, so dining_dollars = type != restaurants.
-An inference from the published rule, not a field USC publishes.
-
-Menus are published ahead, so a read of a future range works. Lazy: a read
-fetches any hall-day in range not fetched in the last MENU_TTL; the poller
-refreshes today and tomorrow, then estimates whatever's new.
+Menus come from the hospitality site's own wp-json endpoint, one hall-day per call, with
+allergen/diet tags but **no calories, macros or portions** (estimated in app/food_estimate.py).
+Venues come from the location listing pages; dining_dollars = type != restaurants, an
+inference from USC's published rule, not a field. Menus are published ahead; reads are lazy (MENU_TTL).
+Design: DESIGN.md → Food (§25).
 
     python -m app.providers usc_dining --range today --query chicken --format brief
 """
@@ -116,8 +104,7 @@ def refresh_venues(force: bool = False) -> int:
                     " name=excluded.name, kind=excluded.kind, campus=excluded.campus,"
                     " shifts=excluded.shifts, shifts_day=excluded.shifts_day,"
                     " refreshed_at=excluded.refreshed_at",
-                    # dining_dollars is set on insert and then left alone, so a
-                    # hand correction in app.db survives the next refresh.
+                    # dining_dollars is set on insert only: hand corrections survive.
                     (v["slug"], v["name"], v["kind"], campus, v["dining_dollars"],
                      json.dumps(v["shifts"]), today, now))
                 n += 1
@@ -160,15 +147,12 @@ def refresh_menus(days: list[date], force: bool = False) -> dict:
 
 
 def refresh(force: bool = False) -> dict:
-    """Poller: venues, today + tomorrow's menus, then estimate new items, then
-    make sure the café menus (app/food_seed.py) are loaded — a no-op once
-    they are."""
+    """Poller: venues, today + tomorrow's menus, estimate new items, ensure café menus are seeded."""
     from .. import food_estimate, food_seed
     today = date.fromisoformat(db.day_key())
     info = {"venues": refresh_venues(force),
             **refresh_menus([today, today + timedelta(days=1)], force)}
-    # A usage limit holds the estimates, it doesn't fail the menus that
-    # already landed — the source isn't broken, the model is just busy.
+    # A usage limit holds the estimates; it doesn't fail the menus that landed.
     try:
         info["estimated"] = food_estimate.run_pending()
     except food_estimate.agent.AgentError as e:

@@ -1,9 +1,5 @@
-// Asks: the rows of the plan view's "needs you" list.
-//
-// A card's level says whether it needs you; its asks say *what for*, one row
-// per thing you could do something about. Each card hook builds its own
-// (widgets/cards.js), because the hook is what knows the data, and the list
-// only orders and draws them.
+// Asks: the rows of the plan view's "needs you" list. A card's level says whether it needs you; its asks say what
+// for. Each card hook builds its own (widgets/cards.js); the list only orders and draws them.
 //
 // An ask:
 //   id     stable across reloads — the snooze key (`task:12`, `email:review`)
@@ -30,9 +26,7 @@ export const CLOCK = 1;    // something with a time on it: leave-by, overdue
 export const BROKEN = 2;   // a source that has stopped working
 export const OWED = 3;     // a person or a decision waiting on you
 
-// "10 h", "3 d", "20 min" — how long something has been true, for the end
-// of a reason line. Elapsed wall-clock time, so the browser clock is right
-// here; day keys are a different question (see dayGap).
+// "10 h", "3 d": elapsed wall-clock time for a reason line's end (the browser clock is right; day keys: see dayGap).
 export function age(iso, now = Date.now()) {
   if (!iso) return null;
   const min = Math.max(0, (now - new Date(iso).getTime()) / 60000);
@@ -42,20 +36,14 @@ export function age(iso, now = Date.now()) {
   return `${Math.round(min / 1440)} d`;
 }
 
-// Whole days from day key `a` to day key `b` — both from the server, so the
-// 4am rollover is already in them and noon keeps DST out of the division.
+// Whole days between two server day keys (4am rollover already in them; noon keeps DST out).
 export function dayGap(a, b) {
   if (!a || !b) return null;
   return Math.round((new Date(`${b}T12:00:00`) - new Date(`${a}T12:00:00`)) / 864e5);
 }
 
-// The vault note an ask is about, when one can be told from the ask itself.
-// Nothing links a task or an email to a note yet, so this starts with the
-// case that's unambiguous: a course code in the title (a task "Review CSCI
-// 103 slides", an office-hours change for MATH 229) names that course's note,
-// which the Office hours card already knows the path of. The title only: a
-// reason line can quote something else — the review queue's names its oldest
-// email, and "[CSCI 170 on Gradescope]" doesn't make the queue about CSCI 170.
+// The vault note an ask is about, when unambiguous: a course code in the title names that course's note. Title
+// only: a reason line can quote another (the review queue's names its oldest email).
 const COURSE_CODE = /\b([A-Z]{2,5})[ -]?(\d{3}[A-Z]?)\b/g;
 export function noteFor(ask, courses) {
   for (const m of ask.title.matchAll(COURSE_CODE)) {

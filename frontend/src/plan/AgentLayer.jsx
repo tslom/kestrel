@@ -5,32 +5,15 @@ import { roomOf } from "./Rooms.jsx";
 import { CARD_NAME } from "../widgets/cards.js";
 import "./agents.css";
 
-// The agent visualizer, from round 5 of the look lab (New Features #46);
-// Orbs by default, Cursors or Off in the look lab (data-agents). The map's
-// agent dots alone don't say enough, so the agents move around the UI
-// itself, to whatever they're reading or writing, so you can see what's
-// being touched.
-//
-// Each working tab (and each live subagent) is one agent. Its current tool
-// call already names a map node (lib/turn.js nodeFor: a provider's source, a
-// custom tool's card, or a machine: vault, db, shell, web). Here that node
-// becomes a place on screen, best first:
-//   the card itself, if it's on screen      [data-card=<id>]  (a room page, a tile, a map node)
-//   an ask row of that card                 [data-ask-card=<id>]
-//   its room's tile on Today, else its room in the sidebar  [data-room-door] / [data-room]
-//   the vault → Notes in the sidebar        [data-room=vault]
-//   anything else (shell, db, web, a dev    the console's ask bar
-//   tab's Bash/Edit) → the console
-// A call that writes (task_create, event_update, Edit…) also rings the
-// element it lands on.
-//
-// Drawn as fixed elements over everything, positioned straight from the DOM
-// on a slow loop (no React render per frame); the glide is a CSS transition,
-// so the loop only moves the target. A replay (a past session's tool calls,
-// started from the look lab) plays through the same path, one call a second.
+// The agent visualizer (look lab round 5, #46; Orbs default, Cursors or Off via data-agents): each
+// working tab and live subagent moves around the UI to what it touches. Its current call's map node
+// (lib/turn.js nodeFor) resolves to a place, best first: the card [data-card] (room page, tile, map
+// node), an ask row [data-ask-card], its room's tile / sidebar entry [data-room-door] / [data-room],
+// the vault → Notes [data-room=vault], else the console's ask bar. Writes also ring the element.
+// Fixed elements positioned from the DOM on a slow loop (no render per frame; the glide is a CSS
+// transition). A replay (look lab) plays through the same path, one call a second.
 
-// The replay lives in a module store, not the layer: the look lab starts it,
-// and its clock is a plain interval, so neither needs an effect here.
+// The replay lives in a module store (the look lab starts it; plain-interval clock): no effect needed here.
 // { title, calls, at, paused } | null
 let replayState = null;
 let replayClock = 0;
@@ -77,8 +60,7 @@ const visible = (el) => {
 };
 const firstVisible = (sel) => [...document.querySelectorAll(sel)].find(visible) || null;
 
-// A query against app.db names its table, and most tables are a card's: so
-// "db" (the machine) sharpens to what was read, which is the point here.
+// A query against app.db names its table, most of which are a card's: "db" sharpens to what was read.
 const TABLE_CARD = [[/\b(tasks)\b/, "tasks"], [/\b(habits|checkins)\b/, "habits"], [/\b(list_items|lists)\b/, "lists"],
   [/\b(debts|beers)\b/, "debts"], [/\b(expenses)\b/, "expenses"], [/\b(watchlist)\w*/, "watchlist"],
   [/\b(packages|trips)\b/, "travel"], [/\b(brain_\w+)/, "brain"], [/\b(food_\w+|meals)\b/, "food"]];
@@ -121,8 +103,7 @@ export default function AgentLayer({ trace, tabs }) {
   for (const a of agents) a.node = sharpen(a.node, a.call?.detail);
   const sig = agents.map((a) => `${a.key}>${a.node}`).join(" ");
 
-  // Where each agent is: read off the DOM on a slow loop while any are out
-  // (a room change or a scroll moves the target), written straight to style.
+  // Read targets off the DOM on a slow loop while any are out (room change/scroll moves them); write straight to style.
   useEffect(() => {
     if (!sig) return undefined;
     let raf = 0, last = 0;
@@ -140,8 +121,7 @@ export default function AgentLayer({ trace, tabs }) {
         const y = clampY(cursor ? r.top + Math.min(r.height / 2, 26) : r.top + 16 + k * 4);
         const at = `translate(${x.toFixed(0)}px, ${y.toFixed(0)}px)`;
         el.style.transform = at;
-        // near the right edge the label goes on the orb's left, or it ran
-        // off the window (the open console's bar is at the right edge)
+        // near the right edge the label flips left (the open console's bar is there)
         el.classList.toggle("flip", x > innerWidth - 290);
         layer.current.querySelectorAll(`[data-trail="${el.dataset.agent}"]`).forEach((t) => { t.style.transform = at; });
         const ring = el.nextElementSibling;
@@ -163,7 +143,7 @@ export default function AgentLayer({ trace, tabs }) {
         const write = WRITE.test(a.call?.name || "");
         const label = `${toolLabel(a.call?.name || "")}${a.call?.detail ? ` · ${a.call.detail}` : ""}`;
         return [
-          // the comet trail: the same point, on slower transitions, so it follows
+          // comet trail: same point, slower transitions
           ...(style === "orbs" ? [1, 2, 3].map((n) => (
             <div key={`${a.key}-t${n}`} className={`ag-trail t${n}`} data-trail={a.key} style={{ "--hue": a.hue }} />
           )) : []),

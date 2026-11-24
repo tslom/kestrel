@@ -1,21 +1,11 @@
 """The verify skill's handles still exist in the frontend.
 
-.claude/skills/verify names the selectors, data-card ids, palette titles and
-source files a verifier drives the app by. Its old one-file selector list went
-stale twice without anything noticing, so this pulls every handle out of
-SKILL.md and features/*.md and checks each against frontend/src:
-
-- a CSS selector in an inline `code span` (one that starts with `.`, `[`, or
-  `tag.` / `tag[`), or quoted in a Playwright call inside a fenced block:
-  every `.class` must appear as a word in some .js/.jsx file (a class only
-  styles.css still mentions is dead), every `[attr]` name must appear, and
-  every `[attr="value"]` value must appear as a string or be a DESK card id.
-- `⌘K Title`: Title must be a palette title (DESK in widgets/cards.js, or
-  LOOSE_PANELS in lib/palette.js) or a palette action title.
+Every handle in SKILL.md and features/*.md is checked against frontend/src:
+- a CSS selector in a code span or quoted in a Playwright call: each `.class` must appear in a .js/.jsx file
+  (styles.css alone is dead), each `[attr]` name must appear, each `[attr="value"]` value must appear or be a DESK card id.
+- `⌘K Title` must be a palette title (DESK in widgets/cards.js, LOOSE_PANELS in lib/palette.js) or action title.
 - `src/...` paths must exist under frontend/.
-
-To name something on purpose that isn't in the source (a selector that has
-been removed, say), don't put it in a code span.
+To name a removed selector on purpose, keep it out of a code span.
 """
 
 import re

@@ -1,16 +1,10 @@
 import { createContext } from "react";
 
-// The status bar's collapse (plan/StatusBar.jsx `fitBar`), shared with the
-// console's ⋯ menu so whatever the bar folded away is still a click off.
-// `cut`: the keys folded right now ("timeline view full …"); `host`: a ref to
-// the status bar's own actions ({ onView, onTimeline, onFull, onNewTab, … }),
-// read when the menu draws, so the context only changes when `cut` does and
-// the memoised tabs don't re-render on every turn event.
+// The status bar's collapse (plan/StatusBar.jsx `fitBar`), shared with the console's ⋯ menu. `cut`: keys folded now;
+// `host`: a ref to the bar's own actions, read when the menu draws, so context changes only with `cut`.
 export const BarHostContext = createContext(null);
 
-// Lowest priority first: what folds as the bar runs out of room. Compactions
-// (a shorter label) come before a control leaves the row, and the row keeps
-// identity, status, model · effort, mode, usage, review and merge longest.
+// Lowest priority first: what folds as the bar runs out of room (compactions before a control leaves).
 // Never folded: the tab strip, the state, Yes/No, the model chip and ⋯.
 export const CUT_ORDER = [
   "timeline",     // the turn's timeline button        → ⋯
@@ -27,7 +21,8 @@ export const CUT_ORDER = [
   "scripts",      // dev: project.json scripts and preview → ⋯
   "pr",           // dev: the watched PR's chip         → ⋯
   "tabs",         // the tab strip narrows and scrolls (the one on screen kept in view)
-  "usage",        // the usage chip                    → ⋯'s usage row
+  "account",      // the Claude account chip           (Settings → Claude accounts)
+  "usage",       // the usage chip                    → ⋯'s usage row
   "review",       // dev: review                       → ⋯
   "merge",        // dev: merge                        → ⋯
   "mode",         // permission mode                   → ⋯
@@ -35,17 +30,15 @@ export const CUT_ORDER = [
 ];
 
 // Keys that only shorten something, so nothing goes to the menu for them.
-const COMPACT = new Set(["elapsed", "reset", "merge-short", "model-short", "scripts-short", "tabs", "squeeze"]);
+const COMPACT = new Set(["elapsed", "reset", "merge-short", "model-short", "scripts-short", "tabs",
+  "account", "squeeze"]);
 // Keys that act on the layout, not on a tagged element.
 const LAYOUT = new Set(["tabs", "squeeze"]);
 
-// Fold the bar until it fits: clear the cut, then add keys in order while it
-// overflows. Synchronous, so it lands before paint. Keys with nothing on the
-// bar are skipped, so `cut` names only things that were really folded.
+// Clear the cut, then add keys in order while it overflows (synchronous, before paint); keys absent from the bar are skipped.
 export function fitBar(bar) {
   const cut = [];
-  // Unfolding to measure widens the tab strip, which clamps its scroll to 0;
-  // the strip ends the same width, so nothing would scroll it back.
+  // Unfolding widens the tab strip and clamps its scroll to 0: restore it.
   const strips = [...bar.querySelectorAll(".st-tabs")];
   const scrolled = strips.map((s) => s.scrollLeft);
   try {

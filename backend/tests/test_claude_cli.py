@@ -1,8 +1,7 @@
 """The console bar's Claude Code version check and update button.
 
-What's worth pinning: the installed version read off the native layout's
-symlink, version ordering (numeric, not string), the release check failing
-soft, and the update route reporting what `claude update` actually did.
+Pins: version read off the native symlink, numeric ordering, the release check
+failing soft, and the update route reporting what `claude update` did.
 """
 
 import stat

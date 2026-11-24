@@ -1,20 +1,9 @@
-// How the map's Kestrel dots move (plan/PlanMap.jsx). One loop owns a dot's
-// whole motion — coming out of Kestrel, flying a line, circling, landing —
-// because the two halves of it have to agree: a CSS transition for the flight
-// and SVG animateMotion for the orbit couldn't see each other, so a dot jumped
-// whenever the orbit changed size or the count of dots changed.
-//
-// It writes the `transform` attribute straight to the element, once a frame,
-// and never touches React: a turn already changes state many times a second
-// (lib/turn.js), and this would otherwise re-render the map at 60Hz. The loop
-// only runs while a dot exists, so an idle map costs nothing.
-//
-// A body stays where it is for DWELL once it lands, and only heads home after
-// SETTLE with nothing to do. Calls come in bursts, each a few hundred ms with
-// gaps between; taken literally that sends a dot back toward Kestrel between
-// every pair, reversing mid-flight and arriving nowhere. Only the way home
-// waits: a new call is real the moment it's made, and a burst's gaps would
-// keep resetting the wait if the way out had one.
+// How the map's Kestrel dots move (plan/PlanMap.jsx): one loop owns the whole motion (out of Kestrel,
+// along a line, circling, landing), since a CSS flight and SVG orbit couldn't see each other and jumped.
+// Writes `transform` straight to the element once a frame, never via React (turns change state many
+// times a second); runs only while a dot exists. A landed body stays DWELL, heads home after SETTLE
+// idle (bursts of calls would reverse it mid-flight); only the way home waits, a new call is immediate.
+// Design: DESIGN.md → The map (Dots).
 
 const HOME = "home";
 const V = 24;             // px/s round an orbit, whatever its size
@@ -27,8 +16,7 @@ const ease = (dt, ms) => 1 - Math.exp(-dt / ms);
 const inOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 const wrap = (a) => ((a + Math.PI) % TAU + TAU) % TAU - Math.PI;
 
-// The control point of a map line from a to b. PlanMap draws its lines with
-// this too, which is what lets a dot fly exactly along one.
+// The control point of a map line a→b; PlanMap's lines use it too, so a dot flies exactly along one.
 export const bend = (a, b) => ({
   x: (a.x + b.x) / 2 - (b.y - a.y) * 0.12,
   y: (a.y + b.y) / 2 + (b.x - a.x) * 0.12,
@@ -41,8 +29,7 @@ export function createDotMotion({ onGone }) {
   const els = new Map();
   let scene = null, still = false, raf = null, last = 0, clock = 0;
 
-  // Where a body's circle is centred, for what it's at. A subagent at home
-  // circles its tab's dot, which is itself moving.
+  // Circle centre for what a body is at; a subagent at home circles its (moving) tab's dot.
   const focus = (b, at) => {
     if (at === HOME) {
       const p = b.parent && bodies.get(b.parent);
@@ -60,15 +47,14 @@ export function createDotMotion({ onGone }) {
   const depart = (b, to) => {
     const from = { x: b.cx, y: b.cy };
     const p = focus(b, to);
-    // Home runs back down the line it went out on, not a mirror of it.
+    // Home runs back down the same line, not its mirror.
     const on = b.at !== HOME && to === HOME ? scene.nodes[b.at] : null;
     const ctl = on ? bend(scene.hub, on) : bend(b.at === HOME && !b.parent ? scene.hub : from, p);
     const dist = Math.hypot(p.x - from.x, p.y - from.y);
     b.flight = { from, ctl, to, t: 0, ms: Math.max(420, Math.min(1000, 320 + dist * 1.4)) };
   };
 
-  // Everyone circling one thing shares it evenly. Eased, so a dot arriving or
-  // leaving spreads the rest instead of snapping them to their new places.
+  // Everyone circling one thing shares it evenly, eased so arrivals/departures don't snap the rest.
   const spread = (dt) => {
     const groups = new Map();
     for (const b of bodies.values()) {
@@ -102,8 +88,7 @@ export function createDotMotion({ onGone }) {
       p = to;
     } else { b.cx = p.x; b.cy = p.y; }
 
-    // In flight the circle closes so the dot runs on the line itself; it
-    // opens again on arrival.
+    // In flight the circle closes so the dot runs on the line; it reopens on arrival.
     const landing = b.gone && !b.flight && b.at === HOME;
     b.r += ((b.flight || landing ? 0 : p.orbit) - b.r) * ease(dt, 160);
     b.speed += ((b.held ? 0 : 1) - b.speed) * ease(dt, 220);
@@ -141,8 +126,7 @@ export function createDotMotion({ onGone }) {
   };
 
   return {
-    // After each map render, in a layout effect, so a new dot is placed
-    // before it's first painted.
+    // Called from a layout effect after each map render, so a new dot is placed before first paint.
     sync(dots, nextScene, reduce) {
       scene = nextScene;
       still = reduce;

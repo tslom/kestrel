@@ -1,7 +1,5 @@
-"""Child tabs: grouped under their parent, queued past the working cap, and
-closed into a "done" state once their work has landed. The logic is frontend
-(lib/children.js), so this runs its node tests (frontend/tests/children.test.mjs)
-under pytest, which is the commit bar."""
+"""Child tabs (grouping, working-cap queue, done state): runs frontend/tests/children.test.mjs
+(lib/children.js) under pytest, the commit bar."""
 
 import shutil
 import subprocess

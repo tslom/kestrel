@@ -1,7 +1,4 @@
-"""db task helpers — CRUD, the one-level-deep subtask guard, the done/dropped
-cascade to open children, and the tasks_today() triage buckets. All go through
-the public functions (which open their own connections via db.APP_DB, redirected
-by the `dbfile` fixture)."""
+"""db task helpers: CRUD, the one-level subtask guard, the done/dropped cascade to open children, tasks_today() buckets; all via public functions on the `dbfile` fixture."""
 
 from datetime import date, timedelta
 
@@ -77,8 +74,7 @@ def test_closed_parent_keeps_its_subtasks(dbfile):
 
 
 def test_reopening_a_parent_reverses_its_cascade_only(dbfile, monkeypatch):
-    """Undo of a check-off: the subtasks the close took with it come back;
-    one finished on its own earlier stays finished."""
+    """Undoing a check-off restores the subtasks the close took; one finished earlier stays finished."""
     import itertools
     from datetime import datetime as real
     ticks = itertools.count()

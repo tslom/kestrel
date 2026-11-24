@@ -1,8 +1,6 @@
 import { toolLabel, secs } from "./StatusBar.jsx";
 
-// Every tool call of the turn on one time axis, including the time a call
-// spent waiting on your answer (striped). Opened from the status bar, or
-// already filtered to the failures from its "N failed" link.
+// Every tool call of the turn on one time axis (waiting-on-you time striped); the "N failed" link filters it.
 export default function Timeline({ trace, failedOnly, onShowAll }) {
   const calls = failedOnly ? trace.calls.filter((c) => c.state === "err") : trace.calls;
   const end = trace.running && trace.startedAt != null

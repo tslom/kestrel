@@ -1,6 +1,4 @@
-/* The look lab's round-4 panel (ui/LookLab.jsx): sections for the three
-   axes, chips for grounds and colours. The rest of its styling is the
-   round-1 panel's, in styles.css (.look-lab, .ll-*). */
+/* The look lab's round-4 panel (ui/LookLab.jsx); the rest is in styles.css (.look-lab, .ll-*). */
 
 .look-lab.ll4 { width: 420px; max-height: calc(100vh - 32px); }
 .ll-sec {
@@ -33,7 +31,7 @@
 .ll-swatch.ll-theme-swatch { display: grid; place-items: center; box-shadow: inset 0 0 0 0.5px var(--paper-line-3); }
 .ll-swatch.ll-theme-swatch::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .ll-cuts a, .ll-link { padding: 0; border: 0; background: none; font: inherit; color: var(--paper-ink); text-decoration: underline; cursor: pointer; }
-.ll4 .ll-axis { display: inline-flex; flex: none; margin: 0 6px; vertical-align: middle; }   /* .ll4: over styles.css's .ll-seg flex: 1, which squeezed it to "L… M… C…" */
+.ll4 .ll-axis { display: inline-flex; flex: none; margin: 0 6px; vertical-align: middle; }   /* .ll4: beats styles.css's .ll-seg flex: 1 */
 .ll4 .ll-axis button { flex: none; padding: 2px 8px; min-height: 24px; font-size: var(--text-xs); }
 .ll4 .ll-on { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; }
 

@@ -1,32 +1,10 @@
-"""Scheduled prompts: a prompt that opens a new Kestrel tab at a time, once or
-on repeat ("Sunday 8pm: what's due this week, and unpaid expenses").
+"""Scheduled prompts: a prompt that opens a new Kestrel tab at a time, once or on repeat.
 
-This is an agent doing a job at a time, which is the one kind of thing the
-lazy-over-scheduled rule doesn't cover: a card can wait to be opened, a
-digest you asked to *be handed* at 8pm can't. Still, nothing here runs a
-model. The backend only says what's due; the page opens the tab, through the
-same path an open_tab handoff takes (PlanApp's handOff), so the caps on
-working tabs, the queue and the tab's model all apply unchanged.
-
-**Due, claim, ran.** The page asks `/due` once a minute. To run one it
-`claim`s it first (a conditional UPDATE, so two windows can't both open it),
-opens the tab, then reports `ran`, which advances `next_at`. A claim that
-never reports back (the window closed mid-open) lapses after CLAIM_S and the
-prompt is due again.
-
-**The lid.** A closed laptop is asleep, so nothing fires at 8pm in a bag.
-The scheduled wake (wake.py) is deliberately not used: a dark wake keeps
-the display off and the page's timers frozen, and an agent turn takes minutes,
-longer than the wake lasts. What it does instead: a missed time runs **once**
-on the first poll after the lid opens and Kestrel is up, however many times
-it was missed, if it's within GRACE of when it was due; past that a repeating
-prompt skips to its next time (`skipped`), and a one-off still runs late,
-since it has no next time and you asked for it once. The time it was due goes
-in the brief, so a late digest says it's late.
-
-Times are local wall-clock (the machine's zone), like everything a person
-sets here. Day keys are not involved: "Sunday 8pm" is a clock time, not a
-day_key day.
+The backend runs no model; it only says what's due and the page opens the tab (handOff).
+Due -> claim (conditional UPDATE, lapses after CLAIM_S) -> ran. A missed time runs once if
+within GRACE, else a repeat skips; wake.py is deliberately not used. Times are local
+wall-clock, not day_key days.
+Design: DESIGN.md → Scheduled prompts.
 """
 
 from __future__ import annotations
@@ -37,7 +15,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from . import db
+from . import db, model_catalog
 
 router = APIRouter(prefix="/api/schedules")
 
@@ -136,6 +114,13 @@ def _check(body: ScheduleIn) -> None:
         raise ScheduleError(f"mode is one of {', '.join(MODES)}")
     if body.mode == "dev" and not (body.project or "").strip():
         raise ScheduleError("a dev prompt names its project")
+    # Must be in the live list; account access is settled at tab start (console.start_model).
+    model = (body.model or "").strip()
+    if model and model != "default":
+        names = model_catalog.claude_names()
+        if model_catalog.family_of(model) not in names and model not in names:
+            raise ScheduleError(f"no model {model!r}; one of: "
+                                + ", ".join(n for n in names if not n.startswith("claude-")))
     if parse_repeat(body.repeat) is None:
         if not _ONCE.match(body.at_time):
             raise ScheduleError("a one-off's time is YYYY-MM-DDTHH:MM")

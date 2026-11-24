@@ -6,19 +6,9 @@ import YearHeat from "../ui/CalendarHeat.jsx";
 import { useSheetData } from "../lib/sheet.js";
 import { fmtAgo, fmtDay, fmtHM, shortDay } from "../lib/time";
 
-// The Health sheet — a body, not fourteen columns.
-//
-// Fitbit exposes fourteen metrics and the generic panel showed them one chip
-// at a time, which is how `sleep_deep_min` ends up on screen as a word. They
-// aren't fourteen questions: they're sleep, movement, and the two numbers that
-// say how the body is handling both. So this sheet reads nine of them at once
-// and arranges them as those three, with the latest day's figures on top
-// because "how am I doing" is asked far more often than "what was Tuesday".
-//
-// Nothing here computes a score. `energy` already exists on /api/trends and is
-// derived server-side from this same cache; inventing a second, differently
-// derived wellness number in the browser would give the app two answers to one
-// question.
+// The Health sheet: nine of Fitbit's fourteen metrics at once, as sleep, movement, and the two
+// recovery numbers, latest day on top. No score computed here: `energy` on /api/trends already is.
+// Design: DESIGN.md → Sheets are written to the subject, not the provider.
 
 const SLEEP_STAGES = [
   { metric: "sleep_deep_min", key: "deep", label: "Deep", cls: "seg-deep" },
@@ -36,10 +26,7 @@ const fmtSteps = (v) => Math.round(v).toLocaleString();
 const fmtHours = (h) => fmtHM(h * 60);
 const fmtMin = (m) => `${Math.round(m)} min`;
 
-// Whether a number moving up is a number getting better. Left null wherever
-// the answer is "it depends" — a resting heart rate that fell 8% might be
-// fitness or might be a bad reading, and coloring it green would be the app
-// telling you something it doesn't know.
+// Whether up is better; null where it depends (a falling resting HR may be a bad reading, so no green).
 const METRICS = {
   sleep_hours: { label: "Sleep", fmt: fmtHours, better: "up" },
   steps: { label: "Steps", fmt: fmtSteps, better: "up" },
@@ -48,10 +35,7 @@ const METRICS = {
   hrv: { label: "HRV", fmt: (v) => `${Math.round(v)} ms`, better: null },
 };
 
-// The latest reading, and how it sits against the rest of the range. The
-// comparison is against the *other* days, not against all of them — including
-// today in its own baseline drags the baseline toward today and shrinks every
-// delta, most of all in a short range.
+// Latest reading against the *other* days: including today in its own baseline shrinks every delta.
 function Hero({ metric, rows }) {
   const spec = METRICS[metric];
   const good = finite(rows);
@@ -66,8 +50,7 @@ function Hero({ metric, rows }) {
   return (
     <Stat value={spec.fmt(last.value)} label={spec.label} tone={tone}
       pin={[`${metric} · ${last.day}`, { metric, ...last, avg: base }]}
-      // the size of the move is only stated when it was big enough to call a
-      // move at all — "1% vs 73 bpm" is noise wearing a number
+      // the size of the move is stated only when big enough ("1% vs 73 bpm" is noise)
       sub={base == null ? fmtDay(last.day)
         : `${dir === "up" ? `↑${Math.abs(pct).toFixed(0)}% ` : dir === "down" ? `↓${Math.abs(pct).toFixed(0)}% ` : ""}vs ${spec.fmt(base)}`} />
   );
@@ -77,9 +60,7 @@ export default function HealthSheet({ onPin, onOpen }) {
   const { ranges, range, pickRange, rows, refreshedAt, error, loading, payloads, reload }
     = useSheetData("health", VIEWS, "this-week");
 
-  // Nights, assembled from the four stage series. A night is keyed by day, and
-  // a day that reported no stages at all is dropped rather than drawn as a
-  // zero-height night you slept through.
+  // Nights from the four stage series, keyed by day; a day with no stages is dropped, not a zero-height night.
   const nights = new Map();
   for (const st of SLEEP_STAGES) {
     for (const r of rows(st.metric)) {

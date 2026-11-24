@@ -1,22 +1,7 @@
-"""Plaid item lifecycle — the browser face of providers/plaid.py (finance
-DATA is served by the registry-generated GET /api/finance; this router only
-covers connect/reconnect/remove, modeled on routes/oauth.py).
-
-Flow: the widget POSTs /link_token (with item_id for Link update mode after
-ITEM_LOGIN_REQUIRED), opens Plaid Link with it, and on success POSTs
-/exchange (new item) or /sync (reconnect — update mode keeps the same
-access_token, so a fresh sync is all it takes to heal the item's status).
-Both run the initial/healing sync before they answer, so the widget's next
-read of /api/finance has it. (They used to kick it off in the background and
-have the widget poll /status until every last_synced_at was set, which a
-reconnect's item passed at once: it had synced before.)
-
-Security: same posture as routes/oauth — /status returns plaid.status()'s
-masked view (institution names + sync times), and tokens never leave app.db.
-Unlike OAuth (which needs a client JSON file), Plaid bootstrap is just two
-strings, so POST /setup lets the widget take them from a form: the secret
-transits 127.0.0.1 once, is stored backend-side, and is never echoed back.
-The CLI (python -m app.providers.plaid setup) still works identically.
+"""Plaid item lifecycle: the browser face of providers/plaid.py (connect/reconnect/remove;
+finance data is the registry's GET /api/finance). /exchange and /sync run the sync before
+answering. The /setup secret is stored backend-side and never echoed; tokens never leave app.db.
+Design: DESIGN.md → OAuth and Plaid credentials.
 """
 
 from fastapi import APIRouter, HTTPException
@@ -76,9 +61,7 @@ class ExchangeIn(BaseModel):
 
 
 def _sync_now() -> dict:
-    """finance.refresh, answered rather than raised: the item is already
-    stored, and a sync that fails has written its error to the item's row,
-    which the widget shows."""
+    """finance.refresh, answered not raised: the item is stored and a failed sync's error is on its row."""
     try:
         return finance.refresh()
     except plaid.PlaidError as e:

@@ -1,12 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchJSON, postJSON } from "../lib/api.js";
 
-// What a new tab is for, chosen before it starts — a session's cwd, prompt
-// and tools are fixed at start, so this is the one moment to choose them
-// (backend: console_profiles.py). G / S / D pick from the keyboard; in the
-// project list, ↑↓ and ↵, N names a new project (an empty git repo the tab
-// then opens on), and M moves the selected one into a folder. A folder is
-// grouping in app.db: the directory stays where it is. Esc closes the tab.
+// What a new tab is for (a session's cwd, prompt and tools are fixed at start; backend
+// console_profiles.py). G/S/D pick; in the project list ↑↓ ↵, N names a new project (empty git repo),
+// M moves one into a folder (grouping in app.db only; the directory stays). Esc closes the tab.
 
 const MODES = [
   { id: "general", key: "g", name: "General", what: "The vault — notes, tasks, calendar, mail, everything else." },
@@ -20,9 +17,7 @@ function ago(mtime) {
   return d < 1 ? "today" : d < 2 ? "yesterday" : d < 30 ? `${Math.round(d)}d ago` : "";
 }
 
-// Folders in the order the list already has them: the one holding the most
-// recently touched project first, so the top row (and a bare ↵) is still the
-// last thing you worked on. "" is the projects filed nowhere.
+// Folders in list order, most-recently-touched project's first (so a bare ↵ is your last work); "" = unfiled.
 function grouped(projects) {
   const groups = new Map();
   for (const p of projects || []) {
@@ -87,9 +82,7 @@ export default function ModePicker({ onPick, onCancel }) {
     listRef.current?.querySelector(".mp-project.sel")?.scrollIntoView({ block: "nearest" });
   }, [sel]);
 
-  // The selection follows the pointer only when the pointer moved: ↑↓
-  // scrolling the list under a still pointer fires mouse events on whatever
-  // row slid beneath it, which would drag the selection back.
+  // Follow the pointer only when it moved: ↑↓ scrolling fires mouse events on the row sliding under a still pointer.
   function followPointer(e, p) {
     const at = `${e.clientX},${e.clientY}`;
     const moved = pointerRef.current && pointerRef.current !== at;

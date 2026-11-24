@@ -1,13 +1,8 @@
-"""Writing to Google Calendar (app/routes/calendar.py + the console's
-event_create / event_update / event_delete / event_rsvp).
+"""Writing to Google Calendar (app/routes/calendar.py + console event_create/update/delete/rsvp).
 
-The API call itself is one request; what's worth testing is everything decided
-before it. Three of those decisions can silently corrupt a calendar rather than
-fail: an all-day end is inclusive on the way in and exclusive on the way out,
-a clock time belongs to the zone the user is standing in on the event's date
-(never this machine's), and a PATCH that moves only one endpoint turns an hour
-meeting into a day-long one. The fourth is that delete is a delete — it must
-never reach the calendar as a blanked-out or rewritten event.
+Pins the decisions made before the API call that would silently corrupt a calendar:
+all-day end inclusive in / exclusive out, clock times in the user's zone on the event's
+date, a PATCH moving both endpoints, and delete being a real delete.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -82,8 +77,7 @@ def test_an_end_may_be_a_bare_clock_time(gcal):
 
 
 def test_an_all_day_end_is_inclusive_going_in_and_exclusive_going_out(gcal):
-    """"the 20th through the 22nd" is three days. Google stores the 23rd; get
-    this backwards and the last day of every trip disappears."""
+    """"The 20th through the 22nd" is three days; Google stores the 23rd."""
     calendar_routes.create_event(summary="Move-in", start="2026-08-20",
                                  end="2026-08-22")
 
@@ -99,9 +93,7 @@ def test_a_one_day_all_day_event_ends_the_next_day(gcal):
 
 
 def test_the_zone_is_where_the_user_is_that_day(gcal, monkeypatch):
-    """The rule the console kept breaking: a bare clock time is in the user's
-    zone on the event's date, not this machine's and not the zone the
-    conversation has been discussing."""
+    """A bare clock time is in the user's zone on the event's date (not this machine's, not the zone discussed)."""
     monkeypatch.setattr(tz, "zone_on", lambda day: ZoneInfo("America/Los_Angeles"))
 
     calendar_routes.create_event(summary="Lunch", start="2026-08-20T12:30")
@@ -171,8 +163,7 @@ def test_moving_only_the_start_keeps_the_events_length(gcal):
 
 
 def test_a_move_always_sends_both_endpoints(gcal):
-    """Google validates start against end; half a change is how an hour
-    meeting becomes a 23-hour one."""
+    """Moving one endpoint alone would turn an hour meeting into a 23-hour one (Google validates start against end)."""
     calendar_routes.update_event(event_id="ev1", calendar_id="primary",
                                  end="17:30")
 
@@ -212,8 +203,7 @@ def test_switching_a_timed_event_to_all_day_needs_both_ends(gcal):
 
 
 def _google_patch(stored: dict, body: dict) -> dict:
-    """PATCH as Google does it, which the gcal fixture's shallow echo is not:
-    nested objects merge into what's stored, and a null deletes a field."""
+    """PATCH as Google does it: nested objects merge into what's stored, null deletes a field."""
     out = dict(stored)
     for k, v in body.items():
         if v is None:
@@ -227,8 +217,7 @@ def _google_patch(stored: dict, body: dict) -> dict:
 
 @pytest.fixture
 def merging_gcal(gcal, monkeypatch):
-    """gcal with Google's merge, and its refusal of an endpoint that is both
-    a date and a dateTime. Seed `stored["event"]` before writing."""
+    """gcal with Google's merge and its refusal of an endpoint that is both date and dateTime; seed `stored["event"]` first."""
     stored = {"event": dict(EVENT)}
 
     def fake_request(url, token, method="GET", body=None):
@@ -246,9 +235,7 @@ def merging_gcal(gcal, monkeypatch):
 
 
 def test_an_all_day_event_can_be_given_a_clock_time(merging_gcal):
-    """An all-day event given a 17:00-23:59 time must not 400 ("Invalid start
-    time": a PATCH that merges dateTime in beside the stored date), or the
-    session deletes and re-creates the event instead."""
+    """An all-day event given a 17:00-23:59 time must not 400 (dateTime merged beside the stored date), or the session re-creates it."""
     merging_gcal["event"] = {**EVENT, "start": {"date": "2026-11-28"},
                              "end": {"date": "2026-11-29"}}
     out = calendar_routes.update_event(event_id="ev1", calendar_id="primary",
@@ -331,8 +318,7 @@ def invite(gcal, monkeypatch):
 
 
 def test_an_rsvp_answers_for_the_user_and_keeps_the_guest_list(invite):
-    """`attendees` is replaced wholesale — sending only our own entry
-    uninvites everyone else on the event."""
+    """`attendees` is replaced wholesale: sending only our entry uninvites everyone."""
     out = calendar_routes.respond_event(event_id="ev1", calendar_id="primary",
                                         response="declined")
 
@@ -427,9 +413,7 @@ def test_an_uncached_id_without_a_calendar_says_which_argument_is_missing(
 # ---------- the token ----------
 
 def test_a_read_only_token_is_caught_before_the_write(monkeypatch, gcal):
-    """Google's own answer is a 403 body about insufficientPermissions, which
-    reads like a bug in the request rather than a consent that was never
-    given."""
+    """Google's 403 insufficientPermissions reads like a request bug, not missing consent."""
     monkeypatch.setattr(oauth, "status", lambda *a: {
         "scopes": "https://www.googleapis.com/auth/calendar.readonly"})
 
@@ -478,8 +462,7 @@ def test_a_move_re_pulls_both_the_old_and_the_new_day(gcal, monkeypatch):
 
 
 def test_a_failed_re_pull_does_not_fail_the_write(gcal, monkeypatch):
-    """The event has already moved by then; raising here would report a real
-    change as a failure and invite a second write."""
+    """The event already moved by then: raising would report a real change as a failure and invite a second write."""
     def broken(days):
         raise RuntimeError("offline")
 
@@ -503,10 +486,8 @@ def test_distant_days_are_re_pulled_as_separate_windows(dbfile, monkeypatch):
 
 # ---------- repeating events ----------
 
-# A semester of one class: the master carries the rule, and every Tuesday the
-# user can see is an expansion of it with an id of its own. `match` resolves to
-# one of those expansions, which is why every write has to decide whether it
-# means the occurrence or the series.
+# The master carries the rule; each Tuesday is an expansion with its own id, which `match`
+# resolves to, so every write must decide occurrence vs series.
 
 MASTER = {
     "id": "lecture",
@@ -540,8 +521,7 @@ OCCURRENCES = [
 
 
 def addressed(url: str) -> dict:
-    """Which of the two a request URL names. The instance id starts with the
-    master's, so this compares paths rather than asking `in`."""
+    """Which of master/instance a URL names (compares paths: the instance id starts with the master's)."""
     path = url.split("?")[0].removesuffix("/instances")
     return MASTER if path.endswith("/events/lecture") else INSTANCE
 
@@ -570,8 +550,7 @@ def rule_of(calls):
 
 
 def test_a_repeating_event_is_one_write_not_fifteen(gcal):
-    """The whole point: a semester of Tuesdays is an event with a rule on it,
-    not fifteen events that happen to share a title."""
+    """A semester of Tuesdays is one event with a rule, not fifteen."""
     calendar_routes.create_event(summary="PHYS 101",
                                  start="2026-09-15T14:00", end="15:20",
                                  repeat="weekly", repeat_until="2026-12-12")
@@ -581,17 +560,14 @@ def test_a_repeating_event_is_one_write_not_fifteen(gcal):
 
 
 def test_an_until_is_inclusive_so_the_last_class_still_happens(gcal):
-    """"Until December 12" names a day the event happens on. Written as that
-    day's midnight it would be the first day it doesn't, and the semester
-    would quietly end a week early."""
+    """"Until December 12" includes that day (as its midnight the semester would end a week early)."""
     calendar_routes.create_event(summary="PHYS 101",
                                  start="2026-09-15T14:00", end="15:20",
                                  repeat="weekly", repeat_until="2026-12-12")
 
     stamp = rule_of(gcal).split("UNTIL=")[1]
     until = datetime.strptime(stamp, "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC)
-    # 2pm Eastern on the last day of class is 19:00Z — the rule has to outlast
-    # it, and by less than a day.
+    # 2pm Eastern on the last class day is 19:00Z: the rule must outlast it by under a day.
     last_class = datetime(2026, 12, 12, 19, 0, tzinfo=UTC)
     assert last_class < until < last_class + timedelta(days=1)
 
@@ -636,8 +612,7 @@ def test_a_rule_words_cannot_reach_can_be_written_out(gcal):
 
 
 def test_a_written_out_rule_must_carry_its_own_ending(gcal):
-    """Merging two statements of when a series stops is how you get one that
-    stops at neither."""
+    """Two statements of when a series stops are replaced, never merged."""
     with pytest.raises(HTTPException) as e:
         calendar_routes.create_event(summary="Rent", start="2026-10-01",
                                      repeat="FREQ=MONTHLY",
@@ -665,8 +640,7 @@ def test_a_series_that_stops_before_it_starts_is_refused(gcal):
 
 
 def test_a_repeat_nobody_can_spell_never_reaches_google(gcal):
-    """A word this doesn't know is a rule Google would reject with a 400 about
-    RRULE syntax — after putting a non-repeating event on the calendar."""
+    """An unknown word is refused up front (Google's RRULE 400 would come after a non-repeating event was created)."""
     with pytest.raises(HTTPException) as e:
         calendar_routes.create_event(summary="PHYS 101",
                                      start="2026-09-15T14:00",
@@ -705,9 +679,7 @@ def test_an_unknown_weekday_is_refused_rather_than_guessed(gcal):
 
 def test_a_series_re_pulls_only_the_days_the_cache_already_had(series,
                                                                monkeypatch):
-    """A semester of Tuesdays spans four months. Re-pulling all of it would
-    fetch an autumn the cache never had — and a day that was never synced
-    cannot be stale, because get() fetches it on demand."""
+    """Only days the cache holds are re-pulled (a never-synced day can't be stale; get() fetches on demand)."""
     pulled = []
     monkeypatch.setattr(calendar_provider, "sync_days",
                         lambda days: pulled.extend(days))
@@ -721,8 +693,7 @@ def test_a_series_re_pulls_only_the_days_the_cache_already_had(series,
                                  start="2026-09-15T14:00", end="15:20",
                                  repeat="weekly", repeat_until="2026-12-12")
 
-    # The first occurrence always (it is the day the write landed on), plus the
-    # one later day the cache claims to know. December was never synced.
+    # The write's own day plus the one later cached day; December was never synced.
     assert set(pulled) == {"2026-09-15", "2026-09-22"}
 
 
@@ -738,8 +709,7 @@ def test_a_created_series_reports_what_it_actually_produced(series):
 
 
 def test_deleting_an_occurrence_leaves_the_rest_of_the_series(series):
-    """'Cancel Tuesday's lecture' is one week. The default has to be the
-    occurrence, because the id `match` resolves to is an occurrence."""
+    """The default scope is the occurrence (`match` resolves to one: "cancel Tuesday's lecture" is one week)."""
     calendar_routes.delete_event(event_id=INSTANCE["id"], calendar_id="primary")
 
     assert "lecture_20260922T180000Z" in written(series, "DELETE")[-1]["url"]
@@ -755,8 +725,7 @@ def test_deleting_the_series_deletes_the_master_behind_it(series):
 
 
 def test_this_and_following_is_refused_with_the_recipe(series):
-    """Splitting a series is two writes, not a scope. Saying so is better than
-    a scope that silently means something else."""
+    """Splitting a series is two writes, not a scope: say so rather than silently mean something else."""
     with pytest.raises(HTTPException) as e:
         calendar_routes.delete_event(event_id=INSTANCE["id"],
                                      calendar_id="primary", scope="following")
@@ -772,8 +741,7 @@ def test_moving_the_whole_series_patches_the_master(series):
 
     patch = written(series, "PATCH")[-1]
     assert patch["url"].split("?")[0].endswith("/lecture")
-    # A bare clock time moves the time and leaves the anchor date alone —
-    # rewriting that date would re-anchor every occurrence.
+    # The anchor date stays (rewriting it re-anchors every occurrence).
     assert patch["body"]["start"]["dateTime"] == "2026-09-15T15:00:00"
     # ...and the class is still 80 minutes long.
     assert patch["body"]["end"]["dateTime"] == "2026-09-15T16:20:00"
@@ -781,9 +749,7 @@ def test_moving_the_whole_series_patches_the_master(series):
 
 
 def test_a_series_keeps_the_zone_it_was_created_in(series, monkeypatch):
-    """The user is in California this week; the lecture is not. Re-deriving the
-    zone from where they are standing would move every Tuesday by three
-    hours."""
+    """A series keeps its own zone (re-deriving from where the user stands would move every Tuesday 3 hours)."""
     monkeypatch.setattr(tz, "zone_on", lambda day: ZoneInfo("America/Los_Angeles"))
 
     calendar_routes.update_event(event_id=INSTANCE["id"], calendar_id="primary",
@@ -809,8 +775,7 @@ def test_making_an_existing_event_repeat(gcal):
 
 
 def test_a_repeat_change_addresses_the_series_whatever_the_scope_says(series):
-    """One expanded Tuesday cannot repeat differently from its own series;
-    Google refuses the PATCH, and the refusal reads as a bug in the request."""
+    """An occurrence can't repeat differently from its series (Google refuses the PATCH, reading like a request bug)."""
     calendar_routes.update_event(event_id=INSTANCE["id"], calendar_id="primary",
                                  repeat="biweekly", repeat_count=6)
 
@@ -826,8 +791,7 @@ def test_a_series_can_be_told_to_stop_repeating(series):
 
 
 def test_a_series_re_pull_covers_the_days_it_left_behind(series, monkeypatch):
-    """Moving Tuesdays to Thursdays leaves every Tuesday stale, and after the
-    write there is nothing left to ask which days those were."""
+    """Collect the affected days before the write (after moving Tuesdays to Thursdays nothing says which were stale)."""
     con = db.connect()
     with con:
         for day in ("2026-09-15", "2026-09-22"):
@@ -871,8 +835,7 @@ def test_the_console_tools_report_refusals_instead_of_raising(gcal):
 
 
 def test_the_update_tool_can_clear_a_location_but_drops_blank_ids(gcal):
-    """Every other blank means "not given" — for location and description it
-    has to mean "clear it", or the console can never remove a wrong address."""
+    """Blank location/description means "clear it" (elsewhere blank is "not given")."""
     _call("event_update", event_id="ev1", calendar_id="primary", location="",
           match="", start="", summary="")
 
@@ -880,8 +843,7 @@ def test_the_update_tool_can_clear_a_location_but_drops_blank_ids(gcal):
 
 
 def test_the_create_tool_says_how_many_times_it_will_happen(series):
-    """"Created it" is equally true of a rule that fired once and one that
-    filled the autumn, so the answer has to say which."""
+    """The answer says whether a rule fired once or filled the autumn."""
     said = _call("event_create", summary="PHYS 101", start="2026-09-15T14:00",
                  end="15:20", calendar_id="cal-a", repeat="weekly",
                  repeat_until="2026-12-12")
@@ -898,8 +860,7 @@ def test_the_create_tool_says_when_a_series_never_ends(gcal):
 
 
 def test_the_create_tool_takes_a_count_as_a_string(gcal):
-    """The schema says integer; a model that has just written two dates as
-    strings reaches for "6" often enough that refusing costs a turn."""
+    """A numeric string ("6") is accepted where the schema says integer (refusing costs a turn)."""
     _call("event_create", summary="1:1", start="2026-09-15T14:00",
           repeat="weekly", repeat_count="6")
 

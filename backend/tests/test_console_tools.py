@@ -1,7 +1,6 @@
 """The console's in-process MCP tools (app/console_tools.py).
 
-Each test names the console-session failure it exists to prevent — the
-transcripts are the spec here, not a hypothetical.
+Each test names a real console-session failure; why: DESIGN.md → `backend/tests/test_console_tools.py`.
 """
 
 import asyncio
@@ -29,9 +28,7 @@ def _no_vault_write(monkeypatch):
 # ---------- task_create / task_update ----------
 
 def test_task_create_lands_in_app_db(dbfile):
-    """Session 3077f49f filed 'Order move-in supplies' with the harness's own
-    TaskCreate. It went to ~/.claude/tasks/<session>/1.json, app.db never saw
-    it, and it was still sitting there unseen after its due date passed."""
+    """task_create writes app.db, not the harness's own task store."""
     text, err = call(ct.task_create, title="Order move-in supplies",
                      due="2026-07-25")
     assert not err
@@ -49,9 +46,7 @@ def test_task_create_requires_a_title(dbfile):
 
 
 def test_task_update_completes_without_raw_sql(dbfile):
-    """Session 2d395a20 ran `UPDATE tasks SET status='done' WHERE id=47`
-    against the wrong app.db, got an error, went looking for the right path
-    with `find`, and ran it again."""
+    """task_update completes a task without the model writing SQL."""
     made = db.create_task(title="Update room locations")
     text, err = call(ct.task_update, task_id=made["id"], status="done")
     assert not err and "done" in text
@@ -85,8 +80,7 @@ def test_task_update_rejects_a_non_numeric_id(dbfile):
 
 
 def test_task_update_takes_the_column_name_id_too(dbfile):
-    """A db_query row calls it `id`; three sessions sent {"id": "130"} and the
-    required task_id refused it before the handler ran."""
+    """{"id": ...} is accepted for task_id (db_query rows call it `id`)."""
     assert "task_id" not in ct.task_update.input_schema["required"]
     made = db.create_task(title="ballot")
     _, err = call(ct.task_update, id=str(made["id"]), status="done")
@@ -116,14 +110,12 @@ def test_db_query_takes_bound_params(dbfile):
     "DELETE FROM tasks",
     "DROP TABLE tasks",
     "INSERT INTO tasks (title) VALUES ('x')",
-    # The Bash allowlist has to parse SQL to catch these two; this path does
-    # not, because the connection itself is opened mode=ro.
+    # No SQL parsing needed: the connection is opened mode=ro.
     "SELECT writefile('/tmp/pwned', 'x')",
     "CREATE TABLE evil (a)",
 ])
 def test_db_query_cannot_write(dbfile, sql):
-    # Seed first so the database exists. Without it a read-only connection
-    # fails to open at all, and these would pass on the wrong error.
+    # Seed first: a read-only open of a missing DB fails on the wrong error.
     db.create_task(title="survivor")
     text, err = call(ct.db_query, sql=sql)
     assert err, f"{sql!r} was not refused"
@@ -145,10 +137,7 @@ def test_db_query_caps_rows(dbfile):
 
 
 def test_db_query_names_the_real_columns_after_a_guess(dbfile):
-    """A `no such column` refusal (`li.text` for `name`, `messages.date` for
-    `day`) gets answered by a schema probe or another guess, so the error
-    carries the columns of every table the
-    statement reads, aliases and all."""
+    """A `no such column` error carries the columns of every table the statement reads, aliases included."""
     db.create_task(title="seed")
     text, err = call(ct.db_query, sql="SELECT i.text FROM lists l JOIN "
                      "list_items i ON i.list_id = l.id WHERE l.name LIKE '%x%'")
@@ -169,8 +158,7 @@ def test_db_query_suggests_tables_with_near_names(dbfile):
 
 
 def test_db_query_stops_a_runaway_query(dbfile, monkeypatch):
-    """A correlated subquery per message row holds its call until the CLI's
-    MCP timeout, 1,260s: the general tab sizes it for use_computer."""
+    """A runaway query is stopped before the CLI's MCP timeout (1,260s)."""
     db.create_task(title="seed")
     monkeypatch.setattr(ct, "DB_QUERY_SECONDS", 0.2)
     started = time.monotonic()
@@ -184,9 +172,7 @@ def test_db_query_stops_a_runaway_query(dbfile, monkeypatch):
 # ---------- calendar_ids ----------
 
 def test_calendar_ids_returns_the_full_suffixed_id(dbfile):
-    """18 create_event calls in session 276ab09d 404'd in a row because the id
-    was retyped without '@group.calendar.google.com'. The whole point of this
-    tool is that the model never types one."""
+    """calendar_ids returns ids with their '@group.calendar.google.com' suffix."""
     full = ("c_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
             "@group.calendar.google.com")
     with db.session() as con, con:
@@ -202,10 +188,7 @@ def test_calendar_ids_returns_the_full_suffixed_id(dbfile):
 
 
 def test_event_zone_follows_the_event_date_not_today(dbfile):
-    """Session 7f73f8db spent ninety turns doing PT↔ET arithmetic over duplicate
-    USC events, then heard 'lunch at 12:30' and wrote 12:30 America/Los_Angeles
-    on a day the user was in North Carolina — three hours off. The zone is a
-    property of the event's date, so the tool answers per date."""
+    """The zone is answered per event date, not for today."""
     before, err = call(ct.event_zone, date="2026-08-16")   # day before RDU→LAX
     assert not err and "America/New_York" in before and "(ET)" in before
     after, _ = call(ct.event_zone, date="2026-08-17")      # the flight
@@ -219,15 +202,13 @@ def test_event_zone_follows_the_event_date_not_today(dbfile):
 
 
 def test_event_zone_defaults_to_the_day_key(dbfile):
-    """Bare 'today' has to mean the 4am-rollover day-key, not the wall clock —
-    between midnight and 4am those disagree, and so can their zones."""
+    """Bare 'today' is the day-key, not the wall clock."""
     text, err = call(ct.event_zone)
     assert not err and db.day_key() in text
 
 
 def test_event_zone_rejects_a_non_date(dbfile):
-    """A malformed date must not silently fall back to today and hand back a
-    confidently wrong zone."""
+    """A malformed date is refused, not defaulted to today."""
     text, err = call(ct.event_zone, date="next tuesday")
     assert err and "YYYY-MM-DD" in text
 
@@ -245,8 +226,7 @@ def test_provider_rejects_an_unknown_source_with_the_valid_list(dbfile):
 
 
 def test_provider_rejects_a_bad_range_with_the_grammar(dbfile):
-    """Three different range separators were guessed across one week of
-    sessions: `,` and `:` and `..`. Only the last is real."""
+    """A bad range (`,` or `:` separator) is refused with the `..` grammar."""
     text, err = call(ct.provider, source="calendar", range="2026-09-02:2026-09-09")
     assert err and "unknown range" in text
 
@@ -264,10 +244,7 @@ def _reddit_hit(**over):
 
 
 def test_reddit_search_carries_body_and_link(monkeypatch):
-    """The one read with no second hop: the console has no fetch tool and
-    Reddit 403s anonymous clients, so whatever this returns is all the model
-    will ever see of the thread. A list of titles can't answer a research
-    question, and the permalink is what the user opens."""
+    """Results carry the post body and permalink: there is no second hop."""
     from app.providers import reddit
     monkeypatch.setattr(reddit, "search", lambda *a, **k: {
         "source": "reddit", "search": "rain cover", "subreddit": "onebag",
@@ -282,8 +259,7 @@ def test_reddit_search_carries_body_and_link(monkeypatch):
 
 
 def test_reddit_search_needs_a_subreddit(monkeypatch):
-    """Arctic Shift refuses an unscoped query, so the schema requires one
-    rather than letting the model spend a call learning that."""
+    """The schema requires a subreddit (Arctic Shift refuses unscoped queries)."""
     from app.providers import reddit
     monkeypatch.setattr(reddit, "search",
                         lambda *a, **k: pytest.fail("called unscoped"))
@@ -293,10 +269,7 @@ def test_reddit_search_needs_a_subreddit(monkeypatch):
 
 
 def test_reddit_search_translates_a_busy_archive(monkeypatch):
-    """The archive says "Timeout. Maybe slow down a bit", which reads as a
-    rate limit and invites an immediate retry. "Narrow it" is the wrong
-    advice: when the search is down every narrower retry 422s too. The tool
-    points past the archive instead."""
+    """A busy-archive timeout points past the archive, not at retrying or narrowing."""
     from app.providers import reddit
 
     def busy(*a, **k):
@@ -332,8 +305,7 @@ def test_reddit_search_says_when_it_only_scanned_the_newest_posts(monkeypatch):
 
 
 def test_reddit_search_names_the_tracked_subs_in_its_description():
-    """The tool's whole point is being the read the cache can't serve, which
-    only lands if the description says which subs the cache does hold."""
+    """The description says which subs the cache already holds."""
     from app.config import REDDIT_SUBREDDITS
     for sub in REDDIT_SUBREDDITS:
         assert f"r/{sub}" in ct.reddit_search.description
@@ -342,8 +314,7 @@ def test_reddit_search_names_the_tracked_subs_in_its_description():
 # ---------- the allowlist split ----------
 
 def test_only_reads_are_auto_approved():
-    """Writers must not appear in the auto-approved list: entries there bypass
-    can_use_tool entirely, so task_create would fire with no card."""
+    """Writers are not auto-approved (the list bypasses can_use_tool)."""
     assert set(ct.READ_TOOL_NAMES) == {
         "mcp__vault__provider", "mcp__vault__email_body",
         "mcp__vault__email_search", "mcp__vault__email_scheduled",
@@ -357,33 +328,26 @@ def test_only_reads_are_auto_approved():
         "mcp__vault__course_review", "mcp__vault__study_coverage",
         "mcp__vault__doc_pages", "mcp__vault__food_search", "mcp__vault__food_day",
         "mcp__vault__food_suggest", "mcp__vault__project_info",
-        # Writes nothing: it asks the page for a tab, and the tab on screen
-        # is the review — closing it is the undo.
+        # Writes nothing: the tab on screen is the review.
         "mcp__vault__open_tab",
         # Closes only idle tabs, and the session stays resumable.
         "mcp__vault__tabs",
-        # A message to a tab this one opened: on screen in that tab, and its
-        # report comes back here.
+        # A message to a tab this one opened: on screen there, report comes back here.
         "mcp__vault__message_tab",
-        # Other models on errands (app/delegates): what leaves is a scrubbed
-        # brief to a sandboxed CLI, logged in delegate_runs
-        # (test_delegate_boundary); shortlist only draws a card.
+        # Delegates: a scrubbed brief to a sandboxed CLI, logged in delegate_runs; shortlist only draws a card.
         "mcp__vault__delegate", "mcp__vault__fan_out", "mcp__vault__shortlist",
-        # Colour roles only, each a checked #RRGGBB on a design token
-        # (looks.problems); undone by picking another colour in the Look lab.
+        # Colour roles only, each a checked #RRGGBB (looks.problems); undone in the Look lab.
         "mcp__vault__theme_set",
         # Calls only the reads above, in a sandbox (console_code); every
         # write name in it throws.
         "mcp__vault__run_script"}
-    # Derived from WRITE_TOOLS rather than re-listed, so a writer added later
-    # is covered without anyone remembering to add it here too.
+    # Derived from WRITE_TOOLS so a later writer is covered.
     for t in ct.WRITE_TOOLS:
         assert f"mcp__vault__{t.name}" not in ct.READ_TOOL_NAMES
 
 
 def test_every_tool_is_registered():
-    """A handler defined but left out of TOOLS is invisible to the model, which
-    is indistinguishable from not having written it."""
+    """Every handler defined is in TOOLS."""
     assert {t.name for t in ct.TOOLS} == {
         "provider", "email_body", "email_search", "reddit_search",
         "venue_search", "venue_details", "db_query", "calendar_ids",
@@ -409,8 +373,7 @@ def test_every_tool_is_registered():
         "food_create", "food_fix", "food_close", "food_weigh", "food_profile",
         "open_tab", "tabs", "message_tab", "run_script",
         "delegate", "fan_out", "shortlist", "theme_set"}
-    # TOOLS is the concatenation and nothing else — a tool reachable by the
-    # model but in neither list would be neither approved nor gated.
+    # TOOLS is exactly the two lists: a tool in neither is neither approved nor gated.
     assert ([t.name for t in ct.TOOLS]
             == [t.name for t in ct.READ_TOOLS + ct.WRITE_TOOLS])
 
@@ -418,33 +381,17 @@ def test_every_tool_is_registered():
 # ---------- the prompt names what it can reach ----------
 
 def test_the_prompt_says_tools_carry_a_prefix():
-    """Measured over the 88 sessions on record: 29 of 153 ToolSearch calls came
-    back empty, and every one was for a vault tool — 15/15 `select:` calls
-    using the bare name this prompt writes (`select:db_query`,
-    `select:debt_add,task_update`) and 14/14 keyword searches. A qualified
-    `select:mcp__vault__x` never failed. The prose can keep the short names
-    only while it also says what the real ones look like.
-
-    This used to pin the words "already loaded", which were false: the vault
-    tools are deferred, and the prompt telling the model not to look them up
-    was fighting the one step that makes them callable. What has to survive is
-    the qualified `select:` form, not the claim about loading."""
+    """The prompt spells out the qualified `select:mcp__vault__x` form (bare names returned empty ToolSearch)."""
     from app import console_prompt
     s = console_prompt.SYSTEM_APPEND
     assert "mcp__vault__" in s
-    # The form itself, spelled out — an empty search reading as a missing
-    # capability is what this line exists to stop.
     assert "select:mcp__vault__" in s
 
 
 def test_the_prompt_names_every_tool():
-    """A tool the prose never mentions is one the model reaches only if its own
-    description happens to fire — which is how `email_body` went unnamed while
-    the prompt sent email questions to `db_query` over a table holding nothing
-    but snippets. New tool, new line here."""
+    """The prompt names every tool. New tool, new line here."""
     from app import console_prompt
-    # open_tab is named by HANDOFF_APPEND, which goes out with exactly the
-    # sessions that are given the tool (render_append).
+    # open_tab is named by HANDOFF_APPEND (sent with the sessions given the tool).
     prose = console_prompt.SYSTEM_APPEND + console_prompt.HANDOFF_APPEND
     unnamed = [t.name for t in ct.TOOLS if t.name not in prose]
     assert unnamed == []
@@ -456,9 +403,7 @@ def _shopping(): return db.find_list("Shopping")["id"]
 
 
 def test_list_add_lands_on_the_list_not_the_task_board(dbfile):
-    """Session 83d02377 was asked to add six move-in items, said 'no dedicated
-    shopping-list write tool is exposed to me — only tasks', and filed all six
-    as tasks. The shopping card never saw them."""
+    """list_add writes the shopping list, not the task board."""
     text, err = call(ct.list_add, name="Laundry detergent (pods)",
                      category="Dorm", note="Bag is covered by the pack, soap isn't")
     assert not err
@@ -470,17 +415,14 @@ def test_list_add_lands_on_the_list_not_the_task_board(dbfile):
 
 
 def test_list_add_defaults_to_shopping(dbfile):
-    """The list the migration seeds is the one an unqualified `add milk` means.
-    Without the default, every buy-list add would need the model to name a list
-    it was never told about."""
+    """An unqualified add goes to the seeded shopping list."""
     _, err = call(ct.list_add, name="milk")
     assert not err
     assert [i["name"] for i in db.list_items_for(_shopping())] == ["milk"]
 
 
 def test_list_add_files_to_a_named_list(dbfile):
-    """The whole point of the second list: 'add a desk lamp to my college
-    packing list' has to land there and not on the buy list."""
+    """A named list gets the item, not the buy list."""
     call(ct.list_create, name="College packing")
     _, err = call(ct.list_add, name="Desk lamp", list="college PACKING")
     assert not err
@@ -490,9 +432,7 @@ def test_list_add_files_to_a_named_list(dbfile):
 
 
 def test_list_add_on_an_unknown_list_names_the_real_ones(dbfile):
-    """The model can't see the chips. A miss that just said 'no such list'
-    invites the same guess again, or a fallback onto the task board — so the
-    error carries the names it could have meant, and writes nothing."""
+    """An unknown list errors with the real names and writes nothing."""
     text, err = call(ct.list_add, name="Streamers", list="Party")
     assert err and "Party" in text and "Shopping" in text
     assert "list_create" in text
@@ -518,8 +458,7 @@ def test_list_add_takes_several_items_in_one_call(dbfile):
 
 
 def test_batch_schemas_validate_through_the_server(dbfile):
-    """`items` has to get past the MCP server's jsonschema check, and a
-    misnamed field inside an item has to be refused like a top-level one."""
+    """`items` passes the server's jsonschema; a misnamed inner field is refused."""
     from mcp.types import CallToolRequest, CallToolRequestParams
     srv = ct.build_server()["instance"]
 
@@ -533,8 +472,7 @@ def test_batch_schemas_validate_through_the_server(dbfile):
 
 
 def test_list_create_rejects_a_duplicate_name(dbfile):
-    """Case-insensitively — 'shopping' next to 'Shopping' would be two chips
-    each holding half the list."""
+    """Duplicate list names are refused case-insensitively."""
     text, err = call(ct.list_create, name="shopping")
     assert err and "already exists" in text
     assert [l["name"] for l in db.all_lists()] == ["Shopping"]
@@ -581,8 +519,7 @@ def test_list_item_done_reports_a_missing_item(dbfile):
 # ---------- expense_add / expense_update / expense_remove / expense_paid ----------
 
 def test_expense_tools_claim_recategorize_and_drop(dbfile):
-    """The console can claim for Dad, change the category and remove a claim,
-    and a bad call comes back as an error rather than raising."""
+    """Claim, recategorize and drop work; a bad call is an error, not a raise."""
     from app import expenses
 
     text, err = call(ct.expense_add, merchant="Venmo", amount="24.50",
@@ -606,11 +543,7 @@ def test_expense_tools_claim_recategorize_and_drop(dbfile):
 # ---------- debt_add / debt_settle ----------
 
 def test_debt_add_lands_on_the_card_not_in_a_task_note(dbfile):
-    """Session 137b2608: 'this is a debt tracker so add them to debts -> ana
-    and ben already paid'. With no debt writer it globbed the vault for a file
-    named something like debt, found none, and wrote all four balances into
-    task 91's note — where the debts card cannot see them and no total counts
-    them."""
+    """debt_add lands on the debts card, not in a task note."""
     text, err = call(ct.debt_add, person="Nadia", amount=40,
                      reason="beach house")
     assert not err
@@ -637,8 +570,7 @@ def test_debt_add_rejects_an_unknown_direction(dbfile):
 
 
 def test_debt_add_requires_a_person_and_an_amount(dbfile):
-    """A debt with no amount is worse than no debt: it shows on the card and
-    contributes nothing to the total. The tool asks rather than defaulting."""
+    """A missing person or amount is asked for, never defaulted."""
     text, err = call(ct.debt_add, person="Nadia")
     assert err and "amount is required" in text
     text, err = call(ct.debt_add, person="Nadia", amount="forty-ish")
@@ -649,8 +581,7 @@ def test_debt_add_requires_a_person_and_an_amount(dbfile):
 
 
 def test_debt_add_rejects_a_signed_amount(dbfile):
-    """`direction` carries the sign. A -40 i_owe would subtract from what the
-    user is owed, which is the opposite of how the call reads."""
+    """`direction` carries the sign, so a negative amount is refused."""
     text, err = call(ct.debt_add, person="Abel", amount=-40, direction="i_owe")
     assert err and "greater than zero" in text
     text, err = call(ct.debt_add, person="Abel", amount=0)
@@ -680,10 +611,7 @@ def test_debt_settle_rejects_a_non_numeric_id(dbfile):
 
 
 def test_debt_merge_goes_through_update_and_remove_not_settle(dbfile):
-    """Session e9215d16: asked for one sum per person, it had no way to edit
-    or delete a row, so it settled nine split rows and added a combined one
-    for each person. The card's history then showed nine payments that never
-    happened."""
+    """Merging split rows uses update/remove, not settle (settling logs payments that never happened)."""
     a = db.create_debt(person="Petra", amount=99.38, reason="KBBQ + rental")
     b = db.create_debt(person="Petra", amount=25.47, reason="trip true-up")
     text, err = call(ct.debt_update, debt_id=a["id"], amount=124.85,
@@ -726,8 +654,7 @@ def test_debt_update_and_remove_report_a_missing_debt(dbfile):
 # ---------- beer_add / beer_settle ----------
 
 def test_beers_stay_out_of_the_money(dbfile):
-    """'theo, soren, and petra owe me a beer' is a favor, not a $5 debt: it
-    must not move the owed-to-you total or put anyone on the chase list."""
+    """A beer owed moves no money total and puts no one on the chase list."""
     for p in ("Theo", "Soren", "Petra"):
         text, err = call(ct.beer_add, person=p)
         assert not err and f"{p} owes you a beer" == text
@@ -765,9 +692,7 @@ def test_beer_add_validates(dbfile):
 
 
 def test_the_whole_137b2608_instruction_now_completes(dbfile):
-    """The second half failed as a consequence of the first: the session left
-    task 91 open because the note it had just written was the only copy of the
-    debt. With the debts in their own store the task can close."""
+    """Adding the debts then closing the task now completes."""
     task = db.create_task(title="Nadia Rowan Felix Abel")
     for person in ("Nadia", "Abel"):
         _, err = call(ct.debt_add, person=person, amount=40,
@@ -783,9 +708,7 @@ def test_the_whole_137b2608_instruction_now_completes(dbfile):
 # ---------- watchlist_add / watchlist_watched ----------
 
 def test_watchlist_add_queues_instead_of_nagging_from_the_board(dbfile):
-    """No session had to get this wrong first: the drain has been observed
-    twice and the watchlist was the last store the console could read and not
-    write. A film filed as a task sits on the board asking to be completed."""
+    """watchlist_add queues the film, not a task."""
     text, err = call(ct.watchlist_add, title="Heat", year=1995,
                      services="Netflix", note="Rowan's rec")
     assert not err
@@ -818,8 +741,7 @@ def test_watchlist_add_requires_a_title_and_a_numeric_year(dbfile):
 
 
 def test_watchlist_add_survives_a_missing_year(dbfile):
-    """Optional means omittable — the schema shorthand bug that made every
-    parameter required is exactly what this guards for the newest tools."""
+    """An optional year may be omitted."""
     _, err = call(ct.watchlist_add, title="Sinners")
     assert not err
     assert db.list_rows("watchlist")[0]["year"] is None
@@ -846,8 +768,7 @@ def test_watchlist_watched_rejects_a_non_numeric_id(dbfile):
 
 
 def test_every_card_backed_store_has_a_writer():
-    """The drain closes only when there is nowhere left for a write to fall.
-    Each small list the console can read now has an add and a done-flip."""
+    """Each card-backed store the console can read has an add and a done-flip."""
     names = {t.name for t in ct.WRITE_TOOLS}
     for add, flip in (("list_add", "list_item_done"),
                       ("debt_add", "debt_settle"),
@@ -859,10 +780,7 @@ def test_every_card_backed_store_has_a_writer():
 # ---------- habit_checkin / habit_add ----------
 
 def test_habit_checkin_lands_on_the_card_not_the_task_board(dbfile, frozen_day):
-    """Habits were the last store behind a card the console could read and not
-    write, while SYSTEM_APPEND pointed at it ('mood/workout journaling moved to
-    habits'). The task board was the only writer in reach, and a habit closed
-    as a task still leaves the day reading as missed on the card."""
+    """habit_checkin writes the habit card, not a task."""
     db.create_habit("Exercise")
     text, err = call(ct.habit_checkin, habit="Exercise", note="lifted")
     assert not err
@@ -877,8 +795,7 @@ def test_habit_checkin_lands_on_the_card_not_the_task_board(dbfile, frozen_day):
 
 
 def test_habit_checkin_matches_the_name_the_user_says(dbfile, frozen_day):
-    """The console has what the user said, not the id the widget clicks. A
-    match that needed the exact stored casing would fail on '$50 doordash'."""
+    """The habit matches the user's wording, not the exact stored casing."""
     db.create_habit("$50 DoorDash")
     text, err = call(ct.habit_checkin, habit="  $50   doordash ")
     assert not err and "$50 DoorDash" in text
@@ -886,8 +803,7 @@ def test_habit_checkin_matches_the_name_the_user_says(dbfile, frozen_day):
 
 
 def test_habit_checkin_names_the_real_habits_when_it_cannot_match(dbfile, frozen_day):
-    """Recovery in one turn. Guessing is the worse failure: a check written to
-    an invented habit is a row the user never sees and never asked for."""
+    """No match lists the real habits and writes nothing."""
     db.create_habit("Exercise")
     db.create_habit("Read")
     text, err = call(ct.habit_checkin, habit="Meditate")
@@ -899,10 +815,7 @@ def test_habit_checkin_names_the_real_habits_when_it_cannot_match(dbfile, frozen
 
 
 def test_habit_checkin_files_under_the_day_key_not_the_wall_clock(dbfile, monkeypatch):
-    """The 4am rollover, which is the whole reason day_key exists. At 01:30 the
-    civil date is already the 12th while the card is still filing under the
-    11th, so a default of date.today() would check off a day that hasn't
-    started and leave the day the user meant reading as missed."""
+    """At 01:30 the check-in files under the previous day-key (4am rollover)."""
     monkeypatch.setattr(db, "day_key", lambda dt=None: "2026-08-11")
     db.create_habit("Sleep")
     text, err = call(ct.habit_checkin, habit="Sleep")
@@ -912,10 +825,7 @@ def test_habit_checkin_files_under_the_day_key_not_the_wall_clock(dbfile, monkey
 
 
 def test_habit_checkin_refuses_a_day_past_the_day_key(dbfile, frozen_day):
-    """Same rollover, arriving the other way: a model that works the date out
-    itself between midnight and 4am hands over tomorrow's. The refusal quotes
-    the day-key so the retry is right, instead of parking a check on a day no
-    streak counts."""
+    """A date past the day-key is refused, and the refusal quotes the day-key."""
     db.create_habit("Exercise")
     text, err = call(ct.habit_checkin, habit="Exercise", day="2026-08-02")
     assert err and "2026-08-01" in text and "4am" in text
@@ -938,8 +848,7 @@ def test_habit_checkin_rejects_a_non_date(dbfile, frozen_day):
 
 
 def test_habit_checkin_zero_un_checks_a_day(dbfile, frozen_day):
-    """value=0 is how a mis-logged day is corrected. It leaves a tombstone
-    rather than deleting the row, so the auto pass can't refill it."""
+    """value=0 un-checks by tombstone, so the auto pass can't refill it."""
     db.create_habit("Exercise")
     call(ct.habit_checkin, habit="Exercise")
     text, err = call(ct.habit_checkin, habit="Exercise", value=0)
@@ -958,8 +867,7 @@ def test_habit_add_starts_tracking_and_is_checkable(dbfile, frozen_day):
 
 
 def test_habit_add_does_not_duplicate_an_active_habit(dbfile, frozen_day):
-    """Two rows named Exercise split one streak in two, and the check-in then
-    writes to whichever the resolver happens to reach first."""
+    """Adding an active habit's name again creates no second row."""
     db.create_habit("Exercise")
     text, err = call(ct.habit_add, name="exercise")
     assert not err and "already tracking" in text
@@ -968,10 +876,7 @@ def test_habit_add_does_not_duplicate_an_active_habit(dbfile, frozen_day):
 
 
 def test_habit_add_resumes_an_archived_habit_rather_than_reopening_it(dbfile, frozen_day):
-    """Archiving keeps the check-in history, so creating a second row by the
-    same name would strand it on a habit nothing renders and restart the
-    streak at zero — the user's record of having done the thing, lost to a
-    write that looked like it worked."""
+    """Adding an archived habit's name resumes it, keeping its history."""
     old = db.create_habit("Exercise")
     db.checkin(old["id"], day="2026-07-31")
     db.update_habit(old["id"], archived=True)
@@ -992,10 +897,7 @@ def test_habit_add_requires_a_name(dbfile, frozen_day):
 
 
 def test_habit_add_sets_nothing_the_card_cannot_render():
-    """cadence/target/unit are columns nothing reads — the widget's own create
-    form takes a name, and a 'weekly' habit would draw a daily streak that
-    misses six days in seven. A parameter the model can set and the card can't
-    honour is worse than an absent one, so the schema doesn't offer them."""
+    """The schema offers no cadence/target/unit (nothing renders them)."""
     props = ct.habit_add.input_schema["properties"]
     assert set(props) == {"name"}
 
@@ -1003,12 +905,7 @@ def test_habit_add_sets_nothing_the_card_cannot_render():
 # ---------- package_add ----------
 
 def test_package_add_files_an_order_no_email_will_announce(dbfile):
-    """Session 83d02377, end: the user pasted an Amazon orders page — Raven 20
-    'Arriving Thursday', Crep Protect 'Arriving Friday'. Those orders sit on a
-    parent's account, so nothing reaches this mailbox and the extractor can
-    never see them. With deliveries write-only-by-amendment, the console put
-    all three on the shopping list and ticked them bought; the dates survived
-    only as prose in a note, on no card that shows dates."""
+    """package_add files an order no email will announce, with its date, on the deliveries card."""
     text, err = call(ct.package_add, merchant="Amazon",
                      item_desc="Fjällräven Raven 20 Backpack, Navy",
                      eta_day="2026-08-06")
@@ -1034,8 +931,7 @@ def test_package_add_rejects_a_bad_date_and_status(dbfile):
 
 
 def test_package_add_then_update_addresses_the_same_row(dbfile):
-    """The key package_add reports has to be the one package_update takes —
-    it is all the console has to go on for a later change."""
+    """The key package_add reports is the one package_update takes."""
     text, _ = call(ct.package_add, merchant="Amazon", item_desc="Raven 20")
     key = "Amazon:manual-1"
     assert key in text
@@ -1062,9 +958,7 @@ def _campus_ready():
 
 
 def test_package_update_writes_a_date_the_email_never_carried(dbfile):
-    """Session 1f1aaa64: the user pinned the reply giving the Aug 18 pickup
-    date and said 'i wanted to add to deliveries/travel not task'. The console
-    had no write path into `packages`, so it filed — then dropped — a task."""
+    """package_update writes an ETA the email never carried."""
     key = _campus_ready()
     text, err = call(ct.package_update, order_key=key, eta_day="2026-08-18")
     assert not err and "2026-08-18" in text
@@ -1116,11 +1010,6 @@ def test_package_delete_requires_an_order_key(dbfile):
 
 
 # ---------- trip_add ----------
-#
-# A flight can be on the calendar and in no other store, so /api/trips leaves
-# it out and the travel card's count means only the other trips. Nothing else
-# in the system can add it when the booking predates the mail sync's history:
-# there is no message to extract.
 
 def test_trip_add_puts_a_flight_on_the_card_with_no_email_behind_it(dbfile):
     text, err = call(ct.trip_add, flight_no="2299",
@@ -1138,8 +1027,7 @@ def test_trip_add_puts_a_flight_on_the_card_with_no_email_behind_it(dbfile):
 
 
 def test_trip_add_reports_a_bare_date_instead_of_filing_it_at_midnight(dbfile):
-    """A date-only dep_local parses fine and lands at 00:00, which would date
-    the T-24h check-in task a day early and print '12:00 AM' on the card."""
+    """A date-only dep_local is reported, not filed at 00:00."""
     text, err = call(ct.trip_add, flight_no="2299", dep_local="2026-08-17")
     assert err
     assert "departure time" in text
@@ -1153,10 +1041,6 @@ def test_trip_add_reports_a_bad_airport_rather_than_raising(dbfile):
 
 
 # ---------- trip_delete ----------
-#
-# An exchanged flight: the airline's change email opens the new leg without
-# ever closing the old, so the card shows both and the dead leg keeps its
-# check-in task and alarm.
 
 def _two_legs():
     for dep in ("2026-11-22T09:40:00", "2026-11-29T05:00:00"):
@@ -1196,8 +1080,7 @@ def test_trip_delete_removes_one_leg_and_its_checkin_task(dbfile):
 
 
 def test_trip_delete_withdraws_the_derived_alarm(dbfile):
-    """The alarm is derived from `trips` each reconcile, so the deleted leg
-    simply stops being wanted."""
+    """A deleted leg's derived alarm is no longer wanted."""
     from datetime import datetime, timedelta
 
     from app import alarms
@@ -1265,11 +1148,6 @@ def test_email_archive_reports_gmail_failures_per_id(dbfile, monkeypatch):
 
 
 # ---------- schemas ----------
-#
-# The SDK's shorthand ({"name": Annotated[str, ...]}) marks every key required.
-# Session 5719a6e8 shows the cost: `provider` without a metric was refused
-# outright, and the retry filled in every blank it could — metric="" plus
-# brief=false, which replaced a one-line-per-item read with a week of raw JSON.
 
 def test_optional_parameters_are_actually_optional():
     for t, required in ((ct.provider, {"source", "range"}),
@@ -1280,10 +1158,8 @@ def test_optional_parameters_are_actually_optional():
 
 
 def test_no_tool_requires_every_parameter():
-    """The shape the shorthand produces, named so a tool that regresses to it
-    fails here rather than in a session."""
-    # Every field is the key: trips' composite primary key, and a delete
-    # shouldn't guess at a missing part of it (FLZUNL/2308 has two days).
+    """No tool's schema marks every parameter required (the SDK shorthand does)."""
+    # Every field is the composite key; a delete must not guess (FLZUNL/2308 has two days).
     every_field_is_the_key = {"trip_delete"}
     # A message with no recipient, or a recipient with no message, is nothing.
     every_field_is_the_key |= {"message_tab"}
@@ -1295,8 +1171,7 @@ def test_no_tool_requires_every_parameter():
 
 
 def test_every_schema_is_a_full_json_schema():
-    """create_sdk_mcp_server only passes a schema through untouched when it has
-    both "type" and "properties"; anything else goes down the shorthand path."""
+    """Every schema has "type" and "properties", or the SDK treats it as shorthand."""
     for t in ct.TOOLS:
         s = t.input_schema
         assert s["type"] == "object" and "properties" in s, t.name
@@ -1305,8 +1180,7 @@ def test_every_schema_is_a_full_json_schema():
 
 
 def served(name, **args):
-    """Call a tool through the real SDK MCP server — schema validation and
-    all, which a direct handler() call skips. Returns (text, is_error)."""
+    """Call a tool through the real SDK MCP server (schema validation included). Returns (text, is_error)."""
     from mcp.types import CallToolRequest, CallToolRequestParams
     srv = ct.build_server()["instance"]
     req = CallToolRequest(method="tools/call",
@@ -1316,9 +1190,7 @@ def served(name, **args):
 
 
 def test_a_refusal_reaches_the_cli_as_an_error(dbfile):
-    """The SDK server doesn't read `isError`, so a refusal sent that way goes
-    out as a success: a green card, and a failed write counted in the turn's
-    change summary."""
+    """A refusal reaches the CLI as an error (the SDK server ignores `isError`)."""
     db.create_task(title="seed")
     text, err = served("db_query", sql="SELECT * FROM no_such_table")
     assert err and text.startswith("error: no such table")
@@ -1332,11 +1204,7 @@ def test_every_schema_is_closed_to_unknown_keys():
 
 
 def test_a_misnamed_argument_is_refused_by_name(monkeypatch):
-    """`brain_read {"slug": "school"}` (the param is `page`) used to reach the
-    handler with the slug silently dropped; it answered "pass a page slug or a
-    query" and Kestrel told the user it didn't know their USC ID while that
-    fact was active. The refusal has to name the stray key, and the handler
-    must not run on what's left."""
+    """A stray argument name is refused by name and the handler doesn't run."""
     ran = []
     monkeypatch.setattr(ct.db, "session", lambda: ran.append(1))
     text, err = served("brain_read", slug="school")
@@ -1352,8 +1220,7 @@ def test_brain_read_with_no_arguments_names_its_parameters():
 
 
 def test_email_body_takes_id_past_the_schema(monkeypatch):
-    """15 blind calls sent `{"id": ...}`; the handler took it, the schema's
-    required msg_id refused it first."""
+    """`{"id": ...}` gets past the schema's required msg_id."""
     from app.providers import email as email_provider
     seen = []
 
@@ -1369,9 +1236,7 @@ def test_email_body_takes_id_past_the_schema(monkeypatch):
 
 
 def test_email_body_reads_by_the_ref_an_email_line_ends_in(dbfile, monkeypatch):
-    """A `provider source=email` line carries its ref and no id, so the ref is
-    what the model passes; read only by msg_id it comes back "no cached
-    message 'e12f01'" for an email that was cached all along."""
+    """email_body reads by the ref a provider email line ends in (no id there)."""
     from app import citations
     from app.providers import email as email_provider
     with db.session() as con, con:
@@ -1413,17 +1278,11 @@ def test_provider_defaults_hold_when_the_optionals_are_omitted(monkeypatch):
     assert not err
     assert seen == {"source": "messages", "rng": "this-week",
                     "metric": None, "query": None}
-    # brief stayed on: the one-line header, not the indented JSON dump the
-    # session's brief=false recovery produced.
+    # brief stayed on: one-line header, not the indented JSON dump.
     assert text.startswith("messages this-week") and "{" not in text
 
 
 # ---------- contact_find / contact_update / contact_create ----------
-#
-# Session 5719a6e8 was asked to update a contact's phone number and said there
-# was no write path. app/contacts.py had landed thirteen minutes earlier; the
-# console just had no tool for it, and told the user to go type it into
-# Contacts.app by hand.
 
 @pytest.fixture
 def contacts_stub(monkeypatch):
@@ -1475,10 +1334,7 @@ def test_contact_update_adds_the_number_to_the_real_card(contacts_stub):
 
 
 def test_contact_update_leaves_unnamed_fields_alone(contacts_stub):
-    """contacts.update() reads a field it is *given* as "" as "clear this".
-    Under the old all-required schema the model had to send every field on
-    every call, so adding a phone number would have blanked the name, the org
-    and the note — and synced that to the phone."""
+    """Fields not passed are left alone (a given "" means clear)."""
     call(ct.contact_update, contact_id="CARD-1:ABPerson",
          add_phones=["2025550142"])
     _, _, kw = contacts_stub[0]
@@ -1527,8 +1383,7 @@ def test_a_duplicate_number_points_at_the_existing_card(contacts_stub,
 
 def test_a_missing_automation_permission_says_which_prompt(contacts_stub,
                                                            monkeypatch):
-    """The osascript failure is opaque, and the console's fallback advice
-    ("update it in Contacts yourself") is wrong for a permission problem."""
+    """A missing automation permission names the prompt to allow."""
     from app import contacts
 
     def boom(contact_id, **kw):
@@ -1541,8 +1396,7 @@ def test_a_missing_automation_permission_says_which_prompt(contacts_stub,
 
 
 def test_contact_create_names_where_the_card_landed(contacts_stub):
-    """`make new person` lands in whichever account Contacts calls default,
-    and only some of the five reach the phone."""
+    """contact_create names the account the card landed in (only some sync to the phone)."""
     text, err = call(ct.contact_create, first="Nadia", last="Fenwick",
                      phones=["2025550142"])
     assert not err
@@ -1550,8 +1404,7 @@ def test_contact_create_names_where_the_card_landed(contacts_stub):
 
 
 def test_contact_update_takes_a_number_that_arrived_as_a_number(contacts_stub):
-    """A model that emits 2025550142 unquoted used to reach `for v in value`
-    on an int and raise out of the tool."""
+    """An unquoted numeric phone doesn't raise."""
     call(ct.contact_update, contact_id="CARD-1:ABPerson", add_phones=2025550142)
     _, _, kw = contacts_stub[0]
     assert kw["add_phones"] == ["2025550142"]
@@ -1565,9 +1418,7 @@ VCARD = ("BEGIN:VCARD\r\nVERSION:3.0\r\nN:Pryor;Linus;;;\r\n"
 
 @pytest.fixture
 def thread(dbfile, tmp_path):
-    """The exact shape session 18517f8d could not read: a typed message
-    carrying a contact card, a second card whose message text is nothing but
-    the "(contact card)" placeholder, and a tapback in between."""
+    """A typed message with a card, a placeholder-only card, and a tapback between."""
     card = tmp_path / "Linus Pryor.vcf"
     card.write_text(VCARD)
     with db.session() as con:
@@ -1604,29 +1455,23 @@ def thread(dbfile, tmp_path):
 
 
 def test_message_files_names_the_card_the_placeholder_hid(thread):
-    """Session 18517f8d asked `messages` who Omar had sent, saw one row
-    reading "(contact card)" and no names, and told the user the contact had
-    never come through — while both vCards sat in `attachments`, named after
-    the people on them. It also read "Linus Pryor" as two people."""
+    """message_files names the cards a "(contact card)" placeholder hid, and "Linus Pryor" is one person."""
     text, err = call(ct.message_files, who="Omar")
     assert not err
     assert "Linus Pryor.vcf" in text and "Reese Morgan.vcf" in text
     assert "#800" in text
-    # The typed message that says *who* the card is lives on a different row
-    # than the file, so the listing has to carry it across.
+    # The typed message saying who the card is sits on another row; the listing carries it.
     assert "club president" in text
 
 
 def test_message_files_takes_a_chat_guid_straight_from_a_widget(thread):
-    """`waiting`/`unanswered` widgets hand the model a chat_guid, not a name —
-    if that doesn't match, the model retypes it as a person and may miss."""
+    """A chat_guid from a waiting/unanswered widget matches directly."""
     text, err = call(ct.message_files, who="any;-;+15055550123")
     assert not err and "2 file(s)" in text
 
 
 def test_message_files_matches_underscores_literally(thread):
-    """`_` is a LIKE wildcard: unescaped, a search for "Linus_Pryor" also
-    matched the file named "Linus Pryor.vcf"."""
+    """`_` in a search is literal, not a LIKE wildcard."""
     text, _ = call(ct.message_files, who="Omar", query="Linus_Pryor")
     assert "Linus Pryor.vcf" not in text
     text, err = call(ct.message_files, who="Omar", query="Linus Pryor")
@@ -1634,8 +1479,7 @@ def test_message_files_matches_underscores_literally(thread):
 
 
 def test_message_files_leaves_out_tapbacks_and_link_payloads(thread):
-    """A tapback image and a rich-link blob are not files anyone chose to
-    send, and there are enough of them to bury the ones that are."""
+    """Tapback images and rich-link blobs are not listed as files."""
     text, _ = call(ct.message_files)
     assert "tapback.png" not in text and "dyn.age" not in text
 
@@ -1646,8 +1490,7 @@ def test_message_files_reports_no_match_instead_of_erroring(thread):
 
 
 def test_file_read_gives_up_the_number_on_the_card(thread):
-    """The point of the pair: the filename names the person, this gives the
-    number the user was asking for, without opening Messages."""
+    """file_read returns the phone number on a vCard."""
     text, err = call(ct.file_read, id=800)
     assert not err
     assert "+17085550199" in text
@@ -1656,15 +1499,13 @@ def test_file_read_gives_up_the_number_on_the_card(thread):
 
 
 def test_file_read_says_the_bytes_are_offloaded_rather_than_empty(thread):
-    """A card iCloud never downloaded reads as no text at all; saying "there's
-    nothing in it" would be the same wrong answer in a new place."""
+    """An iCloud-offloaded card is reported offloaded, not empty."""
     text, err = call(ct.file_read, id=801)
     assert not err and "iCloud" in text
 
 
 def test_message_files_inlines_a_short_card_it_has_already_read(thread):
-    """Extraction is cached, so once a 150-byte vCard has been read there is
-    no reason to spend a second call re-fetching it."""
+    """A short card already extracted is inlined, not refetched."""
     call(ct.file_read, id=800)
     text, err = call(ct.message_files, who="Omar")
     assert not err and "+17085550199" in text
@@ -1678,9 +1519,7 @@ def test_file_read_names_the_tool_that_hands_out_ids(thread):
 # ---------- blocking work stays off the event loop ----------
 
 def test_slow_reads_and_writes_run_off_the_event_loop(dbfile, monkeypatch):
-    """These handlers run on uvicorn's loop. A provider backfill or a 30s
-    osascript called inline froze every other request and the console's own
-    websocket for as long as it took."""
+    """Slow handlers run off uvicorn's event loop."""
     import threading
 
     from app import contacts
@@ -1720,8 +1559,7 @@ def test_a_failed_calendar_write_keeps_its_own_wording(monkeypatch):
 
 
 def test_a_bad_repeat_count_is_an_error_not_a_crash():
-    """_as_int refuses with an HTTPException while the call's arguments are
-    being built; that has to come back as a tool error like any refusal."""
+    """_as_int's HTTPException comes back as a tool error."""
     text, err = call(ct.event_create, summary="Gym", start="2026-08-20T07:00",
                      repeat="weekly", repeat_count="six")
     assert err and "whole number" in text

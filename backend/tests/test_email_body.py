@@ -1,11 +1,8 @@
 """Reading one email whole (`--body`, the console's email_body tool, and the
 dashboard's own reader via GET /api/email/{id}/body).
 
-The rule the provider keeps is "never stored", not "no bodies" — so body()
-fetches live and returns nothing to the cache. The part worth testing is what
-happens when a message is too long: the quoted reply chain goes before any
-truncation, because a forwarded invite carries its link *below* the quote
-marker and a blind cut is how it goes missing.
+Bodies are never stored: body() fetches live. When too long, the quoted reply chain
+goes before any truncation (a forwarded invite's link sits below the quote marker).
 """
 
 import urllib.error
@@ -33,9 +30,7 @@ wrote:
 
 @pytest.mark.parametrize("body, kept", [
     ("keep\nOn Tue, Jul 14 Bob wrote:\n> old", "keep"),
-    # Gmail wraps the attribution over two lines, and sends CRLF — the pattern
-    # has to survive both or it only ever matches the '>' block, leaving a
-    # dangling "On ... wrote:" behind.
+    # Gmail wraps the attribution over two lines and sends CRLF; both must match.
     ("keep\r\nOn Tue, Jul 14, 2026 at 3:27 PM Bob <b@c.d>\r\nwrote:\r\n> old",
      "keep"),
     ("keep\n-----Original Message-----\nFrom: x", "keep"),
@@ -162,8 +157,7 @@ def test_route_404s_an_unknown_message_without_reaching_gmail(route_client,
 
 def test_route_reports_a_missing_login_as_a_bad_request(route_client,
                                                         monkeypatch):
-    """Not authorized is the one failure a reader will actually hit; it must
-    arrive as a message the card can print, not a 500."""
+    """Not authorized arrives as a printable 400, not a 500."""
     _cache_one()
     monkeypatch.setattr(email, "body",
                         lambda *a, **k: (_ for _ in ()).throw(
@@ -179,8 +173,7 @@ def test_route_reports_a_missing_login_as_a_bad_request(route_client,
 ])
 def test_route_tells_a_deleted_message_from_an_outage(route_client, monkeypatch,
                                                       err, status):
-    """Gmail's 404 means the message went away after the queue was cached —
-    an answer, not a broken upstream for the failure log."""
+    """Gmail's 404 (message gone since caching) is an answer, not an upstream failure."""
     _cache_one()
     monkeypatch.setattr(email, "body", lambda *a, **k: (_ for _ in ()).throw(
         RuntimeError(err)))
@@ -208,8 +201,7 @@ def test_fetch_body_raises_rather_than_returning_empty(monkeypatch):
 
 
 def test_body_excerpt_still_degrades_to_empty(monkeypatch):
-    """The refresh-time callers (triage, extraction) must survive one
-    unreadable message, as they always have."""
+    """Refresh-time callers (triage, extraction) survive one unreadable message."""
     _gmail_fails(monkeypatch, RuntimeError("gmail API 401: unauthorized"))
     assert email_triage.body_excerpt("tok", "abc123") == ""
     _gmail_fails(monkeypatch, urllib.error.URLError("no route to host"))
@@ -224,7 +216,7 @@ def test_body_surfaces_a_gmail_refusal(dbfile, monkeypatch):
 
 
 def test_body_turns_a_lost_network_into_a_runtime_error(dbfile, monkeypatch):
-    """So the route answers 502 and the CLI prints one line, not a trace."""
+    """A RuntimeError, so the route answers 502 and the CLI prints one line."""
     _cache_one()
     _gmail_fails(monkeypatch, urllib.error.URLError("no route to host"))
     with pytest.raises(RuntimeError, match="gmail unreachable"):
@@ -326,9 +318,7 @@ def test_reading_never_touches_the_mailbox(route_client, fetched, monkeypatch):
 
 # ---------- HTML to readable text ----------
 #
-# Most of the inbox is HTML-only, and what the reader shows for those messages
-# is whatever _strip_html leaves behind — so this is where readability is won
-# or lost.
+# Most of the inbox is HTML-only: the reader shows whatever _strip_html leaves.
 
 def test_block_markup_becomes_lines_instead_of_one_run_of_words():
     html = "<p>First thing.</p><p>Second thing.</p><ul><li>one</li><li>two</li></ul>"
@@ -373,8 +363,7 @@ def test_a_short_link_keeps_its_address_and_a_tracking_link_does_not():
     # The common case: a link with nothing Proofpoint had to encode.
     ("https://urldefense.com/v3/__https://usc.zoom.us/j/1234567890__;!!LIr3w8kk$",
      "https://usc.zoom.us/j/1234567890"),
-    # '*' stands in for characters held in the token, so unwrapping this one
-    # would hand back an address that does not resolve — leave it wrapped.
+    # '*' marks characters held in the token: unwrapping gives a dead address, so leave it wrapped.
     ("https://urldefense.com/v3/__https://nl.nytimes.com/f/a**A/x__;fn5-!!q$",
      "https://urldefense.com/v3/__https://nl.nytimes.com/f/a**A/x__;fn5-!!q$"),
 ])

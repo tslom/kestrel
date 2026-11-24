@@ -1,8 +1,4 @@
-"""get()'s output shape: which rows carry a `tz` label and what it says.
-
-Guards the contract three renderers now depend on — the calendar card header,
-the expansion's day headings, and brief_line().
-"""
+"""get()'s output shape: which rows carry a `tz` label (calendar card header, expansion day headings, brief_line())."""
 
 from datetime import datetime, timedelta, timezone
 
@@ -20,8 +16,7 @@ PT = timezone(timedelta(hours=-7))
 
 @pytest.fixture
 def cal(dbfile, monkeypatch):
-    """A cache with one all-day row and two timed rows either side of the move,
-    and no network: every day in range is marked synced so get() never fetches."""
+    """A cache with one all-day and two timed rows either side of the move; every day is marked synced so get() never fetches."""
     monkeypatch.setattr(tz, "TIMELINE", FAKE)
     monkeypatch.setattr(tz, "HOME_ZONE", "America/New_York")
     monkeypatch.setattr(calendar, "_sync",
@@ -69,8 +64,7 @@ def test_event_filed_in_eastern_reads_pacific_after_the_move(cal):
 
 
 def test_all_day_rows_carry_no_zone_label(cal):
-    """No clock time, nothing to label — a lone 'ET' on an all-day card is
-    noise, and the renderers key off the field's presence."""
+    """No clock time, no label: a lone 'ET' on an all-day card is noise and renderers key off its presence."""
     ev = _one("2026-08-19")
     assert ev["all_day"] is True
     assert ev["tz"] is None

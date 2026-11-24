@@ -1,9 +1,7 @@
 """Subagents (and other CLI tasks) at work, as the console shows them.
 
-The Agent tool now runs its subagent in the background by default: the call
-comes back at once ("launched"), the parent's turn can end, and the subagent
-keeps going. Its own tool calls don't ride the parent's stream, so the only
-signs of it are the CLI's task lifecycle messages:
+Agent runs its subagent in the background; its tool calls don't ride the parent's
+stream, so the only signs are the CLI's task lifecycle messages:
 
   task_started       {task_id, description, tool_use_id, task_type}
   task_progress      {task_id, description (= what it's doing now), last_tool_name,
@@ -12,12 +10,9 @@ signs of it are the CLI's task lifecycle messages:
   task_updated       {task_id, patch{status, ...}}       (sometimes the only
                                                          word that it finished)
 
-Read off the raw `data` dict rather than the SDK's typed subclasses, so an
-older or newer SDK that types them differently still feeds the strip.
-
-`apply` folds one message into `agents` (task_id -> row) and says whether
-anything changed; the console then sends the whole list (`rows`), like it does
-for background `!` commands, so a reconnecting page gets it whole too.
+Read off the raw `data` dict, not the SDK's typed subclasses (SDK versions differ).
+`apply` folds one message into `agents` (task_id -> row) and says whether anything
+changed; the console then sends the whole list (`rows`).
 """
 
 from __future__ import annotations
@@ -45,8 +40,7 @@ def apply(agents: dict[str, dict], subtype: str, data: dict[str, Any]) -> bool:
             "started": time.time(), "duration_ms": None, "summary": None,
         }
     before = dict(row)
-    # task_started's description is what it was sent to do; task_progress
-    # reuses the field for what it's doing right now ("Running echo hi").
+    # task_started's description is the assignment; task_progress reuses the field for current activity.
     if data.get("description"):
         if subtype == "task_progress" and row["description"]:
             row["activity"] = str(data["description"])[:200]

@@ -1,8 +1,6 @@
-"""Dismiss vs mute vs age-out — the three ways a row leaves the waiting feed.
+"""Dismiss vs mute vs age-out: the three ways a row leaves the waiting feed.
 
-The interesting property is that dismissal is scoped to a *message*, not a
-person: writing off a dangling thread must not silence someone permanently,
-so a newer message brings them back with no action from the user.
+Dismissal is scoped to a message, not a person: a newer message brings them back.
 """
 
 from datetime import datetime, timedelta
@@ -18,8 +16,7 @@ def _ago(days):
 
 @pytest.fixture
 def feed(dbfile, monkeypatch):
-    """Stub the messages provider so these tests exercise waiting_on()'s own
-    filtering, not chat.db parsing (covered in test_messages_unanswered.py)."""
+    """Stub the messages provider so only waiting_on()'s own filtering is exercised."""
     rows = []
 
     def fake_get(source, rng, metric=None):
@@ -51,8 +48,7 @@ def test_dismiss_removes_the_thread(feed):
 
 
 def test_a_newer_message_undismisses_on_its_own(feed):
-    """The whole point of scoping to `through_ts`: dismissing "chillin" from
-    April must not swallow whatever they send next week."""
+    """Scoped to `through_ts`: dismissing an April thread must not swallow next week's message."""
     _msg(feed, "jordan", 5)
     row = next(w for w in people.waiting_on())
     people.post_dismiss(people.Dismissal(
@@ -74,8 +70,7 @@ def test_undismiss_brings_it_back(feed):
 
 
 def test_dismissal_is_not_a_mute(feed):
-    """Dismissing leaves the person visible everywhere else — muting is the
-    permanent one, and they must not be confused."""
+    """Dismissing leaves the person visible elsewhere; muting is the permanent one."""
     _msg(feed, "jordan", 5)
     row = next(w for w in people.waiting_on())
     people.post_dismiss(people.Dismissal(
@@ -85,8 +80,7 @@ def test_dismissal_is_not_a_mute(feed):
 
 
 def test_finished_conversations_age_out(feed):
-    """Past WAITING_MAX_DAYS it's not a todo. No dismissal needed, and
-    nothing to undo."""
+    """Past WAITING_MAX_DAYS a row ages out with no dismissal (nothing to undo)."""
     _msg(feed, "jordan", people.WAITING_MAX_DAYS + 1)
     assert _keys() == []
     assert people.get_dismissed()["data"] == []
@@ -96,8 +90,7 @@ def test_finished_conversations_age_out(feed):
 
 
 def test_dismissed_rows_carry_a_name(feed, dbfile):
-    """The table stores only the key it was dismissed by, so a phone-keyed
-    row read as a bare number — nothing to decide an undo on."""
+    """A phone-keyed dismissal row still resolves to something an undo can decide on."""
     _msg(feed, "2025551111", 5)
     row = next(w for w in people.waiting_on())
     people.post_dismiss(people.Dismissal(
@@ -111,8 +104,7 @@ def test_dismissed_rows_carry_a_name(feed, dbfile):
 
 
 def test_an_unnamed_key_still_shows_something(feed, dbfile):
-    """Shortcodes and 800-numbers have no card by definition, so the raw key
-    is the honest answer rather than a gap."""
+    """Shortcodes and 800-numbers have no card: the raw key is the answer."""
     _msg(feed, "57513", 5)
     row = next(w for w in people.waiting_on())
     people.post_dismiss(people.Dismissal(

@@ -5,16 +5,9 @@ import BarMenu from "../console/BarMenu.jsx";
 import { answerConsole } from "../lib/turn.js";
 import { BarHostContext, fitBar, folded } from "../lib/barHost.js";
 
-// The console sheet's head: at its peek, the whole of the console you see.
-// What state it's in, what it's doing right now, how long, what it cost, and
-// the usage chip — and on an approval it turns amber and carries Yes / No, so
-// a turn waiting on you can be answered without raising the conversation.
-//
-// It is a few hundred pixels wide in the plan view (the console's half of
-// the work column), and the showing tab's own controls are portalled into
-// it, so it folds by priority (lib/barHost.js CUT_ORDER): whatever doesn't
-// fit goes into ⋯ (HostItems below, drawn in the console's menu), lowest
-// priority first, and nothing is ever clipped off the end.
+// The console sheet's head (at peek, all you see): state, current action, time, cost, usage chip; on an
+// approval it turns amber with Yes / No. A few hundred px wide, with the showing tab's controls
+// portalled in, so it folds by priority (lib/barHost.js CUT_ORDER) into ⋯ (HostItems); nothing clips.
 
 // `mcp__vault__task_update` → `task_update`; `mcp__claude_ai_Gmail__x` → `Gmail x`.
 export function toolLabel(name) {
@@ -52,12 +45,9 @@ export function HostItems({ cut, host, done }) {
   ));
 }
 
-// `tabs` / `newTab`: the console's tab strip and its "+", drawn at the bar's
-// two ends (plan/ConsoleTabs.jsx). Everything else here is the showing tab's.
-// `barSlot`: a ref setter for where the console's own bar renders. `onCut`:
-// what folded (a CUT_ORDER string), for the console's ⋯. `ownMenu`: there's
-// no console bar to carry ⋯ (the tab is still picking its mode), so the
-// folded items get a ⋯ here.
+// `tabs`/`newTab`: tab strip and "+" at the bar's ends; the rest is the showing tab's. `barSlot`: ref
+// setter for the console's own bar. `onCut`: the folded CUT_ORDER string for its ⋯. `ownMenu`: no
+// console bar yet (tab picking a mode), so folded items get a ⋯ here.
 export default function StatusBar({ trace, sheet, unread, onToggle, onFull, onTimeline, timeline, onFailed,
                                     onView, viewing, tabs, newTab, barSlot, onCut, ownMenu = false,
                                     cutoff = null }) {
@@ -69,8 +59,7 @@ export default function StatusBar({ trace, sheet, unread, onToggle, onFull, onTi
     return () => clearInterval(id);
   }, [trace.running]);
 
-  // Fold to fit, before paint: on a resize, and whenever anything in the
-  // row changes (the portalled console bar included). Coalesced to a frame.
+  // Fold to fit before paint, on resize and any row change (portalled bar included); coalesced to a frame.
   const barRef = useRef(null);
   const cutRef = useRef("");
   const onCutRef = useRef(onCut);
@@ -105,8 +94,7 @@ export default function StatusBar({ trace, sheet, unread, onToggle, onFull, onTi
 
   const w = trace.waiting;
   const seen = trace.views?.at(-1);
-  // A tab a quit or the usage limit cut off says so here too: its banner is
-  // in the conversation, which a folded console doesn't show.
+  // A cut-off tab says so here too (its banner is in the conversation, hidden when folded).
   const stopped = !w && !trace.running ? cutoff : null;
   const state = w ? "waiting" : trace.writing ? "writing" : trace.running ? "working"
     : stopped ? "cutoff" : trace.last?.error ? "error" : unread ? "unread" : "idle";
@@ -174,8 +162,7 @@ export default function StatusBar({ trace, sheet, unread, onToggle, onFull, onTi
         <button className={`st-btn${timeline ? " on" : ""}`} onClick={onTimeline} data-cut="timeline"
           title="Every call of the turn on one time axis">timeline</button>
       )}
-      {/* the showing tab's own controls (model, mode, diff, ⋯), portalled
-          in by console/Console.jsx so the sheet has one row of chrome */}
+      {/* the showing tab's controls, portalled in by console/Console.jsx (one row of chrome) */}
       <span className="st-console" ref={barSlot} />
       {ownItems && (
         <>

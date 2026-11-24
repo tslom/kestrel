@@ -56,8 +56,7 @@ def test_a_failure_is_reported_and_not_cached(client, monkeypatch):
 
 
 def test_an_overlong_row_is_clipped_not_rejected(client):
-    """A 422 here hid the whole bar: a row's `why` grows on its own (the
-    Messages-can't-be-read suffix), so length is clipped, never refused."""
+    """An over-long `why` is clipped, never refused (a 422 hid the whole bar)."""
     long = [{"title": "t" * 500, "why": "w" * 900, "card": "c" * 80}] * 50
     r = client.post("/api/brief/line", json={"asks": long})
     assert r.status_code == 200 and r.json()["line"]

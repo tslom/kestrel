@@ -214,8 +214,7 @@ def test_dd_pace(dbfile):
     d = food.day_summary()["dd"]
     assert d["left"] == 400 and d["days_left"] == 10
     assert d["allowance_per_day"] == 40
-    # $14.29/day over the last 7 against a $40/day allowance: the dollars
-    # will be forfeited, which is what "under" warns about.
+    # $14.29/day over the last 7 vs a $40/day allowance: dollars forfeited.
     assert d["per_day_7d"] == pytest.approx(100 / 7, abs=0.01) and d["pace"] == "under"
 
 
@@ -375,8 +374,7 @@ def test_suggest_respects_the_sodium_cap(dbfile):
 
 
 def test_suggest_plans_a_meal_not_the_whole_day(dbfile):
-    """The first version, on an empty day, put three entrées and ~117 g of
-    protein on one lunch plate, because the *day* still needed it."""
+    """One plate is capped even when the day still needs more."""
     _setup()
     _hall_with(dbfile, {
         "Steak": {"kcal": 350, "protein": 45, "sodium": 300},
@@ -413,8 +411,7 @@ def test_console_log_flow(dbfile):
 
 
 def test_console_logs_a_meal_in_one_call(dbfile):
-    """A meal's foods as `items`: one call, every entry, the day line once,
-    and a guessed id among them refused without losing the others."""
+    """`items` logs every entry in one call; a guessed id is refused without losing the others."""
     _setup(dd_balance=1000)
     a = call(ct.food_create, name="Rice", kcal=200, protein=4, published=True)[0].split()[1]
     b = call(ct.food_create, name="Chicken", kcal=300, protein=40, published=True)[0].split()[1]
@@ -457,8 +454,7 @@ def test_seed_published_is_idempotent_and_never_touches_a_correction(dbfile):
 
 
 def test_fill_micros_adds_only_micros_scaled_and_survives_reseed(dbfile, monkeypatch):
-    """Panda publishes macros only: estimate the vitamins and minerals, never
-    touch the label's numbers, and don't redo the estimate every cycle."""
+    """Panda's macros-only label: estimate micros once, never touch the label's numbers."""
     from app import food_seed
     food_seed.seed_published()
     calls = []
@@ -487,10 +483,7 @@ def test_fill_micros_adds_only_micros_scaled_and_survives_reseed(dbfile, monkeyp
 
 
 def test_food_create_merges_with_the_seeded_row(dbfile):
-    """Kestrel creating 'Orange Chicken' at Panda must land on the seeded row,
-    not beside it. Panda's own label (confidence 1) outranks the model's
-    recall (0.95), so the label's numbers stay; the user's typed numbers
-    (confidence 1) land, and from then on the seed leaves them alone."""
+    """Creating a seeded venue food lands on the seeded row; label numbers outrank model recall."""
     from app import food_seed
     food_seed.seed_published()
     f = food.create_custom("Orange Chicken", {"kcal": 500, "protein": 26},
@@ -516,9 +509,7 @@ def test_an_estimate_never_overwrites_a_correction(dbfile):
 
 
 def test_a_kcal_correction_keeps_the_macros_consistent(dbfile):
-    """BBQ chicken with kcal fixed to 230 must not keep 24 g fat and 17 g
-    carbs beside it (400 kcal of macros). The unstated macros share what the
-    stated ones leave, and the history is kept."""
+    """Fixing kcal rescales the unstated macros to what's left; history is kept."""
     f = food.create_custom("BBQ chicken", {"kcal": 400, "protein": 32, "fat": 23.8,
                                            "carbs": 16.5, "sat_fat": 9, "sugar": 13,
                                            "sodium": 800})
@@ -626,9 +617,7 @@ def _calibration_history(kcal_per_day, kg_per_week, days=28):
 
 
 def test_calibration_says_logging_runs_low_and_feeds_maintenance(dbfile):
-    """Logging 2000 kcal/day while gaining 0.25 kg/week means the body got
-    ~2275: logging runs low (or the burn is high). Maintenance follows the
-    scale, in the units he logs in."""
+    """Maintenance follows the scale (2000 kcal/day logged, +0.25 kg/week -> ~2275)."""
     _calibration_history(2000, 0.25)
     with db.session() as con:
         c = food.calibration(con, db.day_key())

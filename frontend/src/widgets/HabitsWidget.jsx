@@ -8,9 +8,7 @@ import WidgetError from "../ui/WidgetError.jsx";
 import Icon from "../ui/icons.jsx";
 import { dragPin } from "../lib/drag.js";
 
-// The card carries the same last-7-days strip the expansion does — habit
-// names are short, so the row's dead space is better spent on history than
-// on nothing. The expansion still owns editing (rename, archive, wider spans).
+// The card carries the expansion's last-7-days strip; the expansion owns rename/archive/wider spans.
 const WEEKDAY = ["S", "M", "T", "W", "T", "F", "S"];
 
 function cellState(habit, day, value) {
@@ -19,8 +17,7 @@ function cellState(habit, day, value) {
   return "miss";
 }
 
-// A write goes out on the "habits" topic rather than reloading only this
-// card, so the glance strip's "habits left" moves with the tick.
+// The "habits" topic, not a local reload: the glance strip's "habits left" moves with the tick.
 const changed = () => broadcastRefresh("habits");
 
 const doneToday = (h) => (h.days[h.days.length - 1]?.value || 0) > 0;
@@ -46,15 +43,8 @@ export function useHabitsCard() {
   const evening = hr >= 20 || hr < 4;
   const unchecked = data ? data.habits.filter((x) => !doneToday(x)).length : 0;
 
-  // Same evening escalation the dot uses: boxes left to tick are worth the
-  // room all day, but only start demanding it after 8pm. A finished list —
-  // or no habits at all — has said everything it has to say.
-  // Unchecked habits are "today", not "needs you": "needs you" means only a
-  // turn blocked, a clock, a broken source, or a person or decision waiting,
-  // and a habit is the day's routine rather than a deadline.
-  // The card is still on screen all day as a "today" line; `evening` stays
-  // for the summary, which says what's left *tonight* once that's the useful
-  // framing.
+  // Unchecked habits are "today", never "needs you" (routine, not a deadline); `evening` only
+  // changes the summary's framing.
   const level = !data ? null : unchecked === 0 ? QUIET : HAS;
   const summary = !data?.habits.length ? "no habits yet"
     : unchecked === 0 ? "all done today"
@@ -110,8 +100,7 @@ export default function HabitsWidget({ card, onPin }) {
                       title={`${dow} ${d.day}${d.day === today ? " (today)" : ""} — ${st === "done" ? "done, click to undo" : "click to mark done"}`}
                       aria-label={`${h.name}, ${dow} ${d.day}: ${st === "done" ? "done" : "not done"}`}
                       onClick={() => toggle(h, d.day, d.value > 0 ? 0 : 1)}>
-                      {/* the 11px mark inside a 24px target: a one-click edit
-                          of a past day shouldn't take aim (toggle() offers undo) */}
+                      {/* 11px mark in a 24px target: a past-day edit shouldn't take aim (toggle() offers undo) */}
                       <i aria-hidden="true" />
                     </button>
                   );

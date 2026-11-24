@@ -170,8 +170,8 @@ def test_dev_is_the_cli_on_the_repo(roots):
 
 
 def test_dev_defaults_to_the_strongest_model_and_a_pick_still_wins(roots):
-    assert _opts(profile="dev", cwd=roots).model == console.DEV_MODEL == "opus"
-    assert _opts().model == console.DEFAULT_MODEL
+    assert _opts(profile="dev", cwd=roots).model == console.default_model("dev") == "opus"
+    assert _opts().model == console.default_model("general")
     picked = console.build_options(None, "haiku", "default", None, None, profile="dev", cwd=roots)
     assert picked.model == "haiku"
 
@@ -450,7 +450,8 @@ def test_open_tab_model_before_the_list_has_come_in():
     try:
         assert not call(ct.open_tab, mode="general", brief="x", model="fable")[1]
         text, err = call(ct.open_tab, mode="general", brief="x", model="gpt")
-        assert err and "sonnet, opus, haiku, fable" in text
+        assert err and "plan, decide, grunt, fable, opus, sonnet, haiku" in text
+        assert not call(ct.open_tab, mode="general", brief="x", model="grunt")[1]
         assert call(ct.open_tab, mode="general", brief="x", effort="turbo")[1]
     finally:
         ct.SESSION.reset(tok)
@@ -468,8 +469,7 @@ def test_open_tab_hands_the_page_a_resolved_project(roots):
 
 
 def test_open_tab_past_the_working_cap_says_queued_not_retry(roots):
-    """A brief past the cap is queued by the page, not failed on "5 other tabs
-    are already working" for the parent to retry by hand; the tool says so."""
+    """A brief past the working cap is queued by the page, and the tool says so (no retry)."""
     s = _State(answer=(True, "queued #2", 2, "ab12cd"))
     tok = ct.SESSION.set(s)
     try:
@@ -539,8 +539,7 @@ def test_turn_diff_charges_only_the_turn(repo):
     files = {f["path"]: f for f in console_diff.turn_diff(repo, snap)}
     assert set(files) == {"a.sql", "new.py"}          # b.txt was already dirty
     sql = files["a.sql"]
-    # Deleting `-- header comment` is the hunk line `--- header comment` —
-    # the shape of a file header, which a prefix filter would have dropped.
+    # Deleting `-- header comment` is the hunk line `--- header comment`: file-header shaped, must survive.
     assert sql["deletions"] == 1 and "--- header comment" in sql["lines"]
     assert files["new.py"]["status"] == "added" and files["new.py"]["additions"] == 1
     # the snapshot didn't move anything
@@ -598,8 +597,7 @@ def test_use_computer_only_comes_with_its_gate(mode):
     gates = [m for m in o.hooks["PreToolUse"] if m.matcher == console.USE_COMPUTER_TOOL]
     assert gates and _gate in gates[0].hooks and gates[0].timeout == console.PERMISSION_TIMEOUT_S
     assert int(o.env["MCP_TOOL_TIMEOUT"]) >= 1000 * console.COMPUTER_JOB_LIMIT_S
-    # Without the gate there is no tool, no hook, and only the delegates'
-    # call limit (a fan-out waits on several agents inside one call).
+    # Without the gate: no tool, no hook, only the delegates' call limit.
     bare = console.build_options(None, None, mode, None, None)
     assert not _has_computer(bare)
 

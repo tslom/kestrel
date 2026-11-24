@@ -19,8 +19,7 @@ def _place(pid, name, lat, lon, **kw):
 
 def _fake(monkeypatch, places, *, resolve_to=None, walk=None, drive=None,
           matrix_error=None, calls=None):
-    """Route _request by URL: searchText (resolve or search, told apart by
-    the field mask), the matrix per travel mode, and details."""
+    """Route _request by URL: searchText (resolve vs search by field mask), the matrix per mode, details."""
     calls = [] if calls is None else calls
 
     def request(url, *, body, field_mask):
@@ -128,8 +127,7 @@ def test_missing_key_refuses(monkeypatch):
 
 def test_closing_time_is_in_the_places_own_zone():
     # 05:00Z is 10pm in LA (-420) whatever zone this machine is in.
-    # Tomorrow's 05:00Z, not "an hour from now": that one failed every night
-    # in the hour when it landed on LA midnight, which renders as "midnight".
+    # Tomorrow's 05:00Z, not "an hour from now": that landed on LA midnight ("midnight") nightly.
     now = datetime.now(timezone.utc)
     close = (now + timedelta(days=1)).replace(hour=5, minute=0, second=0, microsecond=0)
     la = close.astimezone(timezone(timedelta(minutes=-420)))

@@ -14,8 +14,7 @@ ME = "+12025550000"
 @pytest.fixture
 def me(dbfile, monkeypatch):
     monkeypatch.setattr(selftexts, "MESSAGES_SELF_HANDLES", [ME])
-    # Routing starts from "now" on first run; tests seed texts minutes in the
-    # past, so pin the start mark an hour back.
+    # Routing starts at "now" on first run; pin the start mark an hour back for texts seeded in the past.
     since = (datetime.now() - timedelta(hours=1)).astimezone().isoformat(timespec="seconds")
     with db.session() as con, con:
         con.execute("INSERT INTO sync_state (key, value) VALUES (?,?)",
@@ -208,8 +207,7 @@ def _photo(guid, status):
 
 
 def test_a_failed_photo_read_is_retried_not_trusted(me, monkeypatch):
-    """One dropped vision call caches "error"; the photo must not be filed as
-    "couldn't be read" an hour later without another try."""
+    """A cached vision "error" is retried, not filed as "couldn't be read"."""
     from app.providers import attachments
     aid = _photo(text("(photo)"), "error")
     calls = []
@@ -270,8 +268,7 @@ def test_food_is_estimated_logged_and_undone(me, monkeypatch):
 
 
 def test_a_known_food_photo_logs_the_known_food_not_a_new_estimate(me, monkeypatch):
-    """Corrected once, right every later time: the usual bowl comes back at
-    its corrected numbers and usual amount, and nothing is estimated."""
+    """A corrected food returns at its corrected numbers and usual amount, nothing estimated."""
     from app import food, food_estimate
     f = food.create_custom("Teriyaki Salmon Bowl", {"kcal": 700, "protein": 38},
                            venue="Teriyaki Bowls")

@@ -1,7 +1,4 @@
-"""health._auto_sleep — the sleep_hours-driven Sleep auto-check-in leg of
-refresh(). Seeds health_days directly (the sync half is Google-API-bound and
-tested elsewhere) and asserts the threshold gate + one-per-qualifying-day fill.
-sleep_hours already lands on the wake-up day, so the check-in inherits that."""
+"""health._auto_sleep: the threshold gate and one fill per qualifying day. sleep_hours already lands on the wake-up day."""
 
 from datetime import date
 
@@ -56,8 +53,7 @@ def test_auto_sleep_is_idempotent(dbfile, monkeypatch):
 
 def test_auto_sleep_never_overwrites_manual_uncheck(dbfile, frozen_day,
                                                     monkeypatch):
-    """A deliberately cleared night (value=0 tombstone) stays cleared even when
-    the hours qualify — the auto pass must not resurrect it."""
+    """A cleared night (value=0 tombstone) stays cleared."""
     monkeypatch.setattr(health, "SLEEP_HOURS_THRESHOLD", 9.0)
     monkeypatch.setattr(health, "SLEEP_HABIT_NAME", "Sleep")
     habit = db.create_habit("Sleep")

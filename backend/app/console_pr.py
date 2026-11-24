@@ -1,23 +1,9 @@
-"""PR watch: a dev tab linked to its pull request, woken when the PR moves
-(New Features #87, after T3 Code's).
+"""PR watch: a dev tab linked to its pull request, woken when the PR moves.
 
-Client-site repos land through PRs someone else reviews, and their deploy
-checks fail without anyone looking. A tab that opened a PR used to
-finish and forget it. Now the console polls the PR every two minutes while
-the tab is mounted, and anything worth a turn (checks passing or failing, a
-review or comment, a merge conflict, the PR merged or closed) comes back as a
-short note that wakes the tab, as a child tab's handoff report does.
-
-Stateless on purpose: the console holds the last snapshot (per tab, in
-localStorage) and sends it back with each poll; `poll` answers the new
-snapshot and the notes between the two. So a backend restart (every merge on
-this repo) loses nothing, and a tab that's closed or settled simply stops
-asking, which is the "stop" rule for free. Merged or closed is `final`, and
-the console stops polling on that too.
-
-`gh` does the talking (it holds the login, and infers the repo from the
-tree's remote), run in the tab's own folder so `gh pr view` with no number
-finds the PR for whatever branch the tree is on.
+Stateless: the console holds the last snapshot per tab and sends it with each
+poll; `poll` returns the new snapshot and the notes between the two. `gh` does the
+talking, run in the tab's folder so `gh pr view` finds the branch's PR.
+Design: DESIGN.md → Dev tabs: project scripts, a port per worktree, PR watch.
 """
 
 from __future__ import annotations
@@ -33,12 +19,10 @@ GH_TIMEOUT = 20
 FIELDS = ("number,url,title,state,isDraft,mergeable,mergeStateStatus,reviewDecision,"
           "headRefName,headRefOid,baseRefName,statusCheckRollup,reviews,comments")
 BODY_CHARS = 280
-# What a PR may be named by: a number, `#12`, its github.com URL, or its head
-# branch (never with a leading "-", which gh would read as a flag).
+# A number, `#12`, a github.com URL, or a head branch (no leading "-": gh reads it as a flag).
 REF = re.compile(r"#?\d{1,7}|https://github\.com/[\w.-]+/[\w.-]+/pull/\d{1,7}|\w[\w./-]{0,120}")
 
-# A check's outcome, folded to three. Neutral/skipped count as passing: a
-# skipped job (a site repo's `visual` on a non-Dependabot PR) isn't a failure.
+# Checks fold to pass/fail/pending; neutral/skipped count as passing (a skipped job isn't a failure).
 _FAIL = {"FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED",
          "STARTUP_FAILURE", "STALE"}
 _PENDING_STATUS = {"QUEUED", "IN_PROGRESS", "PENDING", "WAITING", "REQUESTED", "EXPECTED"}
@@ -65,8 +49,7 @@ def _gh(cwd: Path, *args: str) -> str:
 
 
 def viewer(cwd: Path) -> str:
-    """The logged-in GitHub user: their own comments don't wake the tab (it
-    would be waking itself for the `gh pr comment` it just ran)."""
+    """The logged-in GitHub user; their own comments don't wake the tab (it would wake itself)."""
     global _viewer
     if _viewer is None:
         try:
@@ -134,9 +117,8 @@ def changes(before: dict | None, after: dict, me: str = "") -> list[str]:
             notes.append(f"PR #{after['number']} was closed without merging.")
         elif after["state"] == "OPEN":
             notes.append(f"PR #{after['number']} was reopened.")
-    # Checks: a settled verdict that differs from the last settled one for
-    # this commit. A new push resets them (pending again), so a pass after a
-    # push is news even if the previous commit passed too.
+    # A settled verdict that differs from the last one for this commit; a new push resets
+    # checks, so a pass after a push is news even if the previous commit passed.
     same = after["sha"] == before.get("sha")
     if after["verdict"] in ("pass", "fail") and (not same or after["verdict"] != before.get("verdict")):
         if after["verdict"] == "fail":

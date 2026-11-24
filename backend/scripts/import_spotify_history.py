@@ -121,8 +121,7 @@ def _account_row(rec: dict, now: str) -> dict | None:
 
 
 def _iter_json(source: Path, prefix: str):
-    """Yield parsed JSON arrays from every file whose basename starts with
-    `prefix`, reading straight out of a .zip or a folder."""
+    """Yield parsed JSON arrays from each file named `prefix*`, in a .zip or a folder."""
     if source.is_dir():
         for p in sorted(source.rglob("*.json")):
             if p.name.startswith(prefix):

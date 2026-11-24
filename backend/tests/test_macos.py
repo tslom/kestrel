@@ -13,8 +13,7 @@ def _timeout(cmd, **kw):
 
 
 def test_a_timeout_raises_the_callers_error_type(monkeypatch):
-    """reminders._run used to let TimeoutExpired escape as itself — past the
-    ReminderError its callers catch — whenever Reminders hung on launch."""
+    """A timeout surfaces as ReminderError, the type callers catch."""
     monkeypatch.setattr(macos.subprocess, "run", _timeout)
     with pytest.raises(reminders.ReminderError, match="could not run osascript"):
         reminders._run("script")
@@ -47,8 +46,7 @@ def test_open_url_reports_what_open_said(monkeypatch):
 
 
 def test_open_url_has_a_timeout(monkeypatch):
-    """vault_views ran `open -g` with none; a wedged LaunchServices hung the
-    request thread forever."""
+    """`open -g` has a timeout so a wedged LaunchServices can't hang the request thread."""
     monkeypatch.setattr(macos.subprocess, "run", _timeout)
     with pytest.raises(RuntimeError, match="could not run"):
         macos.open_url("imessage://x")

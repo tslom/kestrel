@@ -1,9 +1,6 @@
-"""The failure log (v44) — what breaks outside the poller's reach.
+"""The failure log (v44): a repeat costs one row, distinct breaks stay distinct, and no recording path may raise into what it instruments.
 
-The cases worth pinning are the ones the table's shape exists for: a failure
-that repeats must cost one row rather than a thousand, two different ways for
-the same card to break must stay two rows, and none of the recording paths may
-ever raise into the thing they are instrumenting.
+Design: DESIGN.md → `tests/test_failures.py`.
 """
 
 import json
@@ -28,9 +25,7 @@ def _rows():
 
 
 def test_repeat_bumps_count_instead_of_appending(dbfile):
-    """The whole reason this table is keyed by fingerprint. A widget that
-    throws on render throws again on every re-render; an append-only log would
-    be thousands of identical rows an hour."""
+    """The table is keyed by fingerprint: a widget that throws every re-render is one row, not thousands an hour."""
     for _ in range(50):
         failures.record("desk", "render", "Finance",
                         detail="Cannot read properties of undefined")
@@ -42,24 +37,21 @@ def test_repeat_bumps_count_instead_of_appending(dbfile):
 
 
 def test_same_label_different_error_stays_two_rows(dbfile):
-    """One card has more than one way to break, and collapsing them by label
-    would hide the second behind the first one's count."""
+    """Two ways for one card to break stay two rows, not collapsed by label."""
     failures.record("desk", "render", "Finance", detail="undefined is not a function")
     failures.record("desk", "render", "Finance", detail="x.map is not a function")
     assert len(_rows()) == 2
 
 
 def test_origins_do_not_collide(dbfile):
-    """Same label reached from two layers is two findings — an /api/finance
-    read that 500s and a Finance card that won't render are different bugs."""
+    """The same label from two layers is two findings."""
     failures.record("api", "unhandled", "boom", detail="same")
     failures.record("desk", "render", "boom", detail="same")
     assert {r["origin"] for r in _rows()} == {"api", "desk"}
 
 
 def test_newest_trace_wins_and_missing_one_does_not_erase(dbfile):
-    """When you open a fault you want the latest occurrence — but a later
-    report that carries no trace must not blank the one you had."""
+    """A later report with no trace must not blank the trace you had."""
     failures.record("api", "unhandled", "GET /api/x", detail="e", trace="first")
     failures.record("api", "unhandled", "GET /api/x", detail="e", trace="second")
     assert _rows()[0]["trace"] == "second"
@@ -69,9 +61,7 @@ def test_newest_trace_wins_and_missing_one_does_not_erase(dbfile):
 
 
 def test_trim_keeps_the_most_recent(dbfile, monkeypatch):
-    """Trimming is by recency, not by insertion order: a long-standing failure
-    that still fires today is the one most worth keeping, and it holds the
-    oldest `first_at` in the table."""
+    """Trimming is by recency, not insertion: a long-standing failure that still fires holds the oldest `first_at`."""
     monkeypatch.setattr(failures, "FAILURE_KEEP", 5)
     for i in range(12):
         failures.record("api", "unhandled", f"GET /api/{i}", detail=str(i))
@@ -91,8 +81,7 @@ def test_long_detail_and_trace_are_clipped(dbfile):
 
 
 def test_record_never_raises(dbfile, monkeypatch):
-    """The contract that makes it safe to call from a middleware and from the
-    console's stream loop. A log that can fail a request is worse than none."""
+    """Recording never raises: it is called from middleware and the console stream loop."""
     def boom():
         raise sqlite3.OperationalError("disk I/O error")
 
@@ -101,8 +90,7 @@ def test_record_never_raises(dbfile, monkeypatch):
 
 
 def test_recent_survives_a_broken_db(dbfile, monkeypatch):
-    """Same argument on the read side — the status panel must still render its
-    source list when the fault log itself can't be read."""
+    """The read side degrades too: the status panel must render when the fault log can't be read."""
     def boom():
         raise sqlite3.OperationalError("no such table: failures")
 
@@ -111,8 +99,7 @@ def test_recent_survives_a_broken_db(dbfile, monkeypatch):
 
 
 def test_post_reports_under_desk_origin(api):
-    """`origin` is not taken from the body — anything arriving at the endpoint
-    came from the browser by definition."""
+    """`origin` is not taken from the body; anything hitting the endpoint came from the browser."""
     r = api.post("/api/failures", json={
         "kind": "render", "label": "Health", "detail": "boom"})
     assert r.status_code == 200
@@ -124,15 +111,13 @@ def test_post_reports_under_desk_origin(api):
 
 
 def test_post_rejects_an_unknown_kind(api):
-    """The kinds are a closed set, so a typo in a call site fails loudly here
-    rather than becoming a category nothing groups by."""
+    """The kinds are a closed set, so a typo fails loudly."""
     assert api.post("/api/failures", json={
         "kind": "whatever", "label": "Health"}).status_code == 422
 
 
 def test_list_counts_distinct_and_occurrences(api):
-    """Two numbers because they answer different questions: how many things
-    are broken, and whether one of them is on fire right now."""
+    """Two numbers: how many things are broken, and whether one is on fire right now."""
     for _ in range(9):
         failures.record("desk", "render", "Finance", detail="a")
     failures.record("api", "unhandled", "GET /api/health", detail="b")
@@ -148,8 +133,7 @@ def test_list_filters_by_origin(api):
     failures.record("api", "unhandled", "GET /api/health", detail="b")
 
     assert api.get("/api/failures?origin=api").json()["distinct"] == 1
-    # an unrecognised origin is not a filter that matches nothing — that would
-    # read as "all clear" on a typo
+    # an unknown origin must not filter to nothing: that reads as "all clear"
     assert api.get("/api/failures?origin=nope").json()["distinct"] == 2
 
 
@@ -163,8 +147,7 @@ def test_delete_clears(api):
 
 @pytest.fixture
 def instrumented(dbfile):
-    """`failures.middleware` itself — the one main.py registers, not a copy of
-    it — over routes that fail the different ways a route can."""
+    """The real `failures.middleware` main.py registers, over routes that fail in different ways."""
     app = FastAPI()
     failures.install(app)
 
@@ -208,8 +191,7 @@ def instrumented(dbfile):
 
 
 def test_unhandled_exception_is_recorded_with_its_traceback(instrumented):
-    """The gap this was built for: `providers/api.py` maps ValueError to 400
-    and lets everything else become a 500 that lived only in a /tmp log."""
+    """providers/api.py maps ValueError to 400; everything else is a 500 that must land here, not only in a /tmp log."""
     assert instrumented.get("/api/raises").status_code == 500
 
     row = _rows()[0]
@@ -219,8 +201,7 @@ def test_unhandled_exception_is_recorded_with_its_traceback(instrumented):
 
 
 def test_rows_are_labelled_by_route_not_by_id(instrumented):
-    """Two message ids failing the same way were two rows under the raw path;
-    the route template makes them one finding, for 5xx and exceptions alike."""
+    """Two ids failing the same way are one finding under the route template, for 5xx and exceptions alike."""
     for mid in ("1a0ea66b275339b2", "1a0ea722163c0b58"):
         assert instrumented.get(f"/api/email/{mid}/body").status_code == 502
         assert instrumented.get(f"/api/item/{mid}/boom").status_code == 500
@@ -232,8 +213,7 @@ def test_rows_are_labelled_by_route_not_by_id(instrumented):
 
 
 def test_hand_raised_5xx_is_recorded_too(instrumented):
-    """It never reaches the except block — FastAPI turns it into a response —
-    but a 502 from a route is the same failure as a 500 from a bug."""
+    """A returned 502 never hits the except block but is the same failure as a 500."""
     r = instrumented.get("/api/http500")
     assert r.status_code == 502
     # FastAPI's own response is untouched — the handler only takes a note
@@ -244,8 +224,7 @@ def test_hand_raised_5xx_is_recorded_too(instrumented):
 
 
 def test_5xx_reason_keeps_its_cause_in_the_trace(instrumented):
-    """`raise HTTPException(502, …) from e` — the upstream error is the thing
-    you went to stderr for; the row now carries it."""
+    """`raise HTTPException(502, …) from e`: the row carries the upstream error."""
     instrumented.get("/api/chained?n=10")
     row = _rows()[0]
     assert row["detail"] == ("HTTP 502: energy needs the health provider: "
@@ -254,8 +233,7 @@ def test_5xx_reason_keeps_its_cause_in_the_trace(instrumented):
 
 
 def test_5xx_reason_varying_only_in_numbers_is_one_row(instrumented):
-    """A detail built from `{e}` carries timeouts, ports, ids. Fingerprinting
-    the raw text would make a row per request; the newest text is shown."""
+    """A detail built from `{e}` varies per request; fingerprint the shape and show the newest text."""
     instrumented.get("/api/chained?n=10")
     instrumented.get("/api/chained?n=30")
     rows = _rows()
@@ -279,8 +257,7 @@ def test_stable_masks_numbers_and_ids_but_not_words():
 
 
 def test_success_and_4xx_are_not_recorded(instrumented):
-    """A 400 is the caller being wrong, which is not a fault of this app. If
-    those landed here the log would be mostly noise within a day."""
+    """A 400 is the caller's fault, not the app's; logging it would be mostly noise."""
     instrumented.get("/api/fine")
     instrumented.get("/api/bad-request")
     assert _rows() == []
@@ -305,9 +282,7 @@ def _enc(*values):
 
 @pytest.fixture
 def bundle(tmp_path, monkeypatch):
-    """A two-line 'bundle' whose map points into two sources. Line 2's
-    segments are deltas from line 1's running state — the part of the format
-    a decoder most easily gets wrong."""
+    """A two-line bundle whose map points into two sources; line 2's segments are deltas from line 1's state (easy to decode wrong)."""
     assets = tmp_path / "assets"
     assets.mkdir()
     mappings = ";".join([

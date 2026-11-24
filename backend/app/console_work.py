@@ -1,17 +1,9 @@
 """Which tabs had work in flight, so work cut off by a quit can be resumed.
 
-A tab with a turn running, or background agents and shells still going, has
-a row in `console_work`, stamped with this server process's BOOT id; the row
-goes when the work does. Quitting Kestrel (or the backend dying) leaves the
-rows where they were, so on the next launch a row from another boot is a tab
-that was interrupted, and what it was doing. The page offers one Resume for
-all of them (and per tab), which sends each a "continue" naming what was cut
-off; nothing resumes without the click. Work after the relaunch is recorded
-under the new boot, apart from the old row, which only Resume or Dismiss
-clears.
-
-Written from console_link (every turn start and end, every change to the
-agents strip), so the row is never staler than the last thing the page saw.
+A tab with a turn or background agents running has a `console_work` row stamped
+with this process's BOOT id, removed when the work ends. A row from another boot
+is an interrupted tab; one Resume (or per tab) sends it a "continue", never
+automatically. Written from console_link. Design: DESIGN.md → `app/console_work.py`.
 """
 
 from __future__ import annotations
@@ -38,11 +30,8 @@ def snapshot(turn: bool, agents: list[dict]) -> dict | None:
     return {"turn": turn, "agents": running}
 
 
-# A row is deleted this long after its work ends, not at once. Quitting kills
-# the CLI too, and on its way out the CLI marks its background tasks killed
-# — which reads exactly like the work ending. Within this delay the server is
-# gone and the timer with it, so the row survives to be offered back; a
-# server that lives on deletes it a moment later.
+# Delete this long after work ends, not at once: a quitting CLI marks its tasks killed,
+# which looks like the work ending. The server dies within the delay, so the row survives.
 DELETE_DELAY_S = 4.0
 _pending: dict[str, asyncio.TimerHandle] = {}
 
@@ -84,10 +73,8 @@ def mark(tab: str | None, *, session_id: str | None, profile: str | None,
             con.execute(
                 "INSERT INTO console_work (tab, session_id, profile, project, label,"
                 " turn, agents, boot, updated_at) VALUES (?,?,?,?,?,?,?,?,?)"
-                # Keyed by (tab, boot): this launch's work never overwrites
-                # what an earlier one left. The CLI starts a turn of its own on
-                # resume (its "stopped" notifications), and that turn used to
-                # erase the very record of what was cut off.
+                # Keyed (tab, boot): a resumed CLI starts a turn of its own, which must
+                # not overwrite the record of what was cut off.
                 " ON CONFLICT(tab, boot) DO UPDATE SET session_id=excluded.session_id,"
                 " profile=excluded.profile, project=excluded.project,"
                 " label=COALESCE(excluded.label, console_work.label),"
@@ -100,10 +87,8 @@ def mark(tab: str | None, *, session_id: str | None, profile: str | None,
 
 def remember_session(session_id: str, *, tab: str | None, profile: str | None,
                      project: str | None, label: str | None = None, con=None) -> None:
-    """Which tab and mode a session ran in (`console_sessions`), kept after
-    the work row goes: the usage page's only way to tell a study tab's
-    tokens from a general one's, since both run in the vault. Bookkeeping,
-    so it never raises."""
+    """Which tab and mode a session ran in (`console_sessions`), kept after the work
+    row goes (the usage page tells study from general by it). Never raises."""
     now = datetime.now().astimezone().isoformat(timespec="seconds")
     try:
         with db.borrow(con) as c:

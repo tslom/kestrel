@@ -2,21 +2,35 @@ import { useState } from "react";
 import { fetchJSON, postJSON } from "../lib/api";
 import { useWidgetData } from "../lib/refresh.js";
 import "../console/delegates.css";
+import ProviderAccounts from "./ProviderAccounts.jsx";
 
-// Settings → Providers: the models Claude can send work to (backend
-// app/delegates/registry.py). Each is a CLI on this machine; a row says
-// whether it is installed, signed in and switched on, and when it isn't,
-// the one command that gets it there. Signing in happens in a terminal: it
-// is a browser flow the backend can't run for you.
+// Settings → Providers (app/delegates/registry.py): each row says whether a CLI is installed, signed
+// in and on, and what gets it there. Codex and Antigravity sign in per account (ProviderAccounts).
+// `login` is the alternative sign-in ways, with `code` in backticks.
 function tokens(n) {
   return n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n);
+}
+
+function withCode(text) {
+  return text.split("`").map((part, i) => (i % 2 ? <code key={i}>{part}</code> : part));
+}
+
+function SignIn({ ways }) {
+  if (ways.length === 1) return <>Sign in: {withCode(ways[0])}</>;
+  return (
+    <>
+      Sign in, either way:
+      <ul className="prov-ways">
+        {ways.map((w) => <li key={w}>{withCode(w)}</li>)}
+      </ul>
+    </>
+  );
 }
 
 function Needs({ p }) {
   const steps = [
     { done: p.installed, text: <>Install it: <code>{p.install}</code></> },
-    { done: p.signed_in, text: <>Sign in: {p.login.split("`").map((part, i) =>
-      (i % 2 ? <code key={i}>{part}</code> : part))}</> },
+    { done: p.signed_in, text: <SignIn ways={p.login} /> },
   ];
   return (
     <div className="prov-need">
@@ -31,7 +45,7 @@ function Needs({ p }) {
   );
 }
 
-function Provider({ p, onSwitch, saving }) {
+function Provider({ p, onSwitch, saving, tags, act, onLogin }) {
   const state = p.ready ? "Ready" : !p.installed ? "Not installed"
     : !p.signed_in ? "Not signed in" : "Off";
   const used = p.usage;
@@ -60,8 +74,14 @@ function Provider({ p, onSwitch, saving }) {
           </div>
         )}
       </div>
-      <p className="prov-facts">{[p.good_for, ...facts].filter(Boolean).join(" · ")}</p>
-      {p.outside && !(p.installed && p.signed_in) && <Needs p={p} />}
+      <p className="prov-facts">{facts.join(" · ")}</p>
+      <ul className="prov-good">
+        {p.good_for && <li><span className="prov-good-k">Good for</span> {p.good_for}</li>}
+        {(p.best_at || []).map((b) => <li key={b}><span className="prov-good-k best">Better than Claude at</span> {b}</li>)}
+      </ul>
+      {p.outside && !p.installed && <Needs p={p} />}
+      {p.outside && p.installed && !p.signed_in && !p.has_accounts && <Needs p={p} />}
+      {p.has_accounts && <ProviderAccounts p={p} tags={tags} act={act} onLogin={onLogin} />}
     </div>
   );
 }
@@ -83,15 +103,28 @@ export default function Providers() {
     postJSON(`/api/delegates/providers/${id}`, { enabled })
       .then(setData).catch((e) => setError(e.message)).finally(() => setSaving(false));
   };
+  // Account writes answer with the whole page, so the view never re-asks.
+  const act = (url, body, method = "POST") =>
+    postJSON(url, body ?? {}, method).then((d) => { setData(d); setError(null); })
+      .catch((e) => setError(e.message));
+  // A sign-in's progress is polled per provider; once it lands, the account
+  // list itself has changed, so the page is read again past the cache.
+  const onLogin = (id, login) => {
+    setData((d) => d && { ...d, providers: d.providers.map((p) => (p.id === id ? { ...p, signing_in: login } : p)) });
+    if (login?.state === "done") recheck();
+  };
   return (
     <>
       <p className="set-note">
         Claude runs everything and is the only model that sees your vault, messages, email or money.
-        The others get a written brief and an empty folder, nothing else.
+        The others get a written brief and an empty folder, nothing else, and only two kinds of work:
+        generic grunt work that would waste Claude&apos;s limits, and what they&apos;re plainly better at.
+        Coursework, anything personal and a project&apos;s own ideas stay with Claude; the gate refuses them.
       </p>
       {error && <p className="set-note bad">{error}</p>}
       {(data?.providers || []).map((p) => (
-        <Provider key={p.id} p={p} onSwitch={onSwitch} saving={saving} />
+        <Provider key={p.id} p={p} onSwitch={onSwitch} saving={saving}
+          tags={data.tags || []} act={act} onLogin={onLogin} />
       ))}
       <div className="set-row">
         <div className="set-what"><small>Installed or signed in just now?</small></div>

@@ -1,10 +1,6 @@
-"""Auto-reindex: rebuild index.db when vault markdown changes.
-
-index.db is a disposable cache over the vault (indexer.py), so no incremental
-updates — watchfiles debounces a burst of filesystem events into one batch,
-and we answer with the same full rebuild() that startup and POST /api/reindex
-use. watchfiles ships with uvicorn[standard]; the awatch loop runs as a
-lifespan task alongside the provider poller.
+"""Auto-reindex: rebuild index.db when vault markdown changes. No incremental
+updates: watchfiles debounces bursts into one batch answered by the same full
+rebuild() as startup and POST /api/reindex. Runs as a lifespan task beside the poller.
 """
 
 import asyncio

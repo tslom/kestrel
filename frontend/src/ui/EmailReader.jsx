@@ -11,26 +11,11 @@ import { isDark } from "../lib/theme";
 import { isPlain, darken } from "./emailDark.js";
 import { fmtDay, fmtTime } from "../lib/time";
 
-// One message, read whole in a window over everything else. Escape or a click
-// outside closes it.
-//
-// Formatted by default when the mail has an HTML part: most of what arrives
-// is laid out in tables, and the stripped-text rendering of a newsletter is
-// a column of orphaned fragments. The HTML goes in an iframe that is the
-// containment, not the backend's scrub:
-//   - sandbox without allow-scripts — nothing in it runs. allow-same-origin is
-//     only there so this page can hear Escape pressed inside it; without
-//     scripts in the frame, same-origin gives the mail nothing to use.
-//   - a CSP ahead of the mail's own markup allows no remote loads at all
-//     until "Load images" — no tracking pixel fires on open, same promise
-//     the text view has always made.
-//   - <base target=_blank> so a link leaves for the browser instead of
-//     navigating the frame (pywebview hands _blank to the system browser).
-// The Text view is the old stripped rendering, one click away for mail
-// whose HTML is worse than its words.
-//
-// Bodies are never stored, so each open is a Gmail round-trip; the
-// cache is per page load, so reopening a message doesn't pay twice.
+// One message read whole over everything else. Formatted (HTML in an iframe) by default; Text is one click away.
+// The iframe is the containment, not the backend's scrub: sandbox without allow-scripts
+// (allow-same-origin only so Escape inside is heard), a CSP allowing no remote loads until "Load
+// images" (no tracking pixel on open), <base target=_blank> so links leave for the system browser.
+// Bodies are never stored: each open is a Gmail round-trip; the cache is per page load.
 const cache = new Map();
 
 function load(id) {
@@ -57,10 +42,7 @@ function srcdoc(html, images, ground) {
     + html;
 }
 
-// `row` is the list row the reader was opened from, when there is one: it
-// carries what the body doesn't (triage summary, recommended action), so the
-// pin matches the one the row's own pin button makes. Off a citation there's
-// no row, and the body's own headers stand in.
+// `row`: the list row it was opened from (triage summary, action) so the pin matches the row's own; none off a citation.
 export default function EmailReader({ id, row, onClose }) {
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
@@ -83,10 +65,8 @@ export default function EmailReader({ id, row, onClose }) {
     return () => { live = false; };
   }, [id]);
 
-  // Capture phase on the window, ahead of every other Escape listener (the
-  // sheet stack, ⌘K, a cite card): the reader is on top, so the key is its
-  // alone. preventDefault also keeps an unconsumed Escape from reaching
-  // AppKit, which would take the window out of fullscreen.
+  // Capture phase, ahead of every other Escape listener: the reader is on top. preventDefault keeps
+  // AppKit from taking the window out of fullscreen.
   const onKey = useCallback((e) => {
     if (e.key !== "Escape") return;
     // An attachment open over the reader is what Escape closes first.
@@ -101,10 +81,7 @@ export default function EmailReader({ id, row, onClose }) {
     return () => window.removeEventListener("keydown", onKey, true);
   }, [onKey]);
 
-  // The prompt stays usable while a message is open: styles.css lifts it over
-  // the backdrop, and the reader ends above it — measured, since the prompt
-  // grows with what's typed into it. A click on the prompt lands on the
-  // prompt, not the backdrop, so it doesn't close the reader.
+  // The prompt stays usable: styles.css lifts it over the backdrop and the reader ends above it (measured; the prompt grows).
   const backdrop = useRef(null);
   useLayoutEffect(() => {
     const bar = document.querySelector(".prompt-bar");
@@ -125,12 +102,8 @@ export default function EmailReader({ id, row, onClose }) {
     };
   }, []);
 
-  // In the dark theme, mail that never chose its colours is read dark
-  // (emailDark.js). The frame stays hidden until the first load has been
-  // judged, so a dark verdict doesn't open on a flash of white. The verdict
-  // is kept for the frame's later loads ("Load images", a Text/Formatted
-  // round trip), whose srcdoc then starts on the dark ground; it's frozen
-  // per [html, images] so reaching it doesn't itself reload the frame.
+  // Dark theme: mail with no colours of its own reads dark (emailDark.js). The frame stays hidden until
+  // the first load is judged (no white flash); the verdict is frozen per [html, images] so it doesn't reload the frame.
   const [dark] = useState(isDark);
   const [tone, setTone] = useState(null);         // null until judged
   const toneRef = useRef(null);

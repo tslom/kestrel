@@ -1,12 +1,6 @@
-"""weather.current() — the glance strip's chip, and what it does when
-Open-Meteo is down.
+"""weather.current() — the glance chip and its stale-cache fallback when Open-Meteo is down.
 
-The case these exist for is one the `failures` table recorded on four
-separate days: upstream answered 502, the route turned that into a 502 of its
-own, and the chip went blank. A cached
-reading is the fix, and the thing worth pinning is that it is never passed off
-as live — `stale` and `as_of` have to survive, and a reading too old to mean
-anything has to stop being served at all.
+Design: DESIGN.md → `app/weather.py`: current() fallback, test-pinned.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -18,8 +12,7 @@ from app.providers import weather
 
 @pytest.fixture(autouse=True)
 def _clean_cache(monkeypatch):
-    """current() memoises into a module global — reset it per test, or the
-    first test's reading silently satisfies the later ones."""
+    """current() memoises into a module global; reset it per test."""
     monkeypatch.setattr(weather, "_current_cache", None)
     monkeypatch.setattr(weather, "_current_origin", None)
     # No test here wants a real second of latency for the retry sleep.
@@ -27,8 +20,7 @@ def _clean_cache(monkeypatch):
 
 
 def _api_returning(*results):
-    """A fake _api that walks `results`, raising any exception it finds. Lets a
-    test say "fail, then succeed" without counting calls by hand."""
+    """A fake _api that walks `results`, raising any exception it finds."""
     calls = {"n": 0}
     seq = list(results)
 
@@ -64,8 +56,7 @@ def test_a_good_reading_is_marked_live_and_cached(monkeypatch):
 
 
 def test_one_failure_is_retried_before_giving_up(monkeypatch):
-    """The observed 502 is transient, so the second attempt is the whole point
-    — a single-shot call would have blanked the chip on all four of those days."""
+    """A transient 502 is retried once."""
     _stub_surroundings(monkeypatch)
     fake, calls = _api_returning(RuntimeError("weather API 502: nope"), _LIVE)
     monkeypatch.setattr(weather, "_api", fake)
@@ -92,9 +83,7 @@ def test_both_attempts_failing_serves_the_cache_marked_stale(monkeypatch):
 
 
 def test_serving_stale_does_not_relabel_the_cached_copy(monkeypatch):
-    """The fallback returns a copy. Mutating the cache in place would flip its
-    own `stale` to True and lose the honest `as_of`, so the *second* outage
-    would be serving a reading that no longer knows when it was taken."""
+    """The fallback returns a copy, so the cache keeps its own `stale` and `as_of`."""
     _stub_surroundings(monkeypatch)
     good, _ = _api_returning(_LIVE)
     monkeypatch.setattr(weather, "_api", good)
@@ -111,7 +100,7 @@ def test_serving_stale_does_not_relabel_the_cached_copy(monkeypatch):
 
 
 def test_a_reading_past_the_stale_window_is_not_served_at_all(monkeypatch):
-    """Better a blank chip than an hours-old temperature presented as now."""
+    """A too-old reading is not served."""
     _stub_surroundings(monkeypatch)
     old = datetime.now(UTC) - timedelta(seconds=weather._CURRENT_STALE_S + 60)
     monkeypatch.setattr(weather, "_current_cache",
@@ -123,8 +112,7 @@ def test_a_reading_past_the_stale_window_is_not_served_at_all(monkeypatch):
 
 
 def test_no_cache_and_a_dead_api_is_still_none(monkeypatch):
-    """The route's 502 has to stay reachable — it's now the genuinely-nothing
-    case, and turning it into a 200 with empty fields would be worse."""
+    """With nothing cached the route still answers 502, not an empty 200."""
     _stub_surroundings(monkeypatch)
     boom, _ = _api_returning(RuntimeError("502"))
     monkeypatch.setattr(weather, "_api", boom)
@@ -133,8 +121,7 @@ def test_no_cache_and_a_dead_api_is_still_none(monkeypatch):
 
 
 def _stub_refresh_db(monkeypatch):
-    """refresh()'s day-window half, out of the way — these tests are about the
-    reading it takes on the way past, not about weather_days."""
+    """Stub refresh()'s day-window half; these tests are about its reading."""
     monkeypatch.setattr(weather, "_sync", lambda *a: 0)
     monkeypatch.setattr(weather.db, "day_key", lambda dt=None: "2026-09-19")
 
@@ -150,11 +137,7 @@ def test_the_poller_cycle_warms_the_reading(dbfile, monkeypatch):
 
 
 def test_without_the_warm_the_first_load_of_the_day_still_blanks(dbfile, monkeypatch):
-    """The state the fix was written against, kept as a test so the next one
-    can see what changed. The cache was fillable only by current() itself —
-    i.e. only by a page load — and a served-stale reading expires after an
-    hour, so the fallback could cover a blip during a *repeat* visit and never
-    the first load of the day. Which is when all four recorded 502s landed."""
+    """With no poller cycle before it, a first load of the day has nothing to fall back on."""
     _stub_surroundings(monkeypatch)
     boom, _ = _api_returning(RuntimeError("weather API 502: nope"))
     monkeypatch.setattr(weather, "_api", boom)
@@ -163,8 +146,7 @@ def test_without_the_warm_the_first_load_of_the_day_still_blanks(dbfile, monkeyp
 
 
 def test_a_warmed_reading_covers_an_outage_at_the_next_page_load(dbfile, monkeypatch):
-    """The same moment as the test above, with one poller cycle in front of
-    it: the chip degrades to a stale marker instead of a 502."""
+    """One poller cycle first: the chip degrades to a stale marker instead of a 502."""
     _stub_surroundings(monkeypatch)
     _stub_refresh_db(monkeypatch)
     good, _ = _api_returning(_LIVE)
@@ -181,9 +163,7 @@ def test_a_warmed_reading_covers_an_outage_at_the_next_page_load(dbfile, monkeyp
 
 
 def test_a_dead_api_does_not_sink_the_refresh(dbfile, monkeypatch):
-    """The day window is the point of refresh(); the reading is a passenger.
-    A passenger that can fail the cycle would trade a blank chip for a stale
-    forecast, which is the worse of the two."""
+    """A failing reading never fails refresh()'s day-window cycle."""
     _stub_surroundings(monkeypatch)
     _stub_refresh_db(monkeypatch)
     boom, _ = _api_returning(RuntimeError("weather API 502: nope"))
@@ -193,8 +173,7 @@ def test_a_dead_api_does_not_sink_the_refresh(dbfile, monkeypatch):
 
 
 def test_a_fresh_reading_is_reused_without_asking(monkeypatch):
-    """The page-load path: upstream costs ~0.8s and only moves in 15-minute
-    steps, so a reading the poller just took is the answer — still live."""
+    """A reading the poller just took is returned as live (upstream ~0.8s, 15-minute steps)."""
     _stub_surroundings(monkeypatch)
     good, calls = _api_returning(_LIVE)
     monkeypatch.setattr(weather, "_api", good)
@@ -208,8 +187,7 @@ def test_a_fresh_reading_is_reused_without_asking(monkeypatch):
 
 
 def test_a_reading_from_elsewhere_is_not_reused(monkeypatch):
-    """Origin follows the latest location fix — drive to another city and the
-    old city's reading is a wrong answer, however young."""
+    """A cached reading from another city is not served after a new location fix."""
     _stub_surroundings(monkeypatch)
     good, calls = _api_returning(_LIVE)
     monkeypatch.setattr(weather, "_api", good)
@@ -234,8 +212,7 @@ def test_a_reading_past_the_fresh_window_is_asked_again(monkeypatch):
 
 
 def test_a_reply_with_no_current_block_counts_as_a_failure(monkeypatch):
-    """200 carrying no `current` key is the shape a proxy error page takes.
-    It must reach the cache fallback, not return a payload of Nones."""
+    """A 200 with no `current` key (a proxy error page) reaches the cache fallback."""
     _stub_surroundings(monkeypatch)
     good, _ = _api_returning(_LIVE)
     monkeypatch.setattr(weather, "_api", good)

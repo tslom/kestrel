@@ -14,15 +14,9 @@ import { useGoogleAddresses } from "../lib/googleLinks";
 import { fmtAgo, fmtDay, fmtTime, shortDay } from "../lib/time";
 import { dragPin } from "../lib/drag.js";
 
-// Email sheet — what arrived, not what to do about it.
-//
-// The review queue is the sheet that *acts*: it archives, bins and
-// unsubscribes, one card at a time, and it only ever holds the inbox. This
-// one is the other question — how much mail a week was, who sent it, and
-// where a particular message went — over any range, with no buttons that
-// change anything. Keeping them apart is why neither has to compromise: a
-// list you're triaging wants one message at a time, and a list you're
-// searching wants all of them at once.
+// Email sheet: what arrived (volume, senders, where a message went) over any range, with no
+// buttons that change anything. The review queue acts on the inbox one card at a time; keeping
+// them apart means neither compromises (triage wants one message, search wants all).
 const VIEWS = [null];
 
 const TOP_SENDERS = 10;
@@ -56,10 +50,8 @@ function MailRow({ m, onPin, when }) {
   );
 }
 
-// Finding a message again — the reason review files anything. Ranked over
-// every cached message (subject, sender, summary, label, and the terms pulled
-// out of each body), not the range above; Gmail's own search is one click
-// further, and runs by itself when nothing local matches.
+// Finding a message again (why review files anything): ranked over every cached message, not the
+// range above; Gmail's search is one click further and runs itself when nothing local matches.
 function MailSearch({ onPin }) {
   useGoogleAddresses();
   const [q, setQ] = useState("");
@@ -128,9 +120,7 @@ function MailSearch({ onPin }) {
 }
 
 function MailDays({ messages, onPin }) {
-  // Every Gmail href here carries an authuser=, which arrives from the backend
-  // a beat after the first render — without this the whole list keeps the
-  // account-less links it was built with.
+  // Gmail hrefs carry authuser=, which arrives after first render; re-render so links aren't account-less.
   useGoogleAddresses();
   if (messages.length === 0) return <p className="widget-empty">No mail in this range.</p>;
   const byDay = new Map();
@@ -163,10 +153,7 @@ export default function EmailSheet({ onPin }) {
   const unread = mail.filter((m) => m.unread);
   const inbox = mail.filter((m) => m.in_inbox);
 
-  // Mail arrives in one stream and is read in another, so a day's bar is its
-  // messages split by whether they've been opened — the unread part is the
-  // part that's still yours to deal with, and it belongs inside the day's
-  // height rather than beside it.
+  // A day's bar splits read/unread within its height (the unread part is still yours to deal with).
   const byDay = new Map();
   for (const m of mail) {
     const cur = byDay.get(m.day) || { read: 0, unread: 0 };
